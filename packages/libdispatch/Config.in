@@ -1,0 +1,11 @@
+config BR2_PACKAGE_LIBDISPATCH
+	bool "libdispatch"
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	select BR2_PACKAGE_LIBBSD
+	
+	help
+	  Grand Central Dispatch (GCD or libdispatch) provides comprehensive support for concurrent code execution on multicore hardware.
+
+	  http://swift.org
