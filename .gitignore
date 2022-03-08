@@ -89,3 +89,10 @@ fastlane/test_output
 
 iOSInjectionProject/
 .DS_Store
+
+# Buildroot
+.config
+./buildroot/*
+
+# VS Code
+.vscode
