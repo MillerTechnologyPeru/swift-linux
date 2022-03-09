@@ -16,7 +16,10 @@ public extension Configuration {
 
         public let rawValue: String
 
-        public init(rawValue: String) {
+        public init?(rawValue: String) {
+            guard rawValue.contains(.equal) == false else {
+                return nil
+            }
             self.rawValue = rawValue
         }
     }
@@ -26,5 +29,30 @@ public extension Configuration.ID {
     
     var isPackage: Bool {
         rawValue.contains("BR2_PACKAGE")
+    }
+}
+
+// MARK: - ExpressibleByStringLiteral
+
+extension Configuration.ID: ExpressibleByStringLiteral {
+    
+    public init(stringLiteral string: String) {
+        guard let value = Self.init(rawValue: string) else {
+            fatalError("Invalid string \(string)")
+        }
+        self = value
+    }
+}
+
+// MARK: - CustomStringConvertible
+
+extension Configuration.ID: CustomStringConvertible, CustomDebugStringConvertible {
+    
+    public var description: String {
+        rawValue
+    }
+    
+    public var debugDescription: String {
+        rawValue
     }
 }
