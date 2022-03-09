@@ -8,10 +8,27 @@
 /// Buildroot Configuration file
 public struct Configuration: Equatable, Hashable {
 
-    internal private(set) var elements: [Element]
+    internal private(set) var elements: [Configuration.Element]
     
     public init() {
         self.elements = []
+    }
+    
+    public init<S>(_ sequence: S) where S:Sequence, S.Element == Self.Element {
+        self.elements = [Element](sequence)
+    }
+    
+    public var count: Int {
+        elements.count
+    }
+}
+
+// MARK: - RawRepresentable
+
+extension Configuration: ExpressibleByArrayLiteral {
+    
+    public init(arrayLiteral elements: Configuration.Element...) {
+        self.elements = elements
     }
 }
 
