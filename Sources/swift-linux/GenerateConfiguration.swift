@@ -60,7 +60,7 @@ extension Buildroot.Configuration {
             return nil
         }
         configuration += .toolchain
-        //configuration += .swift
+        configuration += .swift
         return configuration
     }
 }
