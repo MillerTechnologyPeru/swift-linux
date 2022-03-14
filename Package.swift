@@ -4,22 +4,27 @@ import PackageDescription
 let package = Package(
     name: "swift-linux",
     products: [
-        .library(
-            name: "SwiftLinuxOS",
-            targets: ["SwiftLinuxOS"]
+        .executable(
+            name: "swift-linux",
+            targets: ["swift-linux"]
         )
     ],
     dependencies: [
         .package(
             url: "https://github.com/PureSwift/AppRuntime.git", 
             .branch("master")
+        ),
+        .package(
+            url: "https://github.com/apple/swift-argument-parser.git",
+            .branch("main")
         )
     ],
     targets: [
-        .target(
-            name: "SwiftLinuxOS",
+        .executableTarget(
+            name: "swift-linux",
             dependencies: [
-                "AppRuntime",
+                .product(name: "ArgumentParser", package: "swift-argument-parser"),
+                .product(name: "AppRuntime", package: "AppRuntime"),
                 "Buildroot"
             ]
         ),
@@ -29,7 +34,7 @@ let package = Package(
         ),
         .testTarget(
             name: "SwiftLinuxOSTests",
-            dependencies: ["SwiftLinuxOS"]
+            dependencies: ["Buildroot"]
         )
     ]
 )
