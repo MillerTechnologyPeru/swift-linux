@@ -17,6 +17,24 @@ public extension Configuration {
     }
 }
 
+// MARK: - ExpressibleByBooleanLiteral
+
+extension Configuration.Value: ExpressibleByBooleanLiteral {
+    
+    public init(booleanLiteral value: Bool) {
+        self = .bool(value)
+    }
+}
+
+// MARK: - ExpressibleByStringLiteral
+
+extension Configuration.Value: ExpressibleByStringLiteral {
+    
+    public init(stringLiteral value: String) {
+        self = .string(value)
+    }
+}
+
 // MARK: - RawRepresentable
 
 extension Configuration.Value: RawRepresentable {

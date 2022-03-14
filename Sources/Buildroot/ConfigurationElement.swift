@@ -13,8 +13,8 @@ public extension Configuration {
     struct Element: Equatable, Hashable, Codable, Identifiable {
 
         public let id: Configuration.ID
-
-        public let value: Configuration.Value
+        
+        public var value: Configuration.Value
     }
 }
 

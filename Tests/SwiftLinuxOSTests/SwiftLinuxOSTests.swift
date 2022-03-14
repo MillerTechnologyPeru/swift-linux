@@ -1,5 +1,4 @@
 import XCTest
-@testable import SwiftLinuxOS
 @testable import Buildroot
 
 final class SwiftLinuxOSTests: XCTestCase {
@@ -39,16 +38,15 @@ final class SwiftLinuxOSTests: XCTestCase {
         }
         
         let configuration: Buildroot.Configuration = [
-            .init(id: .libdispatch),
-            .init(id: .swift),
-            .init(id: .libswiftdispatch),
-            .init(id: .foundation),
-            
-            .init(id: .icu),
-            .init(id: .libbsd),
-            .init(id: .libxml2),
-            .init(id: .libcurl),
-            .init(id: .openssl),
+            .libdispatch: true,
+            .swift: true,
+            .libswiftdispatch: true,
+            .foundation: true,
+            .icu: true,
+            .libbsd: true,
+            .libxml2: true,
+            .libcurl: true,
+            .openssl: true,
         ]
         
         XCTAssertEqual(parsedConfiguration, configuration)
