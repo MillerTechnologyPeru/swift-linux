@@ -31,4 +31,12 @@ public extension Configuration.ID {
     static var dbus: Configuration.ID               { "BR2_PACKAGE_DBUS" }
     
     static var ncurses: Configuration.ID            { "BR2_PACKAGE_NCURSES" }
+    
+    static var libepoxy: Configuration.ID           { "BR2_PACKAGE_LIBEPOXY" }
+    
+    static var libfribidi: Configuration.ID         { "BR2_PACKAGE_LIBFRIBIDI" }
+    
+    static var pcre: Configuration.ID               { "BR2_PACKAGE_PCRE" }
+    
+    static var pcreUcp: Configuration.ID            { "BR2_PACKAGE_PCRE_UCP" }
 }

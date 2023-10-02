@@ -42,6 +42,8 @@ public extension Configuration {
     
     init?(arch: Arch) {
         switch arch {
+        case .armv5:
+            self = .armv5
         case .armv7:
             self = .armv7
         case .arm64:

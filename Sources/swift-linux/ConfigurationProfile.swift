@@ -17,6 +17,7 @@ public enum ConfigurationProfile: String {
     
     // Runtime
     case sdk
+    case appSDK
     
     // Complete images
     case uefi

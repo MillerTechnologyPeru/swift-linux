@@ -33,6 +33,7 @@ struct GenerateConfiguration: ParsableCommand {
         let url = try fileURL()
         let data = Data(configuration.rawValue.utf8)
         try data.write(to: url, options: [.atomic])
+        print("Generated \(self.configuration) configuration at \(url.path)")
     }
     
     func fileURL() throws -> URL {
@@ -55,6 +56,14 @@ struct GenerateConfiguration: ParsableCommand {
                 throw SwiftLinuxToolError("Invalid architecture \(arch)")
             }
             return configuration
+        case .appSDK:
+            guard let arch = self.arch else {
+                throw SwiftLinuxToolError("Must specify architecture")
+            }
+            guard let configuration = Configuration.generateSDK(for: arch, isApp: true) else {
+                throw SwiftLinuxToolError("Invalid architecture \(arch)")
+            }
+            return configuration
         default:
             throw SwiftLinuxToolError("Not implemented")
         }
@@ -63,12 +72,15 @@ struct GenerateConfiguration: ParsableCommand {
 
 extension Buildroot.Configuration {
     
-    static func generateSDK(for arch: Arch) -> Buildroot.Configuration? {
+    static func generateSDK(for arch: Arch, isApp: Bool = false) -> Buildroot.Configuration? {
         guard var configuration = Configuration(arch: arch) else {
             return nil
         }
         configuration += .toolchain
         configuration += .swift
+        if isApp {
+            configuration += .appLibraries
+        }
         return configuration
     }
 }
