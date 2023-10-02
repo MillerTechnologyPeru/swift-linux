@@ -30,11 +30,19 @@ struct GenerateConfiguration: ParsableCommand {
     
     func run() throws {
         let configuration = try generate()
-        
+        let url = try fileURL()
+        let data = Data(configuration.rawValue.utf8)
+        try data.write(to: url, options: [.atomic])
     }
     
-    func fileURL() throws {
-        
+    func fileURL() throws -> URL {
+        if let path = path {
+            return URL(fileURLWithPath: path)
+        } else {
+            let fileManger = FileManager()
+            return URL(fileURLWithPath: fileManger.currentDirectoryPath)
+                .appendingPathComponent("swift_linux_defconfig")
+        }
     }
     
     func generate() throws -> Buildroot.Configuration {
