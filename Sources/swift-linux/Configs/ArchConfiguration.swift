@@ -10,6 +10,12 @@ import Buildroot
 import AppRuntime
 
 public extension Configuration {
+
+    static var armv5: Configuration {
+        [
+            .arm: true,
+        ]
+    }
     
     static var armv7: Configuration {
         [
