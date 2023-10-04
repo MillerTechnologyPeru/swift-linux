@@ -52,10 +52,13 @@ public extension Configuration {
             .openAL: true, 
             .libvorbis: true, 
             .libogg: true,
+            .libtheora: true,
+            .flac: true,
             .libepoxy: true,
             .libfribidi: true, 
             .pcre: true, 
             .pcreUcp: true,
+            .bzip2: true
         ]
     }
 }

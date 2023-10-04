@@ -39,4 +39,6 @@ public extension Configuration.ID {
     static var pcre: Configuration.ID               { "BR2_PACKAGE_PCRE" }
     
     static var pcreUcp: Configuration.ID            { "BR2_PACKAGE_PCRE_UCP" }
+    
+    static var bzip2: Configuration.ID              { "BR2_PACKAGE_BZIP2" }
 }

@@ -14,4 +14,8 @@ public extension Configuration.ID {
     static var libvorbis: Configuration.ID        { "BR2_PACKAGE_LIBVORBIS" }
     
     static var libogg: Configuration.ID           { "BR2_PACKAGE_LIBOGG" }
+    
+    static var libtheora: Configuration.ID        { "BR2_PACKAGE_LIBTHEORA" }
+    
+    static var flac: Configuration.ID             { "BR2_PACKAGE_FLAC" }
 }
