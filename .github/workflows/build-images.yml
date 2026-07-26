@@ -44,6 +44,13 @@ jobs:
           export NO_LIB32=1
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
+      - name: Dump build log on failure
+        if: failure()
+        run: |
+          log="/workspaces/buildroot-swift/output/${{ matrix.arch }}-image.log"
+          echo "===== tail of $log ====="
+          tail -n 200 "$log" || echo "(no log found)"
+
       - name: Show image
         run: ls -la /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/ || true
 
