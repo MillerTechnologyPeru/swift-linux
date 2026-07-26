@@ -1,0 +1,72 @@
+name: Build Images
+
+# Builds the Swift Linux A/B UEFI images in the buildroot-swift container,
+# which already ships the Swift native toolchain and, in its per-arch
+# swift_<arch>_defconfig tags, a prebuilt Buildroot output/<arch> with the
+# cross-toolchain and Swift runtime. We reconfigure that cached output dir
+# with our image defconfig (our toolchain.config matches theirs, so the
+# toolchain and swift are reused) and only the extra packages - sway, mesa,
+# GRUB, RAUC, steam, ... - compile. Modeled on MillerTechnologyPeru/
+# buildroot-swift's own Buildroot workflow.
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  image:
+    name: Image (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64]
+    runs-on: ubuntu-latest
+    # Per-arch container with Buildroot + a prebuilt output/<arch> (toolchain
+    # + host-swift + native Swift tools). Same images buildroot-swift uses.
+    container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    steps:
+      - name: Checkout swift-linux
+        uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          set -eu
+          # In the container the buildroot-swift external + Buildroot + the
+          # cached per-arch output all live under /workspaces/buildroot-swift.
+          BR_SWIFT=/workspaces/buildroot-swift
+          export BUILDROOT="$BR_SWIFT/buildroot"
+          export BR2_EXTERNAL_SWIFT="$BR_SWIFT"
+          export OUTPUT_BASE="$BR_SWIFT/output"
+          # Reuse the cached output/<arch> so the toolchain and swift are not
+          # rebuilt; skip the 32-bit companion here (it is a separate,
+          # uncached toolchain build - add a dedicated job if wanted).
+          export IMAGE_OUTPUT_DIR="$BR_SWIFT/output/${{ matrix.arch }}"
+          export NO_LIB32=1
+          "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
+
+      - name: Show image
+        run: ls -la /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/ || true
+
+      - name: Upload disk image
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-linux-${{ matrix.arch }}-disk
+          path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
+          if-no-files-found: error
+
+  # Fast machinery check without the Swift toolchain: proves the image config
+  # resolves and generate-config/build-images plumbing is intact on a plain
+  # runner. Does not build (that needs the container); config-only.
+  config-check:
+    name: Config check (${{ matrix.arch }})
+    strategy:
+      matrix:
+        arch: [x86_64, arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Generate image defconfig
+        run: |
+          ./generate-config.sh --arch ${{ matrix.arch }} --profile image -o /tmp/image.defconfig
+          echo "----- generated defconfig -----"
+          grep -E '^BR2_(aarch64|x86_64|PACKAGE_(SWAYWM|STEAM|BOX64|MESA3D_GALLIUM_DRIVER_VIRGL)|TARGET_GRUB2_.*_EFI|INIT_BUSYBOX)' /tmp/image.defconfig || true

@@ -72,7 +72,14 @@ br_build() {
 build_track() {
 	local arch="$1"
 	local lib32arch; lib32arch="$(companion_of "$arch")"
+	# When building a single arch, IMAGE_OUTPUT_DIR may point the image build
+	# at an existing output dir (e.g. a CI container's cached output/<arch>
+	# that already has the cross-toolchain and swift built), so only the
+	# remaining packages compile. Ignored when building multiple arches.
 	local img_out="$OUTPUT_BASE/$arch-image"
+	if [ -n "${IMAGE_OUTPUT_DIR:-}" ] && [ "$SINGLE_ARCH" = "1" ]; then
+		img_out="$IMAGE_OUTPUT_DIR"
+	fi
 	local lib32_root=""
 
 	echo "[$arch] starting"
@@ -102,6 +109,7 @@ build_track() {
 # ---- select arches -------------------------------------------------------
 arches=("$@")
 [ ${#arches[@]} -gt 0 ] || arches=(x86_64 arm64)
+[ ${#arches[@]} -eq 1 ] && SINGLE_ARCH=1 || SINGLE_ARCH=0
 
 echo "build-images: BUILDROOT=$BUILDROOT"
 echo "build-images: externals=$EXTERNALS"
