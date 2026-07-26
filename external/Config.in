@@ -1,0 +1,6 @@
+menu "Swift Linux packages"
+
+source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/sdl3/Config.in"
+source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/swaywm/Config.in"
+
+endmenu

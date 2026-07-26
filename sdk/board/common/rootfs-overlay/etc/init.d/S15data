@@ -32,9 +32,13 @@ start() {
 	fi
 
 	# First boot: create an ext4 filesystem on the raw data partition.
-	if ! blkid "${DATA_DEV}" | grep -q 'TYPE="ext4"'; then
+	# Detect an existing filesystem by ANY blkid output: busybox blkid prints
+	# LABEL/UUID but not a TYPE= field, so a type match cannot be relied on.
+	# Redirect stdin from /dev/null so mkfs can never block the boot on its
+	# "Proceed anyway?" prompt if it is ever pointed at a non-empty device.
+	if [ -z "$(blkid "${DATA_DEV}" 2>/dev/null)" ]; then
 		printf 'Formatting data partition: '
-		mkfs.ext4 -q -L data "${DATA_DEV}" && echo OK || { echo FAIL; return 0; }
+		mkfs.ext4 -q -L data "${DATA_DEV}" < /dev/null && echo OK || { echo FAIL; return 0; }
 	fi
 
 	# /data exists in the rootfs image: the root is read-only and cannot be

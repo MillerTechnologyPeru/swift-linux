@@ -71,8 +71,14 @@ case "$profile" in
             exit 1
         fi
         fragments=(toolchain swift network image) ;;
+    lib32)
+        # 32-bit companion userland (libraries only), merged into a 64-bit
+        # image as /usr/lib32 by sdk/board/common/post-build-lib32.sh.
+        # Buildroot has no multilib for Linux targets, so this is a separate
+        # build: pair i386 with an x86_64 image.
+        fragments=(toolchain lib32) ;;
     *)
-        echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image)" >&2
+        echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
         exit 1 ;;
 esac
 
