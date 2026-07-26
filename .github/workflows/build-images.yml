@@ -64,6 +64,26 @@ jobs:
           path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
+      # Package this arch's sysroot into a portable Swift SDK artifactbundle so
+      # it can be downloaded and used to cross-compile Swift for the image
+      # (see docs/swift-sdk.md).
+      - name: Generate Swift SDK
+        run: |
+          set -eu
+          export BR_SWIFT=/workspaces/buildroot-swift
+          bundle="/workspaces/buildroot-swift/output/swift-linux-${{ matrix.arch }}.artifactbundle"
+          bash "$GITHUB_WORKSPACE/util/make-swift-sdk.sh" \
+            --arch ${{ matrix.arch }} --portable --out "$bundle"
+          tar czf "$GITHUB_WORKSPACE/swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz" \
+            -C "$(dirname "$bundle")" "$(basename "$bundle")"
+
+      - name: Upload Swift SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-linux-${{ matrix.arch }}-swift-sdk
+          path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
+          if-no-files-found: error
+
   # Fast machinery check without the Swift toolchain: proves the image config
   # resolves and generate-config/build-images plumbing is intact on a plain
   # runner. Does not build (that needs the container); config-only.
@@ -80,3 +100,31 @@ jobs:
           ./generate-config.sh --arch ${{ matrix.arch }} --profile image -o /tmp/image.defconfig
           echo "----- generated defconfig -----"
           grep -E '^BR2_(aarch64|x86_64|PACKAGE_(SWAYWM|STEAM|BOX64|MESA3D_GALLIUM_DRIVER_VIRGL)|TARGET_GRUB2_.*_EFI|INIT_BUSYBOX)' /tmp/image.defconfig || true
+
+  # Merge the per-arch Swift SDKs into one artifactbundle that cross-compiles
+  # for every architecture (swift build --swift-sdk aarch64/x86_64-...-linux-gnu).
+  # Runs on a plain runner - it only rearranges files (jq + tar).
+  combined-swift-sdk:
+    name: Combined Swift SDK
+    needs: image
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download per-arch Swift SDKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: swift-linux-*-swift-sdk
+          path: sdk-parts
+      - name: Combine into an all-arch SDK
+        run: |
+          set -eu
+          mkdir -p parts
+          find sdk-parts -name '*-swift-sdk.tar.gz' -exec tar xzf {} -C parts \;
+          bash util/combine-swift-sdk.sh parts/*.artifactbundle --out swift-linux.artifactbundle
+          tar czf swift-linux-swift-sdk.tar.gz swift-linux.artifactbundle
+      - name: Upload combined Swift SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-linux-swift-sdk
+          path: swift-linux-swift-sdk.tar.gz
+          if-no-files-found: error

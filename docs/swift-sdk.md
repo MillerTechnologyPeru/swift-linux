@@ -52,6 +52,24 @@ swift sdk install swift-linux-arm64.artifactbundle.tar.gz
 
 Either way the host toolchain still has to match the sysroot's Swift version.
 
+### All-arch combined SDK
+
+`util/combine-swift-sdk.sh` merges several per-arch **portable** bundles into a
+single artifactbundle that cross-compiles for every architecture, so one
+`swift sdk install` covers both targets:
+
+```sh
+util/make-swift-sdk.sh --arch arm64  --portable --out parts/swift-linux-arm64.artifactbundle
+util/make-swift-sdk.sh --arch x86_64 --portable --out parts/swift-linux-x86_64.artifactbundle
+util/combine-swift-sdk.sh parts/*.artifactbundle --out swift-linux.artifactbundle
+
+swift sdk install swift-linux.artifactbundle
+swift build --swift-sdk aarch64-unknown-linux-gnu   # or x86_64-unknown-linux-gnu
+```
+
+CI builds this automatically: each image job publishes its per-arch SDK, and the
+`combined-swift-sdk` job merges them into a `swift-linux-swift-sdk` artifact.
+
 ## Build a package
 
 ```sh
