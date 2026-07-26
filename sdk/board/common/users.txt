@@ -1,0 +1,6 @@
+# Default non-root user for Swift Linux.
+# Format: <username> <uid> <group> <gid> <password> <home> <shell> <groups> <comment>
+#   password "=swift"  -> clear-text password "swift"
+#   group "video"      -> access to the seatd socket (seatd -g video), which
+#                         grants the Weston session DRM/input without root.
+swift 1000 swift 1000 =swift /home/swift /bin/sh video,tty,audio,dialout,wheel Swift User

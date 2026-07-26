@@ -1,0 +1,34 @@
+#!/bin/sh
+# Start a Weston session (compositor + a terminal) for the current user.
+# Arch/board independent: relies only on seatd (for non-root DRM/input) and
+# a Wayland-capable kernel DRM driver.
+#
+# Note: no --tty option is passed. Weston 15 rejects it ("unhandled option")
+# because the VT is managed through libseat/seatd.
+
+XDG_RUNTIME_DIR="/tmp/xdg-$(id -u)"
+export XDG_RUNTIME_DIR
+mkdir -p "${XDG_RUNTIME_DIR}"
+chmod 0700 "${XDG_RUNTIME_DIR}"
+export XDG_SESSION_TYPE=wayland
+
+weston --log="${XDG_RUNTIME_DIR}/weston.log" &
+weston_pid=$!
+
+# Wait for the compositor's socket, then open a terminal on it. The name is
+# discovered rather than assumed: weston picks the first free wayland-N.
+i=0
+while [ "${i}" -lt 50 ]; do
+	sock=$(ls "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | grep -v '\.lock$' | head -1)
+	if [ -n "${sock}" ]; then
+		WAYLAND_DISPLAY=$(basename "${sock}")
+		export WAYLAND_DISPLAY
+		break
+	fi
+	sleep 0.2
+	i=$((i + 1))
+done
+
+[ -n "${WAYLAND_DISPLAY}" ] && weston-terminal &
+
+wait "${weston_pid}"

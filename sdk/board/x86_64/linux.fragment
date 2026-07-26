@@ -1,0 +1,13 @@
+# Extra kernel options for QEMU x86_64: virtio graphics/input, DRM/KMS for
+# Weston, evdev input, and ext4 root. Merged on top of the arch default config.
+CONFIG_DRM=y
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_DRM_BOCHS=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_INPUT=y
+CONFIG_INPUT_EVDEV=y
+CONFIG_EXT4_FS=y

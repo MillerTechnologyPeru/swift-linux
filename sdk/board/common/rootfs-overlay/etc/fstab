@@ -1,0 +1,19 @@
+# <device>                          <mount>   <type>   <options>          <dump> <pass>
+/dev/root                           /         ext4     ro                 0      1
+proc                                /proc     proc     defaults           0      0
+devtmpfs                            /dev      devtmpfs defaults           0      0
+# devpts is required for pty allocation - without it terminal emulators fail
+# with "failed to fork and create pty (No such device)".
+devpts                              /dev/pts  devpts   defaults,gid=5,mode=620 0 0
+sysfs                               /sys      sysfs    defaults           0      0
+tmpfs                               /tmp      tmpfs    mode=1777          0      0
+tmpfs                               /run      tmpfs    mode=0755,nosuid   0      0
+# The rootfs is read-only, so /var/lib (a real directory in the skeleton)
+# needs its own tmpfs for daemons such as seedrng.
+# Do NOT add /var/log here: the skeleton symlinks it to ../tmp, so mounting a
+# tmpfs on it lands on /tmp and replaces its 1777 mode with 0755, which stops
+# non-root users from creating their XDG_RUNTIME_DIR and breaks the session.
+tmpfs                               /var/lib  tmpfs    mode=0755          0      0
+# /boot (ESP) and /data are mounted by /etc/init.d/S15data, which runs after
+# udev has created /dev/disk/by-partuuid. Mounting them here would be too
+# early: the symlinks do not exist yet during rcS.

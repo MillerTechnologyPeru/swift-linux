@@ -63,8 +63,16 @@ case "$profile" in
         fragments=(toolchain swift) ;;
     app-sdk|appSDK|app_sdk)
         fragments=(toolchain swift applibs) ;;
+    image)
+        # Full bootable A/B UEFI image (Weston + non-root user). x86_64 only:
+        # image.config references board files under sdk/board/x86_64.
+        if [ "$arch" != "x86_64" ]; then
+            echo "Error: the 'image' profile currently targets x86_64 only (got '$arch')" >&2
+            exit 1
+        fi
+        fragments=(toolchain swift image) ;;
     *)
-        echo "Error: unknown profile '$profile' (expected: sdk, app-sdk)" >&2
+        echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image)" >&2
         exit 1 ;;
 esac
 
@@ -91,5 +99,10 @@ for f in "${files[@]}"; do
     cat "$f" >> "$output"
     printf '\n' >> "$output"
 done
+
+# Rewrite the @SWIFT_LINUX@ placeholder (used by image.config to point at
+# board overlays, users tables and post-build/-image scripts) to this repo's
+# absolute path, so the generated defconfig is self-contained.
+sed -i "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output"
 
 echo "Generated $profile configuration for $arch${board:+ ($board)} at $output"
