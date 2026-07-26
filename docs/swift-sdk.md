@@ -29,9 +29,28 @@ util/make-swift-sdk.sh --arch arm64 --install
 ```
 
 This writes `swift-linux-arm64.artifactbundle` and registers it with
-`swift sdk install`. The SDK references the sysroot in place (by absolute path),
-so it is a local/dev SDK — regenerate it per machine. Pass `--arch x86_64` for
-the 64-bit x86 target.
+`swift sdk install`. Pass `--arch x86_64` for the 64-bit x86 target.
+
+### Local vs portable
+
+By default the SDK references the buildroot sysroot **in place** by absolute
+path — small and instant, but it only works on the machine that has the
+buildroot checkout.
+
+Add `--portable` for a **self-contained** bundle: the sysroot and the cross-gcc
+are copied into the bundle (folded under the target triple so clang finds the
+crt objects, `libgcc` and `libstdc++` from `--sysroot` alone), and every path is
+relative. The result (~450 MB) can be archived and `swift sdk install`ed on any
+x86_64 host — no buildroot checkout required:
+
+```sh
+util/make-swift-sdk.sh --arch arm64 --portable --out swift-linux-arm64.artifactbundle
+tar czf swift-linux-arm64.artifactbundle.tar.gz swift-linux-arm64.artifactbundle
+# on another host:
+swift sdk install swift-linux-arm64.artifactbundle.tar.gz
+```
+
+Either way the host toolchain still has to match the sysroot's Swift version.
 
 ## Build a package
 
