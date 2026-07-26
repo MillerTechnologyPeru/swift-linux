@@ -43,4 +43,6 @@ exec qemu-system-x86_64 \
 	-device virtio-gpu-pci \
 	-device virtio-keyboard-pci \
 	-device virtio-tablet-pci \
+	-audiodev none,id=snd0 \
+	-device virtio-sound-pci,audiodev=snd0 \
 	-serial mon:stdio

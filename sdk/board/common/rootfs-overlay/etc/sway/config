@@ -12,6 +12,13 @@ font pango:DejaVu Sans Mono 10
 # Manage X11 windows through XWayland (needed for X11 apps such as Steam).
 xwayland enable
 
+# Audio: start the PipeWire session (sound server + PulseAudio-compat server
+# + WirePlumber policy manager) as user-session daemons. They inherit
+# XDG_RUNTIME_DIR from the session, so no systemd user services are needed.
+exec /usr/bin/pipewire
+exec /usr/bin/wireplumber
+exec /usr/bin/pipewire-pulse
+
 # Open a terminal as soon as the session starts.
 exec $term
 

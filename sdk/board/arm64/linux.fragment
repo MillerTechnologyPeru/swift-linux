@@ -18,6 +18,13 @@ CONFIG_EXT4_FS=y
 # defconfig does not enable it; the x86_64 defconfig does).
 CONFIG_BINFMT_MISC=y
 
+# Sound (PipeWire needs a kernel sound device). virtio-sound is the portable
+# QEMU device used on the aarch64 virt machine.
+CONFIG_SOUND=y
+CONFIG_SND=y
+CONFIG_SND_PCM=y
+CONFIG_SND_VIRTIO=y
+
 # Bluetooth (BR/EDR + LE) and the virtual controller for testing under QEMU.
 CONFIG_BT=y
 CONFIG_BT_BREDR=y
