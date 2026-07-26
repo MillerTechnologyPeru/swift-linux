@@ -16,4 +16,9 @@ BOX86_CONF_OPTS = \
 	-DCMAKE_BUILD_TYPE=Release \
 	-DARM_DYNAREC=ON
 
+# box86 ships prebuilt x86 (i386) libraries for the programs it emulates.
+# They are deliberately not ARM, so exclude them from Buildroot's target
+# architecture check ("is Intel 80386, should be ARM").
+BOX86_BIN_ARCH_EXCLUDE = /usr/lib/box86-i386-linux-gnu
+
 $(eval $(cmake-package))
