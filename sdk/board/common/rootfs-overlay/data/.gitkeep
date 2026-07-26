@@ -1,0 +1,2 @@
+Mountpoint for the persistent data partition (mounted by S15data).
+The rootfs is read-only, so this directory must exist in the image.

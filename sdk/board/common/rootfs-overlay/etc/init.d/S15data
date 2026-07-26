@@ -1,0 +1,74 @@
+#!/bin/sh
+# Mount the ESP and the persistent data partition, and move the default user's
+# home onto the latter, keeping the rootfs read-only. Formats the data
+# partition on first boot.
+#
+# Ordering matters: this must run AFTER S10udevd, because both partitions are
+# addressed by their /dev/disk/by-partuuid symlinks, which udev creates.
+# (Mounting them from /etc/fstab during rcS is too early.)
+
+BOOT_DEV=/dev/disk/by-partuuid/0e0e0e0e-0000-4000-8000-00000000000e
+DATA_DEV=/dev/disk/by-partuuid/0d0d0d0d-0000-4000-8000-00000000000d
+DATA=/data
+
+wait_for_dev() {
+	i=0
+	while [ ! -b "$1" ] && [ "${i}" -lt 50 ]; do
+		sleep 0.2
+		i=$((i + 1))
+	done
+	[ -b "$1" ]
+}
+
+start() {
+	# ESP: holds GRUB and the grubenv that RAUC updates for A/B.
+	if wait_for_dev "${BOOT_DEV}"; then
+		mount -o rw,noatime "${BOOT_DEV}" /boot 2>/dev/null
+	fi
+
+	if ! wait_for_dev "${DATA_DEV}"; then
+		echo "Data partition not found; skipping"
+		return 0
+	fi
+
+	# First boot: create an ext4 filesystem on the raw data partition.
+	if ! blkid "${DATA_DEV}" | grep -q 'TYPE="ext4"'; then
+		printf 'Formatting data partition: '
+		mkfs.ext4 -q -L data "${DATA_DEV}" && echo OK || { echo FAIL; return 0; }
+	fi
+
+	# /data exists in the rootfs image: the root is read-only and cannot be
+	# created at runtime.
+	mount "${DATA_DEV}" "${DATA}" || return 0
+
+	# Persist the default user's home directory on the data partition.
+	mkdir -p "${DATA}/home"
+	if [ ! -d "${DATA}/home/swift" ]; then
+		cp -a /home/swift "${DATA}/home/swift" 2>/dev/null || mkdir -p "${DATA}/home/swift"
+		chown -R swift:swift "${DATA}/home/swift"
+	fi
+	mount -o bind "${DATA}/home" /home
+
+	# BlueZ pairings and ConnMan network profiles live under /var/lib, which
+	# is a tmpfs on this read-only rootfs; bind them to the data partition so
+	# they survive a reboot. Must happen before S40bluetoothd/S45connman.
+	for d in bluetooth connman; do
+		mkdir -p "${DATA}/lib/${d}" "/var/lib/${d}"
+		mount -o bind "${DATA}/lib/${d}" "/var/lib/${d}"
+	done
+}
+
+stop() {
+	umount /var/lib/bluetooth 2>/dev/null || true
+	umount /var/lib/connman 2>/dev/null || true
+	umount /home 2>/dev/null || true
+	umount "${DATA}" 2>/dev/null || true
+	umount /boot 2>/dev/null || true
+}
+
+case "$1" in
+	start) start ;;
+	stop)  stop ;;
+	restart|reload) stop; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac
