@@ -1,0 +1,26 @@
+config BR2_PACKAGE_STEAM
+	bool "steam"
+	depends on BR2_x86_64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	select BR2_PACKAGE_BASH # /usr/bin/steam is a bash script
+	select BR2_PACKAGE_XWAYLAND # Steam's UI is X11
+	help
+	  Valve's Steam client bootstrap for x86_64.
+
+	  This installs only the launcher (steam-launcher .deb). The Steam
+	  client itself, and the Steam Runtime that provides most of its
+	  libraries, are downloaded into the user's home directory on first
+	  launch, so Steam needs network access the first time it runs.
+
+	  The bootstrap binary is 32-bit, so a 32-bit userland must be merged
+	  into the image (the "lib32" profile / SWIFT_LINUX_LIB32_ROOT). It
+	  also needs a running X11/XWayland session, e.g. sway with XWayland
+	  enabled.
+
+	  Steam is proprietary; it is not redistributed in the image sources.
+
+	  https://store.steampowered.com/about/
+
+comment "steam needs a glibc x86_64 toolchain"
+	depends on BR2_x86_64
+	depends on !BR2_TOOLCHAIN_USES_GLIBC
