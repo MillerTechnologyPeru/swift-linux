@@ -40,4 +40,13 @@ else
 SWAYWM_CONF_OPTS += -Dswaybar=false
 endif
 
+# XWayland: sway builds X11 support when wlroots provides it and the xcb
+# libraries are available (used to run X11 apps such as Steam under sway).
+ifeq ($(BR2_PACKAGE_WLROOTS_XWAYLAND),y)
+SWAYWM_CONF_OPTS += -Dxwayland=enabled
+SWAYWM_DEPENDENCIES += xwayland libxcb xcb-util-wm
+else
+SWAYWM_CONF_OPTS += -Dxwayland=disabled
+endif
+
 $(eval $(meson-package))
