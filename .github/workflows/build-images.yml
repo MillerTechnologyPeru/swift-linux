@@ -42,6 +42,9 @@ jobs:
           # uncached toolchain build - add a dedicated job if wanted).
           export IMAGE_OUTPUT_DIR="$BR_SWIFT/output/${{ matrix.arch }}"
           export NO_LIB32=1
+          # The container's cached OpenSSL was built without engine support;
+          # rebuild it so RAUC (which uses the OpenSSL ENGINE API) can compile.
+          export REBUILD_PKGS=libopenssl
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       - name: Dump build log on failure

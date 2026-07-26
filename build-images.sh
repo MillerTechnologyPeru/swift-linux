@@ -64,6 +64,14 @@ br_build() {
 	local out="$1" defconfig="$2"; shift 2
 	make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" \
 		BR2_DEFCONFIG="$defconfig" defconfig >/dev/null || return 1
+	# REBUILD_PKGS forces a dirclean of packages that a prebuilt/cached output
+	# (e.g. a CI container) may have built with the wrong options - such as the
+	# container's OpenSSL, built without engine support that RAUC needs.
+	local pkg
+	for pkg in ${REBUILD_PKGS:-}; do
+		echo "[br_build] forcing rebuild of $pkg"
+		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" "$pkg-dirclean" >/dev/null || return 1
+	done
 	# FORCE_UNSAFE_CONFIGURE lets host tools configure as root (CI/containers).
 	FORCE_UNSAFE_CONFIGURE=1 make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" "$@"
 }
