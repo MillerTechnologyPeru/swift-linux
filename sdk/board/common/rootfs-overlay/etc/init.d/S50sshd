@@ -1,0 +1,49 @@
+#!/bin/sh
+#
+# sshd - starts the OpenSSH server.
+#
+# Replaces Buildroot's S50sshd, which runs "ssh-keygen -A" into /etc/ssh.
+# That fails on the read-only rootfs, so host keys are generated on the
+# writable data partition instead (see HostKey lines in /etc/ssh/sshd_config).
+# S15data mounts /data before this (S50) runs.
+
+DAEMON="sshd"
+PIDFILE="/var/run/$DAEMON.pid"
+KEYDIR="/data/ssh"
+
+[ -x /usr/sbin/sshd ] || exit 0
+[ -x /usr/bin/ssh-keygen ] || exit 0
+
+umask 077
+
+gen_keys() {
+	mkdir -p "$KEYDIR"
+	[ -f "$KEYDIR/ssh_host_ed25519_key" ] || \
+		ssh-keygen -q -t ed25519 -f "$KEYDIR/ssh_host_ed25519_key" -N ''
+	[ -f "$KEYDIR/ssh_host_rsa_key" ] || \
+		ssh-keygen -q -t rsa -b 3072 -f "$KEYDIR/ssh_host_rsa_key" -N ''
+}
+
+start() {
+	# Host keys live on /data; if it is not mounted, sshd cannot start.
+	[ -d /data ] || { echo "sshd: /data not mounted, skipping"; return 0; }
+	gen_keys
+	mkdir -p /run/sshd
+	printf 'Starting %s: ' "$DAEMON"
+	start-stop-daemon --start --pidfile "$PIDFILE" --exec /usr/sbin/sshd \
+		&& echo OK || echo FAIL
+}
+
+stop() {
+	printf 'Stopping %s: ' "$DAEMON"
+	start-stop-daemon --stop --pidfile "$PIDFILE" --exec /usr/sbin/sshd \
+		&& echo OK || echo FAIL
+	while [ -f "$PIDFILE" ]; do sleep 0.1; done
+}
+
+case "$1" in
+	start) start ;;
+	stop)  stop ;;
+	restart|reload) stop; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

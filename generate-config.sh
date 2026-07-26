@@ -90,7 +90,7 @@ case "$profile" in
                 exit 1
             fi
         fi
-        fragments=(toolchain swift network audio image steam) ;;
+        fragments=(toolchain swift network audio services image steam) ;;
     lib32)
         # 32-bit companion userland, merged into a 64-bit image as /usr/lib32
         # by sdk/board/common/post-build-lib32.sh. Buildroot has no multilib
