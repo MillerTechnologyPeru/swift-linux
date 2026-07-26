@@ -1,5 +1,6 @@
 # Extra kernel options for QEMU x86_64: virtio graphics/input, DRM/KMS for
-# Weston, evdev input, and ext4 root. Merged on top of the arch default config.
+# Weston, evdev input, ext4 root, plus the Bluetooth and wireless subsystems
+# BlueZ and ConnMan need. Merged on top of the arch default config.
 CONFIG_DRM=y
 CONFIG_DRM_VIRTIO_GPU=y
 CONFIG_DRM_BOCHS=y
@@ -11,3 +12,27 @@ CONFIG_VIRTIO_NET=y
 CONFIG_VIRTIO_INPUT=y
 CONFIG_INPUT_EVDEV=y
 CONFIG_EXT4_FS=y
+
+# Bluetooth: without CONFIG_BT the kernel has no management interface and
+# bluetoothd exits with "Failed to access management interface".
+CONFIG_BT=y
+CONFIG_BT_BREDR=y
+CONFIG_BT_LE=y
+CONFIG_BT_RFCOMM=y
+CONFIG_BT_RFCOMM_TTY=y
+CONFIG_BT_HIDP=y
+CONFIG_BT_HS=y
+# Transports: USB dongles, UART/serial, and the virtual controller (vhci),
+# which allows testing the stack under QEMU with no real radio.
+CONFIG_BT_HCIBTUSB=y
+CONFIG_BT_HCIUART=y
+CONFIG_BT_HCIUART_H4=y
+CONFIG_BT_HCIVHCI=y
+
+# Wireless: cfg80211/mac80211 are needed by iw and wpa_supplicant.
+CONFIG_CFG80211=y
+CONFIG_CFG80211_WEXT=y
+CONFIG_MAC80211=y
+CONFIG_RFKILL=y
+# mac80211_hwsim provides a virtual wifi radio, again for testing in QEMU.
+CONFIG_MAC80211_HWSIM=y

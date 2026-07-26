@@ -32,3 +32,9 @@ fi
 # Remove init scripts from earlier layouts. The rootfs overlay only adds
 # files, so a renamed script would otherwise linger in an incremental build.
 rm -f "${TARGET_DIR}/etc/init.d/S05data"
+
+# Mountpoints for the state that S15data bind-mounts off the data partition.
+# The rootfs is read-only, so they have to exist in the image (BlueZ ships
+# /var/lib/bluetooth itself, ConnMan does not create its directory).
+mkdir -p "${TARGET_DIR}/var/lib/bluetooth" "${TARGET_DIR}/var/lib/connman"
+chmod 0700 "${TARGET_DIR}/var/lib/bluetooth"

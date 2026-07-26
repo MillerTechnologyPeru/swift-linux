@@ -70,7 +70,7 @@ case "$profile" in
             echo "Error: the 'image' profile currently targets x86_64 only (got '$arch')" >&2
             exit 1
         fi
-        fragments=(toolchain swift image) ;;
+        fragments=(toolchain swift network image) ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image)" >&2
         exit 1 ;;

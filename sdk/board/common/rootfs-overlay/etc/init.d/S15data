@@ -48,9 +48,19 @@ start() {
 		chown -R swift:swift "${DATA}/home/swift"
 	fi
 	mount -o bind "${DATA}/home" /home
+
+	# BlueZ pairings and ConnMan network profiles live under /var/lib, which
+	# is a tmpfs on this read-only rootfs; bind them to the data partition so
+	# they survive a reboot. Must happen before S40bluetoothd/S45connman.
+	for d in bluetooth connman; do
+		mkdir -p "${DATA}/lib/${d}" "/var/lib/${d}"
+		mount -o bind "${DATA}/lib/${d}" "/var/lib/${d}"
+	done
 }
 
 stop() {
+	umount /var/lib/bluetooth 2>/dev/null || true
+	umount /var/lib/connman 2>/dev/null || true
 	umount /home 2>/dev/null || true
 	umount "${DATA}" 2>/dev/null || true
 	umount /boot 2>/dev/null || true
