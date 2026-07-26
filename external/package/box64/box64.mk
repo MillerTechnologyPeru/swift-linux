@@ -14,9 +14,11 @@ BOX64_LICENSE_FILES = LICENSE
 
 BOX64_CONF_OPTS = -DCMAKE_BUILD_TYPE=Release
 
-# box64 ships prebuilt x86_64 libraries for the programs it emulates. They are
-# deliberately not the host architecture, so exclude them from Buildroot's
-# target architecture check ("is X86-64, should be AArch64").
-BOX64_BIN_ARCH_EXCLUDE = /usr/lib/box64-x86_64-linux-gnu
+# box64 ships prebuilt x86_64 helpers for the programs it emulates: a library
+# set under /usr/lib/box64-x86_64-linux-gnu and an x86_64 bash at
+# /usr/bin/box64-bash. They are deliberately not the host architecture, so
+# exclude them from Buildroot's target architecture check ("is X86-64, should
+# be AArch64").
+BOX64_BIN_ARCH_EXCLUDE = /usr/lib/box64-x86_64-linux-gnu /usr/bin/box64-bash
 
 $(eval $(cmake-package))
