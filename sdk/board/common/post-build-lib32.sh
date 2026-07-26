@@ -19,11 +19,15 @@ if [ ! -d "${LIB32_ROOT}" ]; then
 	exit 1
 fi
 
-# The 32-bit loader. i386 uses ld-linux.so.2; arm hard-float would use
-# ld-linux-armhf.so.3.
-LDSO="ld-linux.so.2"
+# The 32-bit dynamic loader name is arch-specific (i386: ld-linux.so.2;
+# armv7 hard-float: ld-linux-armhf.so.3), so discover it from the companion
+# rootfs rather than hard-coding it.
+LDSO=""
+for cand in "${LIB32_ROOT}"/lib/ld-linux*.so.* "${LIB32_ROOT}"/lib/ld-*.so.*; do
+	[ -e "${cand}" ] && { LDSO=$(basename "${cand}"); break; }
+done
 
-echo "lib32: merging 32-bit libraries from ${LIB32_ROOT}"
+echo "lib32: merging 32-bit libraries from ${LIB32_ROOT} (loader ${LDSO:-unknown})"
 mkdir -p "${TARGET_DIR}/usr/lib32"
 
 # Copy the shared libraries only - not binaries, headers or config. Dangling
@@ -35,12 +39,21 @@ for d in lib usr/lib; do
 done
 
 # The kernel looks the interpreter up at the exact path recorded in each
-# binary's PT_INTERP, which for 32-bit x86 is /lib/ld-linux.so.2.
-if [ -e "${TARGET_DIR}/usr/lib32/${LDSO}" ]; then
+# binary's PT_INTERP (/lib/ld-linux.so.2 for x86, /lib/ld-linux-armhf.so.3
+# for armv7), so expose the loader there.
+if [ -n "${LDSO}" ] && [ -e "${TARGET_DIR}/usr/lib32/${LDSO}" ]; then
 	mkdir -p "${TARGET_DIR}/lib"
 	ln -sf /usr/lib32/"${LDSO}" "${TARGET_DIR}/lib/${LDSO}"
 else
-	echo "lib32: warning - ${LDSO} not found, 32-bit binaries will not start" >&2
+	echo "lib32: warning - loader not found, 32-bit binaries will not start" >&2
+fi
+
+# box86 (a 32-bit ARM binary) runs 32-bit x86 programs. When the companion is
+# an armv7 userland it is built there; carry it into the 64-bit image so the
+# S07binfmt i386 handler can use it (arm64 runs it via aarch32 compat).
+if [ -x "${LIB32_ROOT}/usr/bin/box86" ]; then
+	cp -a "${LIB32_ROOT}/usr/bin/box86" "${TARGET_DIR}/usr/bin/box86"
+	echo "lib32: installed box86 (32-bit x86 emulator)"
 fi
 
 # Teach the dynamic loader about /usr/lib32. The rootfs is read-only at

@@ -77,8 +77,12 @@ case "$profile" in
         # 32-bit companion userland (libraries only), merged into a 64-bit
         # image as /usr/lib32 by sdk/board/common/post-build-lib32.sh.
         # Buildroot has no multilib for Linux targets, so this is a separate
-        # build: pair i386 with an x86_64 image.
-        fragments=(toolchain lib32) ;;
+        # build: pair i386 with an x86_64 image, or armv7 with an arm64 image.
+        # The armv7 companion also carries box86 (x86-on-ARM emulator).
+        case "$arch" in
+            arm*) fragments=(toolchain lib32 lib32-arm) ;;
+            *)    fragments=(toolchain lib32) ;;
+        esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
         exit 1 ;;
