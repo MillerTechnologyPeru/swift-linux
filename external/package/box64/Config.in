@@ -1,0 +1,18 @@
+config BR2_PACKAGE_BOX64
+	bool "box64"
+	depends on BR2_aarch64 || BR2_riscv || BR2_powerpc64le || BR2_mips64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on !BR2_STATIC_LIBS
+	help
+	  box64 runs x86_64 Linux programs on non-x86_64 64-bit systems
+	  (notably ARM64) by dynamically translating the machine code and
+	  redirecting well-known libraries to their native equivalents.
+
+	  It is pointless on x86_64, where such binaries run natively, so it
+	  is only offered on other 64-bit architectures.
+
+	  https://github.com/ptitSeb/box64
+
+comment "box64 needs a dynamic glibc toolchain"
+	depends on BR2_aarch64 || BR2_riscv || BR2_powerpc64le || BR2_mips64
+	depends on !BR2_TOOLCHAIN_USES_GLIBC || BR2_STATIC_LIBS

@@ -9,6 +9,9 @@ set $term foot
 # Font used by titlebars and swaybar.
 font pango:DejaVu Sans Mono 10
 
+# Manage X11 windows through XWayland (needed for X11 apps such as Steam).
+xwayland enable
+
 # Open a terminal as soon as the session starts.
 exec $term
 

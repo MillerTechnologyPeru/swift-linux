@@ -70,7 +70,7 @@ case "$profile" in
             echo "Error: the 'image' profile currently targets x86_64 only (got '$arch')" >&2
             exit 1
         fi
-        fragments=(toolchain swift network image) ;;
+        fragments=(toolchain swift network image steam) ;;
     lib32)
         # 32-bit companion userland (libraries only), merged into a 64-bit
         # image as /usr/lib32 by sdk/board/common/post-build-lib32.sh.

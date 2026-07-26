@@ -1,0 +1,50 @@
+#!/bin/sh
+# Register binfmt_misc handlers so x86 / x86_64 Linux binaries run
+# transparently through box86 / box64 on ARM.
+#
+# This is a no-op when the emulators are not installed (for example on a
+# native x86_64 image, where the binaries run directly), so the script is
+# safe to ship in every image. The magic/mask below are the standard ELF
+# signatures for i386 and x86_64, the same ones qemu-binfmt and systemd use.
+
+BINFMT=/proc/sys/fs/binfmt_misc
+
+# register <name> <magic> <mask> <interpreter>
+# The magic/mask are passed with %s so their literal \x escapes reach the
+# kernel's binfmt_misc parser, which expands them itself.
+register() {
+	[ -x "$4" ] || return 0
+	[ -e "${BINFMT}/$1" ] && return 0
+	printf ':%s:M::%s:%s:%s:PF\n' "$1" "$2" "$3" "$4" > "${BINFMT}/register" 2>/dev/null
+}
+
+start() {
+	# Ensure binfmt_misc is mounted.
+	[ -e "${BINFMT}/register" ] || mount -t binfmt_misc none "${BINFMT}" 2>/dev/null
+	[ -e "${BINFMT}/register" ] || return 0
+
+	# x86_64 ELF -> box64
+	register box64 \
+		'\x7fELF\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00' \
+		'\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff' \
+		/usr/bin/box64
+
+	# i386 ELF -> box86
+	register box86 \
+		'\x7fELF\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x03\x00' \
+		'\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff' \
+		/usr/bin/box86
+}
+
+stop() {
+	[ -w "${BINFMT}/box64" ] && echo -1 > "${BINFMT}/box64" 2>/dev/null
+	[ -w "${BINFMT}/box86" ] && echo -1 > "${BINFMT}/box86" 2>/dev/null
+	return 0
+}
+
+case "$1" in
+	start) start ;;
+	stop)  stop ;;
+	restart|reload) stop; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac
