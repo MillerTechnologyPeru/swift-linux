@@ -14,6 +14,10 @@ CONFIG_VIRTIO_INPUT=y
 CONFIG_INPUT_EVDEV=y
 CONFIG_EXT4_FS=y
 
+# binfmt_misc, so S07binfmt can register the box64/box86 handlers (the arm64
+# defconfig does not enable it; the x86_64 defconfig does).
+CONFIG_BINFMT_MISC=y
+
 # Bluetooth (BR/EDR + LE) and the virtual controller for testing under QEMU.
 CONFIG_BT=y
 CONFIG_BT_BREDR=y

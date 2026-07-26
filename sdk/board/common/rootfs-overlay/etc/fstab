@@ -8,6 +8,10 @@ devpts                              /dev/pts  devpts   defaults,gid=5,mode=620 0
 sysfs                               /sys      sysfs    defaults           0      0
 tmpfs                               /tmp      tmpfs    mode=1777          0      0
 tmpfs                               /run      tmpfs    mode=0755,nosuid   0      0
+# Shared memory. Wayland/GL (wlroots, Mesa) allocate shm buffers here; without
+# it sway fails with "Failed to allocate shm file for format table" on the
+# read-only rootfs.
+tmpfs                               /dev/shm  tmpfs    mode=1777,nosuid,nodev 0 0
 # Do NOT mount a tmpfs on /var/lib. It would hide what the image ships there
 # (notably Buildroot's "dbus -> /tmp/dbus" symlink, whose loss makes
 # dbus-daemon fail to write its machine-id) and the directories that
