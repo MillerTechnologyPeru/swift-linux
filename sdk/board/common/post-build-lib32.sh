@@ -30,13 +30,18 @@ done
 echo "lib32: merging 32-bit libraries from ${LIB32_ROOT} (loader ${LDSO:-unknown})"
 mkdir -p "${TARGET_DIR}/usr/lib32"
 
-# Copy the shared libraries only - not binaries, headers or config. Dangling
-# symlinks are expected (they point at 32-bit paths) so preserve them as-is.
+# Copy the whole /lib and /usr/lib trees into /usr/lib32, preserving
+# subdirectories so the full app-sdk stack works - Mesa's DRI drivers
+# (usr/lib/dri), GBM/EGL backends, gconv modules, and so on - not just the
+# top-level .so files. Symlinks are preserved (cp -a).
 for d in lib usr/lib; do
 	[ -d "${LIB32_ROOT}/${d}" ] || continue
-	find "${LIB32_ROOT}/${d}" -maxdepth 1 \( -name '*.so' -o -name '*.so.*' \) \
-		-exec cp -a {} "${TARGET_DIR}/usr/lib32/" \;
+	cp -a "${LIB32_ROOT}/${d}/." "${TARGET_DIR}/usr/lib32/"
 done
+
+# Drop development-only artifacts that came along with the libraries.
+find "${TARGET_DIR}/usr/lib32" \( -name '*.a' -o -name '*.la' -o -name '*.o' \) -delete 2>/dev/null || true
+rm -rf "${TARGET_DIR}/usr/lib32/pkgconfig" "${TARGET_DIR}/usr/lib32/cmake"
 
 # The kernel looks the interpreter up at the exact path recorded in each
 # binary's PT_INTERP (/lib/ld-linux.so.2 for x86, /lib/ld-linux-armhf.so.3
@@ -72,4 +77,4 @@ if [ -x "${LIB32_ROOT}/usr/bin/ldd" ]; then
 	cp -a "${LIB32_ROOT}/usr/bin/ldd" "${TARGET_DIR}/usr/bin/ldd32"
 fi
 
-echo "lib32: installed $(find "${TARGET_DIR}/usr/lib32" -maxdepth 1 -name '*.so*' | wc -l) libraries"
+echo "lib32: installed $(find "${TARGET_DIR}/usr/lib32" -name '*.so*' | wc -l) shared libraries"
