@@ -64,10 +64,12 @@ case "$profile" in
     app-sdk|appSDK|app_sdk)
         fragments=(toolchain swift applibs) ;;
     image)
-        # Full bootable A/B UEFI image (Weston + non-root user). x86_64 only:
-        # image.config references board files under sdk/board/x86_64.
-        if [ "$arch" != "x86_64" ]; then
-            echo "Error: the 'image' profile currently targets x86_64 only (got '$arch')" >&2
+        # Full bootable A/B UEFI image (sway + non-root user). Supported on
+        # the arches that have a sdk/board/<arch>/board.config.
+        board_dir="$SCRIPT_DIR/sdk/board/$arch"
+        if [ ! -f "$board_dir/board.config" ]; then
+            echo "Error: the 'image' profile has no board support for '$arch'" >&2
+            echo "Available: $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do echo "${d%/board.config}"; done | tr '\n' ' ')" >&2
             exit 1
         fi
         fragments=(toolchain swift network image steam) ;;
@@ -88,6 +90,12 @@ for name in "${fragments[@]}"; do
     files+=("$DEFCONFIG_DIR/$name.config")
 done
 
+# The image profile appends the arch-specific board.config (kernel defconfig,
+# GRUB EFI target, serial port) after the generic image.config.
+if [ "$profile" = "image" ]; then
+    files+=("$SCRIPT_DIR/sdk/board/$arch/board.config")
+fi
+
 # Optional board overlay, appended last.
 if [ -n "$board" ]; then
     board_fragment="$DEFCONFIG_DIR/board/$board.config"
@@ -106,9 +114,12 @@ for f in "${files[@]}"; do
     printf '\n' >> "$output"
 done
 
-# Rewrite the @SWIFT_LINUX@ placeholder (used by image.config to point at
-# board overlays, users tables and post-build/-image scripts) to this repo's
-# absolute path, so the generated defconfig is self-contained.
+# Rewrite the placeholders so the generated defconfig is self-contained:
+#   @BOARD@       -> sdk/board/<arch> (arch-specific board files)
+#   @SWIFT_LINUX@ -> this repo (shared board files, overlays, users table)
+# @BOARD@ is substituted first since it expands to a @SWIFT_LINUX@-relative
+# path only conceptually; both are rewritten to absolute paths here.
+sed -i "s|@BOARD@|$SCRIPT_DIR/sdk/board/$arch|g" "$output"
 sed -i "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output"
 
 echo "Generated $profile configuration for $arch${board:+ ($board)} at $output"
