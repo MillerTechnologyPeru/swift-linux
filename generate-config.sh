@@ -34,9 +34,11 @@ usage() {
     exit "${1:-0}"
 }
 
+device=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --arch)     arch="$2";    shift 2 ;;
+        --device)   device="$2";  shift 2 ;;
         --profile|--configuration) profile="$2"; shift 2 ;;
         --board)    board="$2";   shift 2 ;;
         --output|-o) output="$2"; shift 2 ;;
@@ -45,16 +47,29 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$arch" ]; then
-    echo "Error: --arch is required" >&2
-    usage 1
-fi
-
-arch_fragment="$DEFCONFIG_DIR/arch/$arch.config"
-if [ ! -f "$arch_fragment" ]; then
-    echo "Error: unknown arch '$arch' (no $arch_fragment)" >&2
-    echo "Available arches: $(cd "$DEFCONFIG_DIR/arch" && ls *.config | sed 's/\.config//' | tr '\n' ' ')" >&2
-    exit 1
+# A --device selects a device board directory (sdk/board/<device>) whose
+# board.config is self-contained (it selects its own architecture), so --arch
+# is neither required nor used. --device is only meaningful for the image
+# profile. Without it, --arch drives an arch fragment as usual.
+if [ -n "$device" ]; then
+    board_dir="$SCRIPT_DIR/sdk/board/$device"
+    if [ ! -f "$board_dir/board.config" ]; then
+        echo "Error: unknown device '$device' (no $board_dir/board.config)" >&2
+        echo "Available devices: $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*) ;; *) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
+        exit 1
+    fi
+    arch_fragment=""
+else
+    if [ -z "$arch" ]; then
+        echo "Error: --arch (or --device) is required" >&2
+        usage 1
+    fi
+    arch_fragment="$DEFCONFIG_DIR/arch/$arch.config"
+    if [ ! -f "$arch_fragment" ]; then
+        echo "Error: unknown arch '$arch' (no $arch_fragment)" >&2
+        echo "Available arches: $(cd "$DEFCONFIG_DIR/arch" && ls *.config | sed 's/\.config//' | tr '\n' ' ')" >&2
+        exit 1
+    fi
 fi
 
 # Select fragments for the requested profile.
@@ -64,13 +79,16 @@ case "$profile" in
     app-sdk|appSDK|app_sdk)
         fragments=(toolchain swift applibs) ;;
     image)
-        # Full bootable A/B UEFI image (sway + non-root user). Supported on
-        # the arches that have a sdk/board/<arch>/board.config.
-        board_dir="$SCRIPT_DIR/sdk/board/$arch"
-        if [ ! -f "$board_dir/board.config" ]; then
-            echo "Error: the 'image' profile has no board support for '$arch'" >&2
-            echo "Available: $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do echo "${d%/board.config}"; done | tr '\n' ' ')" >&2
-            exit 1
+        # Full bootable A/B UEFI image (sway + non-root user). The board dir
+        # is sdk/board/<device> when --device is given, else sdk/board/<arch>.
+        if [ -z "$device" ]; then
+            board_dir="$SCRIPT_DIR/sdk/board/$arch"
+            if [ ! -f "$board_dir/board.config" ]; then
+                echo "Error: the 'image' profile has no board support for '$arch'" >&2
+                echo "Available arches: $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
+                echo "Available devices (use --device): $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*|common/*) ;; *) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
+                exit 1
+            fi
         fi
         fragments=(toolchain swift network image steam) ;;
     lib32)
@@ -88,16 +106,26 @@ case "$profile" in
         exit 1 ;;
 esac
 
-# Build the ordered list of fragment files: arch first, then profile fragments.
-files=("$arch_fragment")
+# --device is only meaningful for the image profile.
+if [ -n "$device" ] && [ "$profile" != "image" ]; then
+    echo "Error: --device is only valid with --profile image" >&2
+    exit 1
+fi
+
+# Build the ordered list of fragment files. With --device the board.config is
+# self-contained (it selects the architecture), so there is no arch fragment;
+# otherwise the arch fragment comes first.
+files=()
+[ -n "$arch_fragment" ] && files+=("$arch_fragment")
 for name in "${fragments[@]}"; do
     files+=("$DEFCONFIG_DIR/$name.config")
 done
 
-# The image profile appends the arch-specific board.config (kernel defconfig,
-# GRUB EFI target, serial port) after the generic image.config.
+# The image profile appends the board.config (kernel defconfig, GRUB EFI
+# target, serial port; for a device also the arch selection) after the
+# generic image.config.
 if [ "$profile" = "image" ]; then
-    files+=("$SCRIPT_DIR/sdk/board/$arch/board.config")
+    files+=("$board_dir/board.config")
 fi
 
 # Optional board overlay, appended last.
@@ -123,7 +151,7 @@ done
 #   @SWIFT_LINUX@ -> this repo (shared board files, overlays, users table)
 # @BOARD@ is substituted first since it expands to a @SWIFT_LINUX@-relative
 # path only conceptually; both are rewritten to absolute paths here.
-sed -i "s|@BOARD@|$SCRIPT_DIR/sdk/board/$arch|g" "$output"
+sed -i "s|@BOARD@|${board_dir:-$SCRIPT_DIR/sdk/board/$arch}|g" "$output"
 sed -i "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output"
 
-echo "Generated $profile configuration for $arch${board:+ ($board)} at $output"
+echo "Generated $profile configuration for ${device:-$arch}${board:+ ($board)} at $output"
