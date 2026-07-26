@@ -1,0 +1,37 @@
+mesa3d: add the freedreno (turnip) Vulkan driver
+
+Buildroot 2026.05 ships the freedreno gallium (OpenGL/GLES) driver but no
+freedreno Vulkan driver, so Adreno GPUs (e.g. the Snapdragon 865 in the
+Retroid Pocket 5 / Flip 2) have no Vulkan. Add the driver option and map it
+to mesa's -Dvulkan-drivers=freedreno (turnip).
+
+Apply against a Buildroot checkout:  patch -p1 < <this file>
+
+--- a/package/mesa3d/Config.in
++++ b/package/mesa3d/Config.in
+@@ -353,6 +353,15 @@
+ 	help
+ 	  Vulkan broadcom driver.
+ 
++config BR2_PACKAGE_MESA3D_VULKAN_DRIVER_FREEDRENO
++	bool "Vulkan freedreno driver (turnip)"
++	depends on BR2_arm || BR2_aarch64
++	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # libxshmfence
++	select BR2_PACKAGE_LIBDRM_FREEDRENO
++	select BR2_PACKAGE_MESA3D_VULKAN_DRIVER
++	help
++	  Vulkan driver (turnip) for Qualcomm Adreno GPUs.
++
+ config BR2_PACKAGE_MESA3D_VULKAN_DRIVER_IMAGINATION
+ 	bool "Vulkan imagination driver"
+ 	depends on BR2_arm || BR2_aarch64
+--- a/package/mesa3d/mesa3d.mk
++++ b/package/mesa3d/mesa3d.mk
+@@ -130,6 +130,7 @@
+ # Vulkan Drivers
+ MESA3D_VULKAN_DRIVERS-$(BR2_PACKAGE_MESA3D_VULKAN_DRIVER_AMD) += amd
+ MESA3D_VULKAN_DRIVERS-$(BR2_PACKAGE_MESA3D_VULKAN_DRIVER_BROADCOM) += broadcom
++MESA3D_VULKAN_DRIVERS-$(BR2_PACKAGE_MESA3D_VULKAN_DRIVER_FREEDRENO) += freedreno
+ MESA3D_VULKAN_DRIVERS-$(BR2_PACKAGE_MESA3D_VULKAN_DRIVER_IMAGINATION) += imagination
+ MESA3D_VULKAN_DRIVERS-$(BR2_PACKAGE_MESA3D_VULKAN_DRIVER_INTEL)   += intel
+ MESA3D_VULKAN_DRIVERS-$(BR2_PACKAGE_MESA3D_VULKAN_DRIVER_PANFROST) += panfrost
