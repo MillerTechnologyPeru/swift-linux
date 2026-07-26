@@ -20,7 +20,7 @@ Buildroot 2026.05's mainline kernel and mesa do **not** support this device
 out of the box. A working image requires:
 
 1. **A Qualcomm SM8250 kernel**, not Buildroot's default arm64 kernel. The
-   SM8250 mainlining effort plus the device patch set carried by ROCKNIX is
+   SM8250 mainlining effort plus a downstream device patch set is
    needed — roughly 28 patches, including:
    - `retroid-gamepad` — the on-board gamepad input driver
    - `Chipone-ICNA35XX-panel`, `DDIC-CH13726A-panel` — the display panels

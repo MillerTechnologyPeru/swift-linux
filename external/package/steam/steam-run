@@ -3,7 +3,7 @@
 #
 # Stage 1 target: native x86_64 Steam under sway's XWayland. The bootstrap
 # binary is 32-bit (needs /usr/lib32) and the UI is X11, so a running
-# XWayland display is required. Unlike ROCKNIX's launcher this uses no
+# XWayland display is required. This launcher uses no
 # systemd (no systemd-run/systemctl); it just runs the client directly.
 
 # Steam's UI is X11; make SDL and toolkits use the X11 (XWayland) path.

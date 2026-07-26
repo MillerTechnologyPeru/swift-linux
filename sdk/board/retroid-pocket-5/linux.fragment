@@ -1,6 +1,6 @@
 # Kernel options for the Retroid Pocket 5 (Qualcomm SM8250 / Snapdragon 865).
 #
-# Distilled from ROCKNIX's SM8250 kernel config. These select the Qualcomm
+# Distilled from a downstream SM8250 kernel config. These select the Qualcomm
 # platform, the Adreno GPU and the input/power hardware. They assume a kernel
 # that actually has SM8250 support and the device patches (see README.md);
 # on Buildroot's mainline arm64 kernel some of these will be absent.
