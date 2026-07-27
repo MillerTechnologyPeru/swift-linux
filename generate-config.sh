@@ -7,15 +7,24 @@
 #
 # Usage:
 #   ./generate-config.sh --arch <arch> [--profile <profile>] [--board <board>] [--output <path>]
+#   ./generate-config.sh --device <device> --profile image [--output <path>]
 #
-# Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64
-# Profiles:                                  sdk (default), app-sdk
-# Boards   (sdk/defconfig/board/*.config):   optional overlay, e.g. rpi4, uefi-x86_64
+# Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64 i386
+# Profiles:                                  sdk (default), app-sdk, image, lib32
+# Devices  (sdk/board/<device>/):            self-contained boards (see Makefile
+#                                            `make list`)
+# Boards   (sdk/defconfig/board/*.config):   optional overlay, appended last
 #
 # Profiles compose the following fragments, in order:
-#   sdk       = arch + toolchain + swift
-#   app-sdk   = arch + toolchain + swift + applibs
-# A --board overlay, when given, is appended last.
+#   sdk       = arch + toolchain + libs + swift
+#   app-sdk   = arch + toolchain + libs + swift + applibs
+#   image     = arch + toolchain + libs + swift + network + audio + daemons
+#               + image + steam + board.config   (bootable A/B UEFI image)
+#   lib32     = arch + toolchain + libs + swift + network + audio + daemons
+#               + lib32 + applibs [+ lib32-arm]  (32-bit companion userland,
+#               mirroring the image's library-bearing fragments; merged into a
+#               64-bit image as /usr/lib32)
+# Fragments may `include` shared fragments (gpu capabilities, SoC families).
 
 set -euo pipefail
 
@@ -75,9 +84,9 @@ fi
 # Select fragments for the requested profile.
 case "$profile" in
     sdk)
-        fragments=(toolchain swift) ;;
+        fragments=(toolchain libs swift) ;;
     app-sdk|appSDK|app_sdk)
-        fragments=(toolchain swift applibs) ;;
+        fragments=(toolchain libs swift applibs) ;;
     image)
         # Full bootable A/B UEFI image (sway + non-root user). The board dir
         # is sdk/board/<device> when --device is given, else sdk/board/<arch>.
@@ -90,19 +99,23 @@ case "$profile" in
                 exit 1
             fi
         fi
-        fragments=(toolchain swift network audio daemons image steam) ;;
+        fragments=(toolchain libs swift network audio daemons image steam) ;;
     lib32)
         # 32-bit companion userland, merged into a 64-bit image as /usr/lib32
         # by sdk/board/common/post-build-lib32.sh. Buildroot has no multilib
         # for Linux targets, so this is a separate build: pair i386 with an
         # x86_64 image, or armv7 with an arm64 image.
         #
-        # applibs gives the 32-bit userland the full app-sdk graphics/audio
-        # stack (Wayland, X11, Mesa, SDL, Cairo, ALSA, ...) so 32-bit GUI apps
-        # and games can run. The armv7 companion also carries box86.
+        # The companion mirrors every library-bearing fragment of the 64-bit
+        # image (swift runtime, network, audio, daemons for nss-mdns, and the
+        # app-sdk graphics stack via applibs), so a 32-bit process finds the
+        # same libraries its 64-bit counterpart would. Only the image-assembly
+        # fragments (kernel, bootloader, init, steam) are omitted - the 64-bit
+        # image supplies those, and the merge script copies only lib trees.
+        # The armv7 companion also carries box86.
         case "$arch" in
-            arm*) fragments=(toolchain lib32 applibs lib32-arm) ;;
-            *)    fragments=(toolchain lib32 applibs) ;;
+            arm*) fragments=(toolchain libs swift network audio daemons lib32 applibs lib32-arm) ;;
+            *)    fragments=(toolchain libs swift network audio daemons lib32 applibs) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
