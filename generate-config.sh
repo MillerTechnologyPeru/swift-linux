@@ -97,12 +97,16 @@ case "$profile" in
         # for Linux targets, so this is a separate build: pair i386 with an
         # x86_64 image, or armv7 with an arm64 image.
         #
-        # applibs gives the 32-bit userland the full app-sdk graphics/audio
-        # stack (Wayland, X11, Mesa, SDL, Cairo, ALSA, ...) so 32-bit GUI apps
-        # and games can run. The armv7 companion also carries box86.
+        # The companion mirrors every library-bearing fragment of the 64-bit
+        # image (swift runtime, network, audio, daemons for nss-mdns, and the
+        # app-sdk graphics stack via applibs), so a 32-bit process finds the
+        # same libraries its 64-bit counterpart would. Only the image-assembly
+        # fragments (kernel, bootloader, init, steam) are omitted - the 64-bit
+        # image supplies those, and the merge script copies only lib trees.
+        # The armv7 companion also carries box86.
         case "$arch" in
-            arm*) fragments=(toolchain lib32 applibs lib32-arm) ;;
-            *)    fragments=(toolchain lib32 applibs) ;;
+            arm*) fragments=(toolchain swift network audio daemons lib32 applibs lib32-arm) ;;
+            *)    fragments=(toolchain swift network audio daemons lib32 applibs) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
