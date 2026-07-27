@@ -54,6 +54,32 @@ swift sdk install swift-linux-arm64.artifactbundle.tar.gz
 
 Either way the host toolchain still has to match the sysroot's Swift version.
 
+The portable bundle carries a **compilation-only sysroot**: runtime trees
+(`usr/bin`, `var`, ...) and `usr/share` are stripped, keeping the build-relevant
+`usr/share/{pkgconfig,wayland*,cmake}`. Besides size, this matters on macOS:
+ncurses' terminfo database and the iptables plugin directory contain filenames
+differing only by case, which cannot coexist on the default case-insensitive
+APFS — the stripped bundle installs cleanly on Macs. (The kernel's netfilter
+UAPI headers still case-collide; they extract as a single file there and only
+matter when building iptables extensions.)
+
+### Cross-compiling C/C++ (CMake)
+
+`util/make-cmake-toolchain.sh` generates a CMake toolchain file that drives
+clang/clang++ (from the Swift toolchain or PATH) with `--target`/`--sysroot`
+against the same SDK sysroot, with lld linking and pkg-config pinned to the
+sysroot — so CMake projects (SDL games, native libraries) build for the image:
+
+```sh
+util/make-cmake-toolchain.sh --sdk swift-linux-arm64 -o arm64.toolchain.cmake
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=arm64.toolchain.cmake
+cmake --build build
+```
+
+It reads the triple and sysroot from the installed bundle's `swift-sdk.json`
+(`--triple` selects within a multi-arch bundle; `--sysroot DIR --triple T`
+works without a bundle).
+
 ### All-arch combined SDK
 
 `util/combine-swift-sdk.sh` merges several per-arch **portable** bundles into a
