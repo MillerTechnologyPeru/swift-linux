@@ -1,0 +1,63 @@
+# Kernel options for the Retroid Pocket 5 (Qualcomm SM8250 / Snapdragon 865).
+#
+# Distilled from a downstream SM8250 kernel config. These select the Qualcomm
+# platform, the Adreno GPU and the input/power hardware. They assume a kernel
+# that actually has SM8250 support and the device patches (see README.md);
+# on Buildroot's mainline arm64 kernel some of these will be absent.
+
+# Qualcomm SoC platform
+CONFIG_ARCH_QCOM=y
+CONFIG_QCOM_SCM=y
+CONFIG_QCOM_QSEECOM=y
+CONFIG_QCOM_QSEECOM_UEFISECAPP=y
+CONFIG_QCOM_FASTRPC=y
+CONFIG_QCOM_SMEM=y
+CONFIG_QCOM_RPMH=y
+CONFIG_QCOM_TSENS=y
+CONFIG_QCOM_WDT=y
+CONFIG_ARM_QCOM_CPUFREQ_HW=y
+CONFIG_ARM_QCOM_CPUFREQ_NVMEM=y
+CONFIG_PINCTRL_MSM=y
+CONFIG_PINCTRL_SM8250=y
+CONFIG_PINCTRL_QCOM_SPMI_PMIC=y
+CONFIG_SPMI_MSM_PMIC_ARB=y
+CONFIG_MFD_QCOM_PM8008=y
+CONFIG_POWER_RESET_QCOM_PON=y
+
+# Adreno 650 GPU (MSM DRM) and display
+CONFIG_DRM=y
+CONFIG_DRM_MSM=y
+CONFIG_DRM_MSM_GPU_STATE=y
+CONFIG_DRM_MSM_DSI=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+
+# Serial (GENI) - test-pad console
+CONFIG_SERIAL_QCOM_GENI=y
+CONFIG_SERIAL_QCOM_GENI_CONSOLE=y
+CONFIG_I2C_QCOM_GENI=y
+CONFIG_SPI_QCOM_GENI=y
+
+# Input: gamepad, haptics (needs the retroid-gamepad patch, see README.md)
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_JOYSTICK=y
+CONFIG_JOYSTICK_XPAD=y
+CONFIG_INPUT_QCOM_SPMI_HAPTICS=y
+CONFIG_INPUT_FF_MEMLESS=y
+# 32-bit (aarch32) input syscalls, so armv7/box86 clients can read gamepads.
+CONFIG_COMPAT=y
+
+# Power: charger / fuel gauge
+CONFIG_CHARGER_QCOM_SMB5=y
+CONFIG_BATTERY_QCOM_FG=y
+
+# Storage / filesystem
+CONFIG_MMC=y
+CONFIG_MMC_SDHCI_MSM=y
+CONFIG_EXT4_FS=y
+
+# USB (gadget + host)
+CONFIG_USB_DWC3=y
+CONFIG_USB_DWC3_QCOM=y
+CONFIG_PHY_QCOM_QMP=y
+CONFIG_PHY_QCOM_SNPS_EUSB2=y

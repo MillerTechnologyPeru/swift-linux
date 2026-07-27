@@ -1,0 +1,17 @@
+config BR2_PACKAGE_BOX86
+	bool "box86"
+	depends on BR2_arm # 32-bit ARM only
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on !BR2_STATIC_LIBS
+	help
+	  box86 runs 32-bit x86 Linux programs on 32-bit ARM by dynamically
+	  translating the machine code and redirecting well-known libraries to
+	  their native equivalents.
+
+	  box86 is 32-bit only; use box64 for x86_64 programs on ARM64.
+
+	  https://github.com/ptitSeb/box86
+
+comment "box86 needs a dynamic glibc 32-bit ARM toolchain"
+	depends on BR2_arm
+	depends on !BR2_TOOLCHAIN_USES_GLIBC || BR2_STATIC_LIBS

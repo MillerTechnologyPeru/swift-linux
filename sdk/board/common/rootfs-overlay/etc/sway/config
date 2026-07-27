@@ -1,0 +1,70 @@
+# Sway configuration for Swift Linux.
+#
+# Deliberately minimal: a terminal on startup, i3-style keybindings and a
+# software-friendly setup that works on the emulated GPU used in QEMU.
+
+set $mod Mod4
+set $term foot
+
+# Font used by titlebars and swaybar.
+font pango:DejaVu Sans Mono 10
+
+# Manage X11 windows through XWayland (needed for X11 apps such as Steam).
+xwayland enable
+
+# Audio: start the PipeWire session (sound server + PulseAudio-compat server
+# + WirePlumber policy manager) as user-session daemons. They inherit
+# XDG_RUNTIME_DIR from the session, so no systemd user services are needed.
+exec /usr/bin/pipewire
+exec /usr/bin/wireplumber
+exec /usr/bin/pipewire-pulse
+
+# Open a terminal as soon as the session starts.
+exec $term
+
+### Key bindings
+bindsym $mod+Return exec $term
+bindsym $mod+q kill
+bindsym $mod+Shift+e exit
+bindsym $mod+Shift+c reload
+
+# Focus (i3/vim style plus arrows)
+bindsym $mod+Left focus left
+bindsym $mod+Down focus down
+bindsym $mod+Up focus up
+bindsym $mod+Right focus right
+bindsym $mod+h focus left
+bindsym $mod+j focus down
+bindsym $mod+k focus up
+bindsym $mod+l focus right
+
+# Move windows
+bindsym $mod+Shift+Left move left
+bindsym $mod+Shift+Down move down
+bindsym $mod+Shift+Up move up
+bindsym $mod+Shift+Right move right
+
+# Layout
+bindsym $mod+b splith
+bindsym $mod+v splitv
+bindsym $mod+f fullscreen
+bindsym $mod+s layout stacking
+bindsym $mod+w layout tabbed
+bindsym $mod+e layout toggle split
+bindsym $mod+Shift+space floating toggle
+
+# Workspaces
+bindsym $mod+1 workspace number 1
+bindsym $mod+2 workspace number 2
+bindsym $mod+3 workspace number 3
+bindsym $mod+4 workspace number 4
+bindsym $mod+Shift+1 move container to workspace number 1
+bindsym $mod+Shift+2 move container to workspace number 2
+bindsym $mod+Shift+3 move container to workspace number 3
+bindsym $mod+Shift+4 move container to workspace number 4
+
+# Drag/resize floating windows with the mouse.
+floating_modifier $mod normal
+
+# No swayidle is started (and Buildroot does not package it): sway does not
+# blank the display on its own, which is what this appliance wants.

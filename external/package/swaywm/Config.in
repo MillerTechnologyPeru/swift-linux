@@ -1,0 +1,50 @@
+config BR2_PACKAGE_SWAYWM
+	bool "swaywm (sway, systemd-free)"
+	depends on !BR2_STATIC_LIBS # wlroots
+	depends on BR2_TOOLCHAIN_HAS_THREADS # pango, wlroots
+	depends on BR2_PACKAGE_HAS_LIBEGL # wlroots
+	depends on BR2_PACKAGE_HAS_LIBGLES # wlroots
+	depends on BR2_PACKAGE_HAS_LIBGBM # wlroots
+	depends on BR2_PACKAGE_HAS_UDEV # wlroots
+	depends on BR2_TOOLCHAIN_HAS_SYNC_4 # json-c, pango
+	depends on BR2_USE_WCHAR # pango
+	depends on BR2_USE_MMU # pango
+	depends on BR2_INSTALL_LIBSTDCPP # pango
+	depends on BR2_TOOLCHAIN_GCC_AT_LEAST_4_9 # pango
+	select BR2_PACKAGE_WLROOTS
+	select BR2_PACKAGE_BASU
+	select BR2_PACKAGE_JSON_C
+	select BR2_PACKAGE_PCRE2
+	select BR2_PACKAGE_CAIRO
+	select BR2_PACKAGE_CAIRO_PNG
+	select BR2_PACKAGE_PANGO
+	select BR2_PACKAGE_XKEYBOARD_CONFIG # runtime
+	help
+	  i3-compatible Wayland compositor.
+
+	  This is the same compositor Buildroot packages as "sway", built
+	  against basu instead of libsystemd for its sd-bus provider, so it
+	  does not drag in systemd. Buildroot's own sway package hardcodes
+	  -Dsd-bus-provider=libsystemd and therefore depends on systemd;
+	  enable this one instead of that.
+
+	  The default sway config uses foot as the terminal, so select the
+	  foot package as well.
+
+	  https://github.com/swaywm/sway
+
+if BR2_PACKAGE_SWAYWM
+
+config BR2_PACKAGE_SWAYWM_SWAYBAR
+	bool "swaybar"
+	select BR2_PACKAGE_DEJAVU # runtime, default font
+	help
+	  Build swaybar, the status bar.
+
+endif
+
+comment "swaywm needs an OpenGL ES/EGL/GBM provider, udev and a toolchain w/ threads, wchar, C++"
+	depends on !BR2_PACKAGE_HAS_LIBEGL || !BR2_PACKAGE_HAS_LIBGLES || \
+		!BR2_PACKAGE_HAS_LIBGBM || !BR2_PACKAGE_HAS_UDEV || \
+		!BR2_TOOLCHAIN_HAS_THREADS || !BR2_USE_WCHAR || \
+		!BR2_INSTALL_LIBSTDCPP || BR2_STATIC_LIBS

@@ -1,0 +1,16 @@
+# Swift Linux sshd configuration.
+#
+# Host keys live on the writable data partition (the rootfs is read-only);
+# S50sshd generates them on first boot.
+HostKey /data/ssh/ssh_host_ed25519_key
+HostKey /data/ssh/ssh_host_rsa_key
+
+# The default user logs in with a password; root login is allowed for
+# administration of this appliance. Tighten these for production.
+PermitRootLogin yes
+PasswordAuthentication yes
+PermitEmptyPasswords no
+
+# Privilege separation directory (exists read-only in the image).
+UsePAM no
+Subsystem sftp /usr/libexec/sftp-server

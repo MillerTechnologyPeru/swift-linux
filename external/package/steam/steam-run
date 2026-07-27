@@ -1,0 +1,19 @@
+#!/bin/sh
+# Launch Steam inside the running graphical session.
+#
+# Stage 1 target: native x86_64 Steam under sway's XWayland. The bootstrap
+# binary is 32-bit (needs /usr/lib32) and the UI is X11, so a running
+# XWayland display is required. This launcher uses no
+# systemd (no systemd-run/systemctl); it just runs the client directly.
+
+# Steam's UI is X11; make SDL and toolkits use the X11 (XWayland) path.
+export SDL_VIDEODRIVER=x11
+
+# If no X display is inherited from the compositor, fall back to :0, which is
+# what sway's XWayland uses by default.
+export DISPLAY="${DISPLAY:-:0}"
+
+# A UTF-8 locale (matches the session).
+export LANG="${LANG:-en_US.UTF-8}"
+
+exec /usr/bin/steam "$@"
