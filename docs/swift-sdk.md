@@ -29,7 +29,9 @@ util/make-swift-sdk.sh --arch arm64 --install
 ```
 
 This writes `swift-linux-arm64.artifactbundle` and registers it with
-`swift sdk install`. Pass `--arch x86_64` for the 64-bit x86 target.
+`swift sdk install`. Four arches are supported: `arm64` and `x86_64` (the image
+targets) plus `armv7` and `i386` (the 32-bit companions, built from the app-sdk
+profile). The target triple is read from the sysroot, so it is always correct.
 
 ### Local vs portable
 
