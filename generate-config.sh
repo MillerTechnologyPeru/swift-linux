@@ -7,15 +7,24 @@
 #
 # Usage:
 #   ./generate-config.sh --arch <arch> [--profile <profile>] [--board <board>] [--output <path>]
+#   ./generate-config.sh --device <device> --profile image [--output <path>]
 #
-# Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64
-# Profiles:                                  sdk (default), app-sdk
-# Boards   (sdk/defconfig/board/*.config):   optional overlay, e.g. rpi4, uefi-x86_64
+# Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64 i386
+# Profiles:                                  sdk (default), app-sdk, image, lib32
+# Devices  (sdk/board/<device>/):            self-contained boards (see Makefile
+#                                            `make list`)
+# Boards   (sdk/defconfig/board/*.config):   optional overlay, appended last
 #
 # Profiles compose the following fragments, in order:
 #   sdk       = arch + toolchain + swift
 #   app-sdk   = arch + toolchain + swift + applibs
-# A --board overlay, when given, is appended last.
+#   image     = arch + toolchain + swift + network + audio + daemons + image
+#               + steam + board.config       (bootable A/B UEFI image)
+#   lib32     = arch + toolchain + swift + network + audio + daemons + lib32
+#               + applibs [+ lib32-arm]      (32-bit companion userland,
+#               mirroring the image's library-bearing fragments; merged into a
+#               64-bit image as /usr/lib32)
+# Fragments may `include` shared fragments (gpu capabilities, SoC families).
 
 set -euo pipefail
 
