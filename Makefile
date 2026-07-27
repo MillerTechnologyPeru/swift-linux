@@ -19,15 +19,20 @@
 #                 container's /workspaces path - so nothing is left root-owned
 #                 and the container's baked paths still resolve.
 #
-# Accelerators (see build-images.sh): PARALLEL_BUILD=1, CCACHE=1. Shared
-# BR2_DL_DIR / ccache dir default under OUTPUT_BASE.
+# Accelerators (see build-images.sh): PARALLEL_BUILD=1, CCACHE=1. Buildroot's
+# default download dir (buildroot/dl) is shared across arches already; set
+# DL_DIR to override it.
 
 SHELL := /bin/bash
 REPO_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
 BR_SWIFT ?= $(abspath $(REPO_DIR)/../buildroot-swift)
 BUILDROOT ?= $(BR_SWIFT)/buildroot
 OUTPUT_BASE ?= $(BR_SWIFT)/output
-DL_DIR ?= $(OUTPUT_BASE)/dl
+# Buildroot's default download dir ($(TOPDIR)/dl) is already shared across all
+# per-arch outputs; only pass BR2_DL_DIR when the caller sets DL_DIR, so a
+# prebuilt output's cached downloads keep resolving.
+DL_DIR ?=
+DL_OPT := $(if $(DL_DIR),BR2_DL_DIR=$(DL_DIR))
 CCACHE_DIR ?= $(OUTPUT_BASE)/ccache
 EXTERNALS := $(BR_SWIFT):$(REPO_DIR)/external
 GENERATE := $(REPO_DIR)/generate-config.sh
@@ -66,12 +71,12 @@ define br
 		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C /workspaces/buildroot-swift/buildroot \
 			O=/workspaces/buildroot-swift/output/$(1) \
 			BR2_EXTERNAL=/workspaces/buildroot-swift:/workspaces/swift-linux/external \
-			BR2_DL_DIR=/workspaces/buildroot-swift/output/dl $(BR2_MAKE_OPTS) $(2)'
+			$(BR2_MAKE_OPTS) $(2)'
 endef
 else
 define br
 	FORCE_UNSAFE_CONFIGURE=1 make -C $(BUILDROOT) O=$(OUTPUT_BASE)/$(1) \
-		BR2_EXTERNAL=$(EXTERNALS) BR2_DL_DIR=$(DL_DIR) BR2_CCACHE_DIR=$(CCACHE_DIR) \
+		BR2_EXTERNAL=$(EXTERNALS) $(DL_OPT) BR2_CCACHE_DIR=$(CCACHE_DIR) \
 		$(BR2_MAKE_OPTS) $(2)
 endef
 endif

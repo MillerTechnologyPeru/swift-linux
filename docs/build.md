@@ -47,7 +47,8 @@ Adding a board is dropping a `board.config`; no Makefile edits.
 
 - `PARALLEL_BUILD=1` — per-package build dirs + a parallel top-level build.
 - `CCACHE=1` — compiler cache under `CCACHE_DIR`.
-- Downloads are shared via `BR2_DL_DIR` (default `OUTPUT_BASE/dl`).
+- Downloads live in Buildroot's own `buildroot/dl`, which is already shared
+  across every per-arch output; set `DL_DIR` to relocate it.
 
 These carry over to `build-images.sh`, which builds x86_64 + arm64 (with their
 32-bit companions) in parallel.
