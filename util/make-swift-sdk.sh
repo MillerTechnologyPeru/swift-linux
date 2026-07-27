@@ -80,9 +80,42 @@ if [ "$PORTABLE" = 1 ]; then
 	# Copy the sysroot into the bundle and fold the cross-gcc into it under the
 	# target triple, so clang auto-detects the GCC install (crt objects, libgcc,
 	# libstdc++) from --sysroot alone. All SDK paths are relative to the bundle.
-	echo "copying sysroot into bundle (this is the ~450 MB portable copy)..."
+	echo "copying sysroot into bundle (this is the portable copy)..."
 	SYS="$OUT/$ID/sysroot"
-	cp -a "$SRC_SYSROOT" "$SYS"
+	# Copy only what a compilation sysroot needs, excluding runtime trees
+	# (usr/bin, var, ...) and usr/share. This is not only a size win: ncurses'
+	# terminfo database (usr/share/terminfo) contains entries differing only by
+	# case (e.g. P4/p4), which cannot extract on a case-insensitive filesystem
+	# (macOS/APFS default) - the bundle must not carry it. Excluding at copy
+	# time also skips root-owned runtime files (e.g. a dbus launch helper) that
+	# a containerized build may have left unreadable.
+	#
+	# Known remaining case collisions: the kernel's netfilter UAPI headers
+	# (xt_CONNMARK.h vs xt_connmark.h, ...). Those extract as a single file on
+	# case-insensitive filesystems (silent overwrite) and only matter when
+	# building iptables extensions, so they are left in place.
+	mkdir -p "$SYS"
+	# usr/lib/xtables holds iptables runtime plugins (dlopened, never linked at
+	# build time) whose upper/lowercase pairs (libxt_MARK/libxt_mark, ...) also
+	# case-collide, so they are excluded too.
+	rsync -a \
+		--exclude=/usr/share --exclude=/usr/bin --exclude=/usr/sbin \
+		--exclude=/usr/libexec --exclude=/usr/games \
+		--exclude=/usr/lib/xtables \
+		--exclude=/bin --exclude=/sbin --exclude=/var --exclude=/run \
+		--exclude=/tmp --exclude=/opt --exclude=/srv --exclude=/media \
+		--exclude=/mnt --exclude=/root --exclude=/home --exclude=/boot \
+		--exclude=/dev --exclude=/proc --exclude=/sys \
+		"$SRC_SYSROOT/" "$SYS/"
+	# Re-add the parts of usr/share builds actually consume: pkg-config data
+	# and the wayland protocol XMLs (some packages install .pc files to
+	# usr/share/pkgconfig; wayland clients generate code from usr/share/wayland*).
+	mkdir -p "$SYS/usr/share"
+	for keep in pkgconfig wayland wayland-protocols cmake; do
+		if [ -d "$SRC_SYSROOT/usr/share/$keep" ]; then
+			rsync -a "$SRC_SYSROOT/usr/share/$keep" "$SYS/usr/share/"
+		fi
+	done
 	# GCC install dir clang probes: <sysroot>/usr/lib/gcc/<target-triple>/<ver>
 	mkdir -p "$SYS/usr/lib/gcc/$TARGET"
 	cp -a "$SRC_GCC" "$SYS/usr/lib/gcc/$TARGET/$GCC_VER"
