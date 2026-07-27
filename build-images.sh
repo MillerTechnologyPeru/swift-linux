@@ -20,6 +20,11 @@
 #                       the native Swift toolchain the swift package needs.
 #                       The image is otherwise complete.
 #   NO_LIB32=1          skip the 32-bit companion (no /usr/lib32, no box86)
+#   DL_DIR              shared Buildroot download cache
+#                       (default: $OUTPUT_BASE/dl)
+#   CCACHE_DIR          compiler cache dir (default: $OUTPUT_BASE/ccache)
+#   PARALLEL_BUILD=1    per-package build dirs + parallel top-level build
+#   CCACHE=1            enable the compiler cache
 #
 # Usage: ./build-images.sh [x86_64] [arm64]      (default: both)
 
@@ -31,6 +36,18 @@ BR2_EXTERNAL_SWIFT="${BR2_EXTERNAL_SWIFT:-$REPO_DIR/../buildroot-swift}"
 OUTPUT_BASE="${OUTPUT_BASE:-$BR2_EXTERNAL_SWIFT/output}"
 EXTERNALS="${BR2_EXTERNAL_SWIFT}:${REPO_DIR}/external"
 GENERATE="$REPO_DIR/generate-config.sh"
+
+# Shared caches, so parallel arch tracks and repeated runs do not re-download
+# sources or recompile from cold. The download cache is always shared (it is
+# arch-independent and side-effect-free).
+DL_DIR="${DL_DIR:-$OUTPUT_BASE/dl}"
+CCACHE_DIR="${CCACHE_DIR:-$OUTPUT_BASE/ccache}"
+# Opt-in accelerators (off by default so the container cache-reuse path in CI is
+# undisturbed):
+#   PARALLEL_BUILD=1  per-package build dirs + a parallel top-level build
+#   CCACHE=1          compiler cache in $CCACHE_DIR
+BR2_MAKE_OPTS=""
+[ "${PARALLEL_BUILD:-0}" = "1" ] && BR2_MAKE_OPTS="-j$(nproc) -l$(nproc)"
 
 # arch -> its 32-bit companion arch (empty means "no companion").
 companion_of() {
@@ -62,18 +79,26 @@ make_defconfig() {
 # br_build <output-dir> <defconfig-file>  - configure then build one image.
 br_build() {
 	local out="$1" defconfig="$2"; shift 2
-	make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" \
-		BR2_DEFCONFIG="$defconfig" defconfig >/dev/null || return 1
+	# Inject opt-in accelerators into the defconfig before configuring, so they
+	# take effect without editing tracked fragments.
+	[ "${PARALLEL_BUILD:-0}" = "1" ] && \
+		printf 'BR2_PER_PACKAGE_DIRECTORIES=y\n' >> "$defconfig"
+	[ "${CCACHE:-0}" = "1" ] && \
+		printf 'BR2_CCACHE=y\n' >> "$defconfig"
+	make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" BR2_DL_DIR="$DL_DIR" \
+		BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG="$defconfig" defconfig >/dev/null || return 1
 	# REBUILD_PKGS forces a dirclean of packages that a prebuilt/cached output
 	# (e.g. a CI container) may have built with the wrong options - such as the
 	# container's OpenSSL, built without engine support that RAUC needs.
 	local pkg
 	for pkg in ${REBUILD_PKGS:-}; do
 		echo "[br_build] forcing rebuild of $pkg"
-		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" "$pkg-dirclean" >/dev/null || return 1
+		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" BR2_DL_DIR="$DL_DIR" \
+			"$pkg-dirclean" >/dev/null || return 1
 	done
 	# FORCE_UNSAFE_CONFIGURE lets host tools configure as root (CI/containers).
-	FORCE_UNSAFE_CONFIGURE=1 make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" "$@"
+	FORCE_UNSAFE_CONFIGURE=1 make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" \
+		BR2_DL_DIR="$DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" $BR2_MAKE_OPTS "$@"
 }
 
 # build_track <arch> - the full lib32-then-image sequence for one architecture.

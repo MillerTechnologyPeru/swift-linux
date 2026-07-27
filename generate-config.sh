@@ -142,10 +142,39 @@ if [ -n "$board" ]; then
     files+=("$board_fragment")
 fi
 
+# emit_fragment <file> - print a fragment, expanding any `include <path>`
+# directives (path relative to this repo's root) so several boards can share a
+# common hardware-family fragment instead of duplicating it. Each included file
+# is emitted at most once across the whole defconfig; cycles are broken by the
+# same seen-set. A leading `-include` makes the include optional.
+declare -A _seen_includes
+emit_fragment() {
+    local file="$1" line inc opt
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            "include "*|"-include "*)
+                opt=0; case "$line" in "-include "*) opt=1 ;; esac
+                inc="${line#*include }"
+                inc="$SCRIPT_DIR/${inc#/}"
+                if [ ! -f "$inc" ]; then
+                    [ "$opt" = 1 ] && continue
+                    echo "Error: included fragment not found: $inc (from $file)" >&2
+                    exit 1
+                fi
+                if [ -z "${_seen_includes[$inc]:-}" ]; then
+                    _seen_includes[$inc]=1
+                    emit_fragment "$inc"
+                fi
+                ;;
+            *) printf '%s\n' "$line" ;;
+        esac
+    done < "$file"
+}
+
 # Concatenate fragments into the defconfig, separating each with a blank line.
 : > "$output"
 for f in "${files[@]}"; do
-    cat "$f" >> "$output"
+    emit_fragment "$f" >> "$output"
     printf '\n' >> "$output"
 done
 
