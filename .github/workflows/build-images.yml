@@ -84,6 +84,51 @@ jobs:
           path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
           if-no-files-found: error
 
+  # The 32-bit companion arches (armv7, i386) are not bootable image targets,
+  # so they get a dedicated job: build the app-sdk profile (Swift + the full
+  # applibs graphics/app stack) and publish a Swift SDK for each. These feed the
+  # combined all-arch SDK alongside the arm64/x86_64 image SDKs.
+  app-sdk:
+    name: App SDK (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [armv7, i386]
+    runs-on: ubuntu-latest
+    container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    steps:
+      - name: Checkout swift-linux
+        uses: actions/checkout@v4
+
+      - name: Build app-sdk (Swift + applibs)
+        run: |
+          set -eu
+          BR_SWIFT=/workspaces/buildroot-swift
+          B="$BR_SWIFT/buildroot"
+          O="$BR_SWIFT/output/${{ matrix.arch }}"
+          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/external"
+          "$GITHUB_WORKSPACE/generate-config.sh" \
+            --arch ${{ matrix.arch }} --profile app-sdk -o /tmp/appsdk.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
+
+      - name: Generate Swift SDK
+        run: |
+          set -eu
+          export BR_SWIFT=/workspaces/buildroot-swift
+          bundle="/workspaces/buildroot-swift/output/swift-linux-${{ matrix.arch }}.artifactbundle"
+          bash "$GITHUB_WORKSPACE/util/make-swift-sdk.sh" \
+            --arch ${{ matrix.arch }} --portable --out "$bundle"
+          tar czf "$GITHUB_WORKSPACE/swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz" \
+            -C "$(dirname "$bundle")" "$(basename "$bundle")"
+
+      - name: Upload Swift SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-linux-${{ matrix.arch }}-swift-sdk
+          path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
+          if-no-files-found: error
+
   # Fast machinery check without the Swift toolchain: proves the image config
   # resolves and generate-config/build-images plumbing is intact on a plain
   # runner. Does not build (that needs the container); config-only.
@@ -106,7 +151,7 @@ jobs:
   # Runs on a plain runner - it only rearranges files (jq + tar).
   combined-swift-sdk:
     name: Combined Swift SDK
-    needs: image
+    needs: [image, app-sdk]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

@@ -20,7 +20,7 @@
 # `swiftly run +<version> swift build ...`.
 #
 # Usage:
-#   util/make-swift-sdk.sh [--arch arm64|x86_64] [--portable] [--out DIR] [--install]
+#   util/make-swift-sdk.sh [--arch arm64|x86_64|armv7|i386] [--portable] [--out DIR] [--install]
 # Env:
 #   BR_SWIFT   buildroot-swift checkout (default: ../../buildroot-swift)
 set -eu
@@ -41,8 +41,10 @@ while [ $# -gt 0 ]; do
 done
 
 case "$ARCH" in
-	arm64|aarch64) TRIPLE_GNU="aarch64-swift-linux-gnu"; TARGET="aarch64-unknown-linux-gnu" ;;
-	x86_64|amd64)  TRIPLE_GNU="x86_64-swift-linux-gnu";  TARGET="x86_64-unknown-linux-gnu" ;;
+	arm64|aarch64) TRIPLE_GNU="aarch64-swift-linux-gnu";     TARGET="aarch64-unknown-linux-gnu" ;;
+	x86_64|amd64)  TRIPLE_GNU="x86_64-swift-linux-gnu";      TARGET="x86_64-unknown-linux-gnu" ;;
+	armv7|arm)     TRIPLE_GNU="arm-swift-linux-gnueabihf";   TARGET="armv7-unknown-linux-gnueabihf" ;;
+	i386|i686)     TRIPLE_GNU="i686-swift-linux-gnu";        TARGET="i686-unknown-linux-gnu" ;;
 	*) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 
@@ -62,10 +64,13 @@ GCC_VER="$(basename "$(ls -d "$HOST/lib/gcc/$TRIPLE_GNU"/*/ | head -1)")"
 SRC_GCC="$HOST/lib/gcc/$TRIPLE_GNU/$GCC_VER"
 SRC_CXX_INC="$HOST/$TRIPLE_GNU/include/c++/$GCC_VER"
 
-# Discover the Swift version that built the stdlib (from any .swiftinterface).
+# Discover the Swift version and the exact target triple that built the stdlib
+# (from any .swiftinterface) - the triple is authoritative over the guess above.
 IFACE="$(find "$SRC_SYSROOT/usr/lib/swift/linux" -name '*.swiftinterface' | head -1)"
 SWIFT_VER="$(sed -n 's|.*swift-\([0-9.]*\)-RELEASE.*|\1|p' "$IFACE" | head -1)"
 [ -n "$SWIFT_VER" ] || SWIFT_VER="unknown"
+IFACE_TARGET="$(sed -n 's|.*-target \([A-Za-z0-9_-]*\).*|\1|p' "$IFACE" | head -1)"
+[ -n "$IFACE_TARGET" ] && TARGET="$IFACE_TARGET"
 
 ID="swift-linux-$ARCH"
 OUT="${OUT:-$PWD/$ID.artifactbundle}"
