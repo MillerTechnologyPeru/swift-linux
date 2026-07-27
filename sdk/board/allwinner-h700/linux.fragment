@@ -1,0 +1,40 @@
+# Kernel options shared by Allwinner H700 handhelds. Assume a kernel with H700
+# support and the device DTS (see the board READMEs); on a mainline arm64 kernel
+# some of these will be absent.
+
+# Allwinner sunxi platform
+CONFIG_ARCH_SUNXI=y
+CONFIG_MFD_AXP20X_I2C=y
+CONFIG_REGULATOR_AXP20X=y
+CONFIG_PINCTRL_SUN50I_H616=y
+CONFIG_SUN4I_TIMER=y
+CONFIG_SUNXI_WATCHDOG=y
+
+# Mali (panfrost) + display
+CONFIG_DRM=y
+CONFIG_DRM_PANFROST=y
+CONFIG_DRM_SUN4I=y
+CONFIG_DRM_SUN8I_MIXER=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+
+# Input: gamepad / analog sticks / buttons
+CONFIG_INPUT_EVDEV=y
+CONFIG_INPUT_JOYSTICK=y
+CONFIG_INPUT_ADC_JOYSTICK=y
+CONFIG_KEYBOARD_GPIO=y
+CONFIG_INPUT_FF_MEMLESS=y
+CONFIG_COMPAT=y
+
+# Power: AXP PMIC charger / fuel gauge
+CONFIG_AXP20X_POWER=y
+CONFIG_CHARGER_AXP20X=y
+CONFIG_BATTERY_AXP20X=y
+
+# Storage / USB
+CONFIG_MMC=y
+CONFIG_MMC_SUNXI=y
+CONFIG_EXT4_FS=y
+CONFIG_USB_MUSB_HDRC=y
+CONFIG_USB_MUSB_SUNXI=y
+CONFIG_PHY_SUN4I_USB=y
