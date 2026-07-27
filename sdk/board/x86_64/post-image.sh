@@ -6,3 +6,6 @@ BOARD_DIR="$(dirname "$0")"
 
 cp "${BOARD_DIR}/genimage.cfg" "${BINARIES_DIR}/genimage.cfg"
 support/scripts/genimage.sh -c "${BINARIES_DIR}/genimage.cfg"
+
+# Name the artifact per target and write SHA256SUMS.
+sh "${BOARD_DIR}/../common/post-image-finalize.sh" "${BINARIES_DIR}" "x86_64"
