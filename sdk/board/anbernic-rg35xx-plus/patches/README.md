@@ -1,5 +1,3 @@
-# anbernic-rg35xx-plus device patches
+# Anbernic RG35XX Plus device patches
 
-Device-specific kernel / U-Boot patches, stacked after the SoC-family patches.
-Put this device's not-yet-mainlined bits here (panel timings, gamepad mapping,
-battery calibration). `linux/*.patch` patch the kernel, `uboot/*.patch` U-Boot.
+Device-specific kernel/bootloader patches, stacked after the family patches.
