@@ -17,7 +17,8 @@
 #   CONTAINER=1   build in the matching per-arch Swift toolchain container, as
 #                 your own UID/GID and with the local tree bind-mounted at the
 #                 container's /workspaces path - so nothing is left root-owned
-#                 and the container's baked paths still resolve.
+#                 and the container's baked paths still resolve. Uses docker or
+#                 podman, whichever is on PATH (CONTAINER_RUNTIME= to pick).
 #
 # Accelerators (see build-images.sh): PARALLEL_BUILD=1, CCACHE=1. Buildroot's
 # default download dir (buildroot/dl) is shared across arches already; set
@@ -37,7 +38,21 @@ CCACHE_DIR ?= $(OUTPUT_BASE)/ccache
 EXTERNALS := $(BR_SWIFT):$(REPO_DIR)/external
 GENERATE := $(REPO_DIR)/generate-config.sh
 PROFILE ?= image
-CONTAINER_IMAGE ?= colemancda/buildroot-swift
+CONTAINER_IMAGE ?= docker.io/colemancda/buildroot-swift
+# docker or podman, whichever is on PATH; override with CONTAINER_RUNTIME=.
+CONTAINER_RUNTIME ?= $(shell command -v docker || command -v podman)
+# Rootless podman maps your UID into a subuid range, so the bind-mounted tree
+# would come back owned by a subuid rather than by you; keep-id maps it 1:1.
+# Relabelling a Buildroot tree for SELinux (:z) is far too expensive, so opt the
+# container out of confinement instead.
+# Sniff the version rather than the binary name: podman-docker (and hand-rolled
+# shims) put podman behind a /usr/bin/docker, which the name check would miss.
+CONTAINER_IS_PODMAN := $(shell $(CONTAINER_RUNTIME) --version 2>/dev/null | grep -qi podman && echo 1)
+ifeq ($(CONTAINER_IS_PODMAN),1)
+CONTAINER_OPTS ?= --userns=keep-id --security-opt label=disable
+else
+CONTAINER_OPTS ?=
+endif
 
 # ---- target discovery ----------------------------------------------------
 IMAGE_ARCHES := x86_64 arm64
@@ -63,8 +78,12 @@ endef
 
 # br <target> <make-args...>  - run Buildroot for a target, host or container.
 ifeq ($(CONTAINER),1)
+ifeq ($(CONTAINER_RUNTIME),)
+$(error CONTAINER=1 needs docker or podman on PATH, or an explicit CONTAINER_RUNTIME=)
+endif
 define br
-	docker run --rm --user $(shell id -u):$(shell id -g) -e HOME=/tmp \
+	$(CONTAINER_RUNTIME) run --rm $(CONTAINER_OPTS) \
+		--user $(shell id -u):$(shell id -g) -e HOME=/tmp \
 		-v $(BR_SWIFT):/workspaces/buildroot-swift \
 		-v $(REPO_DIR):/workspaces/swift-linux \
 		-w /workspaces/swift-linux $(CONTAINER_IMAGE):swift_$(call cont_arch,$(1))_defconfig \
@@ -85,7 +104,7 @@ endif
 help list:
 	@echo "Targets: $(TARGETS)"
 	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-shell <t>-clean <t>-refresh"
-	@echo "Backend: CONTAINER=1 for a containerized build; PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
+	@echo "Backend: CONTAINER=1 for a containerized build ($(if $(CONTAINER_RUNTIME),$(CONTAINER_RUNTIME),no docker/podman found)); PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
 
 # ---- per-target pattern rules -------------------------------------------
 # %-defconfig: just generate the defconfig.
