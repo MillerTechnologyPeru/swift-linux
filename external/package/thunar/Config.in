@@ -1,0 +1,9 @@
+config BR2_PACKAGE_THUNAR
+	bool "thunar"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_EXO
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  The XFCE file manager.
+
+	  https://docs.xfce.org/
