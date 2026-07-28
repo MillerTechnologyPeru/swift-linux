@@ -1,0 +1,14 @@
+config BR2_PACKAGE_GRIM
+	bool "grim"
+	depends on BR2_PACKAGE_WAYLAND
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_PIXMAN
+	help
+	  Screenshot utility for wlroots-based Wayland compositors (sway).
+	  Captures the whole output, a region (-g) or a single window, using
+	  the wlr-screencopy protocol.
+
+	  https://gitlab.freedesktop.org/emersion/grim
+
+comment "grim needs wayland"
+	depends on !BR2_PACKAGE_WAYLAND
