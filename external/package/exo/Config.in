@@ -1,0 +1,8 @@
+config BR2_PACKAGE_EXO
+	bool "exo"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  Application/helper framework library of XFCE (URI handling, icon view).
+
+	  https://docs.xfce.org/
