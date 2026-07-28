@@ -6,14 +6,13 @@
 # fragments in sdk/defconfig. Replaces the former `swift-linux` Swift tool.
 #
 # Usage:
-#   ./generate-config.sh --arch <arch> [--profile <profile>] [--board <board>] [--output <path>]
+#   ./generate-config.sh --arch <arch> [--profile <profile>] [--output <path>]
 #   ./generate-config.sh --device <device> --profile image [--output <path>]
 #
 # Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64 i386
 # Profiles:                                  sdk (default), app-sdk, image, lib32
 # Devices  (sdk/board/<device>/):            self-contained boards (see Makefile
 #                                            `make list`)
-# Boards   (sdk/defconfig/board/*.config):   optional overlay, appended last
 #
 # Profiles compose the following fragments, in order:
 #   sdk       = arch + toolchain + libs + tools + supportdata + swift
@@ -36,7 +35,6 @@ DEFCONFIG_DIR="$SCRIPT_DIR/sdk/defconfig"
 
 arch=""
 profile="sdk"
-board=""
 output="swift_linux_defconfig"
 
 usage() {
@@ -52,7 +50,6 @@ while [ $# -gt 0 ]; do
         --arch)     arch="$2";    shift 2 ;;
         --device)   device="$2";  shift 2 ;;
         --profile|--configuration) profile="$2"; shift 2 ;;
-        --board)    board="$2";   shift 2 ;;
         --output|-o) output="$2"; shift 2 ;;
         -h|--help)  usage 0 ;;
         *) echo "Unknown argument: $1" >&2; usage 1 ;;
@@ -147,16 +144,6 @@ if [ "$profile" = "image" ]; then
     files+=("$board_dir/board.config")
 fi
 
-# Optional board overlay, appended last.
-if [ -n "$board" ]; then
-    board_fragment="$DEFCONFIG_DIR/board/$board.config"
-    if [ ! -f "$board_fragment" ]; then
-        echo "Error: unknown board '$board' (no $board_fragment)" >&2
-        echo "Available boards: $(cd "$DEFCONFIG_DIR/board" && ls *.config | sed 's/\.config//' | tr '\n' ' ')" >&2
-        exit 1
-    fi
-    files+=("$board_fragment")
-fi
 
 # emit_fragment <file> - print a fragment, expanding any `include <path>`
 # directives (path relative to this repo's root) so several boards can share a
@@ -202,4 +189,4 @@ done
 sed -i "s|@BOARD@|${board_dir:-$SCRIPT_DIR/sdk/board/$arch}|g" "$output"
 sed -i "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output"
 
-echo "Generated $profile configuration for ${device:-$arch}${board:+ ($board)} at $output"
+echo "Generated $profile configuration for ${device:-$arch} at $output"
