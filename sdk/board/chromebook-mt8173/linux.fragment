@@ -1,0 +1,11 @@
+# MediaTek MT8173 (oak/elm) Chromebooks. No mainline GPU driver (PowerVR);
+# DRM provides display scanout only.
+CONFIG_ARCH_MEDIATEK=y
+CONFIG_PINCTRL_MT8173=y
+CONFIG_MTK_PMIC_WRAP=y
+CONFIG_DRM=y
+CONFIG_DRM_MEDIATEK=y
+CONFIG_MMC=y
+CONFIG_MMC_MTK=y
+CONFIG_I2C_MT65XX=y
+CONFIG_SPI_MT65XX=y

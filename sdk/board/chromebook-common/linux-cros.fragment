@@ -1,0 +1,13 @@
+# Kernel options every Chromebook needs regardless of SoC: the ChromeOS
+# embedded controller (keyboard, battery, PD) and its transports.
+CONFIG_CHROME_PLATFORMS=y
+CONFIG_CROS_EC=y
+CONFIG_CROS_EC_SPI=y
+CONFIG_CROS_EC_I2C=y
+CONFIG_KEYBOARD_CROS_EC=y
+CONFIG_CHARGER_CROS_USBPD=y
+CONFIG_BATTERY_SBS=y
+CONFIG_I2C_CROS_EC_TUNNEL=y
+CONFIG_EXTCON_USBC_CROS_EC=y
+CONFIG_INPUT_EVDEV=y
+CONFIG_EXT4_FS=y
