@@ -1,0 +1,15 @@
+#!/bin/sh
+# busybox ships poweroff/reboot but no "shutdown", and EmulationStation's
+# quit menu runs "shutdown -P -h now" / "shutdown -r now" verbatim
+# (es-core Platform.cpp) - without this shim both power menu entries
+# silently do nothing. Runs via the NOPASSWD rule in
+# /etc/sudoers.d/es-platform since the session user drives it.
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+
+cmd=poweroff
+for arg in "$@"; do
+	case "$arg" in
+		-r) cmd=reboot ;;
+	esac
+done
+exec "$cmd"
