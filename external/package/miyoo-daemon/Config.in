@@ -1,0 +1,9 @@
+config BR2_PACKAGE_MIYOO_DAEMON
+	bool "miyoo-daemon"
+	help
+	  Hardware daemon for the Allwinner suniv handheld family
+	  (BittBoy, PocketGo, PowKiddy Q90/V90/Q20): battery-low
+	  warnings (screen flash or rumble) and the RESET/HOME hotkey
+	  combos, talking to the family kernel's miyoo_kbd driver.
+
+	  https://github.com/MiyooCFW/daemon
