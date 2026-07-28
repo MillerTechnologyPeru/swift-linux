@@ -3,9 +3,13 @@
 # home onto the latter, keeping the rootfs read-only. On first boot the data
 # partition is grown to fill the medium and formatted.
 #
-# Ordering matters: this must run AFTER S10udevd, because both partitions are
+# Ordering matters: udev must be running first, because both partitions are
 # addressed by their /dev/disk/by-partuuid symlinks, which udev creates.
-# (Mounting them from /etc/fstab during rcS is too early.)
+# Under OpenRC that holds by construction: udev starts in the sysinit
+# runlevel (udev-gentoo-scripts), and this script runs later from the
+# default runlevel's sysv-rcs service. (Mounting from /etc/fstab would be
+# too early: localmount runs in the boot runlevel, before the coldplug
+# has settled.)
 
 BOOT_DEV=/dev/disk/by-partuuid/0e0e0e0e-0000-4000-8000-00000000000e
 DATA_DEV=/dev/disk/by-partuuid/0d0d0d0d-0000-4000-8000-00000000000d
