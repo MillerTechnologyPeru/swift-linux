@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBXFCE4UI
+	bool "libxfce4ui"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_LIBXFCE4UTIL
+	select BR2_PACKAGE_XFCONF
+	select BR2_PACKAGE_STARTUP_NOTIFICATION
+	help
+	  GTK widget library shared by the XFCE applications.
+
+	  https://docs.xfce.org/
