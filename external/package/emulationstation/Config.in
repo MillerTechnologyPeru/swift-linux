@@ -1,0 +1,34 @@
+config BR2_PACKAGE_EMULATIONSTATION
+	bool "emulationstation"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on !BR2_STATIC_LIBS
+	depends on BR2_PACKAGE_HAS_LIBGL || BR2_PACKAGE_HAS_LIBGLES
+	select BR2_PACKAGE_BOOST
+	select BR2_PACKAGE_BOOST_SYSTEM
+	select BR2_PACKAGE_BOOST_FILESYSTEM
+	select BR2_PACKAGE_BOOST_DATE_TIME
+	select BR2_PACKAGE_BOOST_LOCALE
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_SDL2_MIXER
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_FREEIMAGE
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_RAPIDJSON
+	select BR2_PACKAGE_PUGIXML
+	select BR2_PACKAGE_VLC
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_LIBGLU if BR2_PACKAGE_HAS_LIBGL
+	help
+	  Game launcher and emulator frontend: a controller-driven interface
+	  that scans a game collection, shows box art and metadata, and starts
+	  the matching emulator.
+
+	  This is the actively maintained handheld-oriented fork, which carries
+	  the theming, controller handling and per-system configuration that
+	  branch has accumulated.
+
+	  https://github.com/ROCKNIX/emulationstation-next
+
+comment "emulationstation needs OpenGL(ES) and a toolchain w/ C++, threads, dynamic library"
+	depends on !BR2_PACKAGE_HAS_LIBGL && !BR2_PACKAGE_HAS_LIBGLES

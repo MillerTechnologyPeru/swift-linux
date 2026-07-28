@@ -1,0 +1,14 @@
+config BR2_PACKAGE_FREEIMAGE
+	bool "freeimage"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on !BR2_STATIC_LIBS
+	help
+	  Library for the common bitmap formats (PNG, JPEG, GIF, TGA, ...).
+
+	  Buildroot has no freeimage package; this one exists because
+	  emulationstation requires it for its image handling.
+
+	  https://freeimage.sourceforge.io
+
+comment "freeimage needs a toolchain w/ C++, dynamic library"
+	depends on BR2_STATIC_LIBS || !BR2_INSTALL_LIBSTDCPP
