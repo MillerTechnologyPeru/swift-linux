@@ -1,0 +1,6 @@
+# EmulationStation platform helpers. The frontend runs as the session user,
+# but ConnMan and BlueZ are root-only over D-Bus, and poweroff/suspend need
+# root outright - each helper re-execs itself through sudo -n, which only
+# works without a password prompt. Scoped to exactly these commands; the
+# general %wheel rule (see ./wheel) still asks for a password.
+swift ALL=(root) NOPASSWD: /usr/bin/wifictl, /usr/bin/rocknix-bluetooth, /usr/bin/shutdown, /usr/sbin/pm-suspend
