@@ -20,8 +20,8 @@
 #                       the native Swift toolchain the swift package needs.
 #                       The image is otherwise complete.
 #   NO_LIB32=1          skip the 32-bit companion (no /usr/lib32, no box86)
-#   DL_DIR              shared Buildroot download cache
-#                       (default: $OUTPUT_BASE/dl)
+#   DL_DIR              override the Buildroot download dir (default: buildroot's
+#                       own $(TOPDIR)/dl, already shared across arches)
 #   CCACHE_DIR          compiler cache dir (default: $OUTPUT_BASE/ccache)
 #   PARALLEL_BUILD=1    per-package build dirs + parallel top-level build
 #   CCACHE=1            enable the compiler cache
@@ -37,11 +37,16 @@ OUTPUT_BASE="${OUTPUT_BASE:-$BR2_EXTERNAL_SWIFT/output}"
 EXTERNALS="${BR2_EXTERNAL_SWIFT}:${REPO_DIR}/external"
 GENERATE="$REPO_DIR/generate-config.sh"
 
-# Shared caches, so parallel arch tracks and repeated runs do not re-download
-# sources or recompile from cold. The download cache is always shared (it is
-# arch-independent and side-effect-free).
-DL_DIR="${DL_DIR:-$OUTPUT_BASE/dl}"
+# Optional caches. Buildroot's default download dir ($(TOPDIR)/dl) is already
+# shared across every per-arch output of the same tree, so DL_DIR is only
+# passed when the caller explicitly sets it: overriding it unconditionally
+# diverges from a prebuilt output's cached downloads (packages whose stamps say
+# "downloaded" then fail to extract from the new, empty dir - this broke the CI
+# containers, whose caches were fetched into buildroot/dl).
+DL_DIR="${DL_DIR:-}"
 CCACHE_DIR="${CCACHE_DIR:-$OUTPUT_BASE/ccache}"
+DL_OPT=""
+[ -n "$DL_DIR" ] && DL_OPT="BR2_DL_DIR=$DL_DIR"
 # Opt-in accelerators (off by default so the container cache-reuse path in CI is
 # undisturbed):
 #   PARALLEL_BUILD=1  per-package build dirs + a parallel top-level build
@@ -85,7 +90,7 @@ br_build() {
 		printf 'BR2_PER_PACKAGE_DIRECTORIES=y\n' >> "$defconfig"
 	[ "${CCACHE:-0}" = "1" ] && \
 		printf 'BR2_CCACHE=y\n' >> "$defconfig"
-	make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" BR2_DL_DIR="$DL_DIR" \
+	make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 		BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG="$defconfig" defconfig >/dev/null || return 1
 	# REBUILD_PKGS forces a dirclean of packages that a prebuilt/cached output
 	# (e.g. a CI container) may have built with the wrong options - such as the
@@ -93,12 +98,12 @@ br_build() {
 	local pkg
 	for pkg in ${REBUILD_PKGS:-}; do
 		echo "[br_build] forcing rebuild of $pkg"
-		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" BR2_DL_DIR="$DL_DIR" \
+		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 			"$pkg-dirclean" >/dev/null || return 1
 	done
 	# FORCE_UNSAFE_CONFIGURE lets host tools configure as root (CI/containers).
 	FORCE_UNSAFE_CONFIGURE=1 make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" \
-		BR2_DL_DIR="$DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" $BR2_MAKE_OPTS "$@"
+		$DL_OPT BR2_CCACHE_DIR="$CCACHE_DIR" $BR2_MAKE_OPTS "$@"
 }
 
 # build_track <arch> - the full lib32-then-image sequence for one architecture.
