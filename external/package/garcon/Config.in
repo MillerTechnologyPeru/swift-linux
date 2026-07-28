@@ -1,0 +1,8 @@
+config BR2_PACKAGE_GARCON
+	bool "garcon"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  freedesktop.org menu library used by the XFCE panel and desktop.
+
+	  https://docs.xfce.org/
