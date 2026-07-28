@@ -49,4 +49,16 @@ endif
 # ALSA plugin routes it, and there is no PulseAudio daemon to talk to.
 EMULATIONSTATION_CONF_OPTS += -DENABLE_PULSE=0
 
+# Squashfs app images (see the overlay's es-launch): entries in the Apps/
+# Games/Tools groups can be .squashfs bundles that get loop-mounted at
+# launch, batocera-style. The board kernel defconfigs do not carry loop or
+# squashfs, so enable them whenever the frontend is in the image - xz and
+# zstd cover the compressors mksquashfs realistically produces.
+define EMULATIONSTATION_LINUX_CONFIG_FIXUPS
+	$(call KCONFIG_ENABLE_OPT,CONFIG_BLK_DEV_LOOP)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_SQUASHFS)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_SQUASHFS_XZ)
+	$(call KCONFIG_ENABLE_OPT,CONFIG_SQUASHFS_ZSTD)
+endef
+
 $(eval $(cmake-package))
