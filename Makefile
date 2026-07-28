@@ -87,6 +87,11 @@ define make_defconfig
 endef
 
 # br <target> <make-args...>  - run Buildroot for a target, host or container.
+# The trees are mounted twice: at the container's baked /workspaces paths (the
+# prebuilt toolchain resolves against those) AND at their host paths, because
+# generate-config.sh writes host-absolute paths into the defconfig (rootfs
+# overlays, kernel config fragments, users tables, post-build scripts) which
+# Buildroot then reads at build time.
 ifeq ($(CONTAINER),1)
 ifeq ($(CONTAINER_RUNTIME),)
 $(error CONTAINER=1 needs docker or podman on PATH, or an explicit CONTAINER_RUNTIME=)
@@ -96,6 +101,8 @@ define br
 		--user $(shell id -u):$(shell id -g) -e HOME=/tmp \
 		-v $(BR_SWIFT):/workspaces/buildroot-swift \
 		-v $(REPO_DIR):/workspaces/swift-linux \
+		-v $(BR_SWIFT):$(BR_SWIFT) \
+		-v $(REPO_DIR):$(REPO_DIR) \
 		-w /workspaces/swift-linux $(CONTAINER_IMAGE):swift_$(call cont_arch,$(1))_defconfig \
 		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C /workspaces/buildroot-swift/buildroot \
 			O=$(BUILD_OUTPUT_BASE)/$(1) \
