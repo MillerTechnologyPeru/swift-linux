@@ -1,0 +1,4 @@
+# The default user is in the wheel group (see users.txt); let it administer the
+# machine. Without a drop-in like this the sudo package is installed but no
+# non-root user can actually use it.
+%wheel ALL=(ALL) ALL

@@ -16,11 +16,13 @@
 # Boards   (sdk/defconfig/board/*.config):   optional overlay, appended last
 #
 # Profiles compose the following fragments, in order:
-#   sdk       = arch + toolchain + libs + swift
-#   app-sdk   = arch + toolchain + libs + swift + applibs
-#   image     = arch + toolchain + libs + swift + network + audio + daemons
+#   sdk       = arch + toolchain + libs + tools + supportdata + swift
+#   app-sdk   = arch + toolchain + libs + tools + supportdata + swift + applibs
+#   image     = arch + toolchain + libs + tools + supportdata + swift + network
+#               + audio + daemons
 #               + image + steam + board.config   (bootable A/B UEFI image)
-#   lib32     = arch + toolchain + libs + swift + network + audio + daemons
+#   lib32     = arch + toolchain + libs + tools + supportdata + swift + network
+#               + audio + daemons
 #               + lib32 + applibs [+ lib32-arm]  (32-bit companion userland,
 #               mirroring the image's library-bearing fragments; merged into a
 #               64-bit image as /usr/lib32)
@@ -84,9 +86,9 @@ fi
 # Select fragments for the requested profile.
 case "$profile" in
     sdk)
-        fragments=(toolchain libs swift) ;;
+        fragments=(toolchain libs tools supportdata swift) ;;
     app-sdk|appSDK|app_sdk)
-        fragments=(toolchain libs swift applibs) ;;
+        fragments=(toolchain libs tools supportdata swift applibs) ;;
     image)
         # Full bootable A/B UEFI image (sway + non-root user). The board dir
         # is sdk/board/<device> when --device is given, else sdk/board/<arch>.
@@ -99,7 +101,7 @@ case "$profile" in
                 exit 1
             fi
         fi
-        fragments=(toolchain libs swift network audio daemons image steam) ;;
+        fragments=(toolchain libs tools supportdata swift network audio daemons image steam) ;;
     lib32)
         # 32-bit companion userland, merged into a 64-bit image as /usr/lib32
         # by sdk/board/common/post-build-lib32.sh. Buildroot has no multilib
@@ -114,8 +116,8 @@ case "$profile" in
         # image supplies those, and the merge script copies only lib trees.
         # The armv7 companion also carries box86.
         case "$arch" in
-            arm*) fragments=(toolchain libs swift network audio daemons lib32 applibs lib32-arm) ;;
-            *)    fragments=(toolchain libs swift network audio daemons lib32 applibs) ;;
+            arm*) fragments=(toolchain libs tools supportdata swift network audio daemons lib32 applibs lib32-arm) ;;
+            *)    fragments=(toolchain libs tools supportdata swift network audio daemons lib32 applibs) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
