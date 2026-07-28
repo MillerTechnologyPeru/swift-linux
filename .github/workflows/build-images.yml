@@ -21,12 +21,20 @@ jobs:
       matrix:
         arch: [x86_64, arm64]
     runs-on: ubuntu-latest
+    needs: lib32
     # Per-arch container with Buildroot + a prebuilt output/<arch> (toolchain
     # + host-swift + native Swift tools). Same images buildroot-swift uses.
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
+
+      - name: Fetch the 32-bit companion
+        uses: actions/download-artifact@v4
+        with:
+          # i386 goes with the x86_64 image, armv7 with arm64.
+          name: lib32-${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}
+          path: lib32
 
       - name: Build image
         run: |
@@ -38,10 +46,12 @@ jobs:
           export BR2_EXTERNAL_SWIFT="$BR_SWIFT"
           export OUTPUT_BASE="$BR_SWIFT/output"
           # Reuse the cached output/<arch> so the toolchain and swift are not
-          # rebuilt; skip the 32-bit companion here (it is a separate,
-          # uncached toolchain build - add a dedicated job if wanted).
+          # rebuilt.
           export IMAGE_OUTPUT_DIR="$BR_SWIFT/output/${{ matrix.arch }}"
-          export NO_LIB32=1
+          # Merge the companion built by the lib32 job into /usr/lib32 rather
+          # than building one here (its toolchain is not cached in this image).
+          mkdir -p /tmp/lib32 && tar xzf lib32/lib32-*.tar.gz -C /tmp/lib32
+          export LIB32_ROOT=/tmp/lib32/target
           # The container's cached OpenSSL was built without engine support;
           # rebuild it so RAUC (which uses the OpenSSL ENGINE API) can compile.
           export REBUILD_PKGS=libopenssl
@@ -64,6 +74,42 @@ jobs:
           path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
+
+  # The 32-bit companion userland that gets merged into each image as
+  # /usr/lib32. It must be built in its own architecture's container (that is
+  # where the cross-toolchain is cached); the image job then merges the target
+  # tree. i386 pairs with the x86_64 image, armv7 with arm64.
+  lib32:
+    name: lib32 (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [i386, armv7]
+    runs-on: ubuntu-latest
+    container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    steps:
+      - name: Checkout swift-linux
+        uses: actions/checkout@v4
+
+      - name: Build the 32-bit companion
+        run: |
+          set -eu
+          BR_SWIFT=/workspaces/buildroot-swift
+          B="$BR_SWIFT/buildroot"
+          O="$BR_SWIFT/output/${{ matrix.arch }}"
+          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/external"
+          "$GITHUB_WORKSPACE/generate-config.sh" \
+            --arch ${{ matrix.arch }} --profile lib32 -o /tmp/lib32.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
+          tar czf "$GITHUB_WORKSPACE/lib32-${{ matrix.arch }}.tar.gz" -C "$O" target
+
+      - name: Upload companion target tree
+        uses: actions/upload-artifact@v4
+        with:
+          name: lib32-${{ matrix.arch }}
+          path: lib32-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
 
   # Every architecture's Swift SDK comes from the app-sdk profile (Swift plus
   # the full applibs graphics/app stack), so all four bundles carry the same
