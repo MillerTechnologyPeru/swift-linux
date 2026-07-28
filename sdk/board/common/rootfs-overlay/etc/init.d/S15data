@@ -1,7 +1,7 @@
 #!/bin/sh
 # Mount the ESP and the persistent data partition, and move the default user's
-# home onto the latter, keeping the rootfs read-only. Formats the data
-# partition on first boot.
+# home onto the latter, keeping the rootfs read-only. On first boot the data
+# partition is grown to fill the medium and formatted.
 #
 # Ordering matters: this must run AFTER S10udevd, because both partitions are
 # addressed by their /dev/disk/by-partuuid symlinks, which udev creates.
@@ -10,6 +10,47 @@
 BOOT_DEV=/dev/disk/by-partuuid/0e0e0e0e-0000-4000-8000-00000000000e
 DATA_DEV=/dev/disk/by-partuuid/0d0d0d0d-0000-4000-8000-00000000000d
 DATA=/data
+
+# grow_data_partition: images are built at a fixed size, so on a larger medium
+# everything past the data partition is unused. Extend it to the end of the
+# disk before the filesystem is created or mounted.
+#
+# This is idempotent and needs no marker file: it compares the partition's end
+# with the disk's end and does nothing when the space is already claimed, so it
+# also covers a card that is later cloned onto a larger one.
+grow_data_partition() {
+	part="$(readlink -f "${DATA_DEV}")"
+	[ -b "${part}" ] || return 0
+	pname="${part#/dev/}"
+	# /sys/class/block/<part>/../ is the parent disk for a partition.
+	sysdir="/sys/class/block/${pname}"
+	[ -d "${sysdir}" ] || return 0
+	dname="$(basename "$(readlink -f "${sysdir}/..")")"
+	[ -b "/dev/${dname}" ] || return 0
+	partnum="$(cat "${sysdir}/partition" 2>/dev/null)" || return 0
+
+	disk_sectors="$(cat "/sys/class/block/${dname}/size" 2>/dev/null)" || return 0
+	part_start="$(cat "${sysdir}/start" 2>/dev/null)" || return 0
+	part_sectors="$(cat "${sysdir}/size" 2>/dev/null)" || return 0
+
+	# Leave room for the GPT backup header (33 sectors) plus a little slack;
+	# only bother when there is a meaningful amount of space to gain (16 MiB).
+	free=$((disk_sectors - part_start - part_sectors - 34))
+	[ "${free}" -gt 32768 ] || return 0
+
+	command -v parted >/dev/null 2>&1 || return 0
+	printf 'Growing data partition to fill the disk: '
+	# -f moves the GPT backup header to the new end of the disk, which is
+	# what makes the trailing space usable in the first place.
+	if parted -s -f "/dev/${dname}" resizepart "${partnum}" 100% >/dev/null 2>&1; then
+		# Let the kernel re-read the table so the new size is visible.
+		partprobe "/dev/${dname}" >/dev/null 2>&1 || \
+			blockdev --rereadpt "/dev/${dname}" >/dev/null 2>&1 || true
+		echo OK
+	else
+		echo "FAIL (continuing with the existing size)"
+	fi
+}
 
 wait_for_dev() {
 	i=0
@@ -31,6 +72,8 @@ start() {
 		return 0
 	fi
 
+	grow_data_partition
+
 	# First boot: create an ext4 filesystem on the raw data partition.
 	# Detect an existing filesystem by ANY blkid output: busybox blkid prints
 	# LABEL/UUID but not a TYPE= field, so a type match cannot be relied on.
@@ -39,6 +82,13 @@ start() {
 	if [ -z "$(blkid "${DATA_DEV}" 2>/dev/null)" ]; then
 		printf 'Formatting data partition: '
 		mkfs.ext4 -q -L data "${DATA_DEV}" < /dev/null && echo OK || { echo FAIL; return 0; }
+
+	else
+		# The filesystem predates the partition it sits on being grown, so
+		# stretch it to the partition's current size. resize2fs is a no-op
+		# when it already fills it.
+		e2fsck -p "${DATA_DEV}" >/dev/null 2>&1 || true
+		resize2fs "${DATA_DEV}" >/dev/null 2>&1 || true
 	fi
 
 	# /data exists in the rootfs image: the root is read-only and cannot be
