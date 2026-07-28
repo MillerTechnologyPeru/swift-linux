@@ -20,6 +20,8 @@
 #                       the native Swift toolchain the swift package needs.
 #                       The image is otherwise complete.
 #   NO_LIB32=1          skip the 32-bit companion (no /usr/lib32, no box86)
+#   LIB32_ROOT          use an already-built companion target/ tree instead of
+#                       building one (its toolchain lives in another container)
 #   DL_DIR              override the Buildroot download dir (default: buildroot's
 #                       own $(TOPDIR)/dl, already shared across arches)
 #   CCACHE_DIR          compiler cache dir (default: $OUTPUT_BASE/ccache)
@@ -122,7 +124,13 @@ build_track() {
 
 	echo "[$arch] starting"
 
-	if [ -n "$lib32arch" ] && [ "${NO_LIB32:-0}" != "1" ]; then
+	if [ -n "${LIB32_ROOT:-}" ]; then
+		# A companion built elsewhere (CI builds it in the container that has
+		# that architecture's cached toolchain, then hands the target tree
+		# here); merge it instead of building one.
+		lib32_root="$LIB32_ROOT"
+		echo "[$arch] using prebuilt lib32 companion: $lib32_root"
+	elif [ -n "$lib32arch" ] && [ "${NO_LIB32:-0}" != "1" ]; then
 		local l_out="$OUTPUT_BASE/$lib32arch-lib32"
 		local l_cfg="$OUTPUT_BASE/$lib32arch-lib32.defconfig"
 		echo "[$arch] building $lib32arch lib32 companion"
