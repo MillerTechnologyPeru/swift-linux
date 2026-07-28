@@ -24,9 +24,15 @@ CONFIG_JOYSTICK_XPAD=y
 CONFIG_IIO=y
 CONFIG_BMI160=y
 
-# Audio: ACP + Cirrus amplifiers on the LCD model
+# Audio: the Deck routes through SOF on the APU's ACP (Van Gogh), with the
+# NAU8821 codec and Cirrus amplifiers. The SOF path additionally needs the
+# amd/sof firmware and topology blobs, which Buildroot's linux-firmware does
+# not package - see README.md.
 CONFIG_SND=y
 CONFIG_SND_SOC=y
+CONFIG_SND_SOC_SOF_TOPLEVEL=y
+CONFIG_SND_SOC_SOF_AMD_TOPLEVEL=y
+CONFIG_SND_SOC_SOF_AMD_VANGOGH=m
 CONFIG_SND_SOC_AMD_ACP=y
 CONFIG_SND_SOC_AMD_ACP5x=y
 CONFIG_SND_SOC_CS35L41_SPI=y

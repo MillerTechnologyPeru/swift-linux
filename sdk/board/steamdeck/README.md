@@ -22,6 +22,17 @@ image, including the handhelds that will never use it - so the Deck gets its
 own board.config plus a `gpu/radeonsi.config` capability, and the generic image
 is untouched.
 
+## Device-specific bits that matter
+
+- **`hid_steam lizard_mode=0`** (shipped in this board's overlay). Without it
+  the controller stays in "lizard mode" and emulates a keyboard/mouse instead
+  of presenting a gamepad.
+- **Audio goes through SOF**, not plain ACP: the Van Gogh APU needs the
+  `amd/sof/sof-vangogh-code.bin` firmware and the `sof-vangogh-nau8821-max.tplg`
+  topology, plus PipeWire/WirePlumber configuration for the speaker array.
+  Buildroot's linux-firmware does not package the AMD SOF blobs, so audio will
+  not work until they are added (a `steamdeck-dsp`-style package).
+
 ## Not yet done
 
 - **Not built or verified.** A real bring-up needs the amdgpu firmware present
