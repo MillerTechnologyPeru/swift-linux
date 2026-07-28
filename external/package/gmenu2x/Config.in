@@ -1,0 +1,14 @@
+config BR2_PACKAGE_GMENU2X
+	bool "gmenu2x"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_USE_MMU
+	select BR2_PACKAGE_SDL
+	select BR2_PACKAGE_SDL_IMAGE
+	select BR2_PACKAGE_SDL_TTF
+	help
+	  Game/app launcher for small framebuffer handhelds: SDL 1.2,
+	  no GPU, no Wayland and no OpenGL required. This is MiyooCFW's
+	  maintained fork, the frontend of the BittBoy/PocketGo family
+	  of armv5 devices.
+
+	  https://github.com/MiyooCFW/gmenu2x
