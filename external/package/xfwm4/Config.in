@@ -1,0 +1,9 @@
+config BR2_PACKAGE_XFWM4
+	bool "xfwm4"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_LIBWNCK
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  The XFCE window manager (X11), with its GL compositor.
+
+	  https://docs.xfce.org/
