@@ -1,0 +1,7 @@
+#!/bin/sh
+# pm-utils interface probe (see pm-suspend). Reports whether the kernel
+# offers the queried sleep state; ES only ever asks about --suspend.
+case "$1" in
+	--suspend) grep -qw mem /sys/power/state ;;
+	*) exit 1 ;;
+esac
