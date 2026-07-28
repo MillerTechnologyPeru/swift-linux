@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Image-wide defaults: Chicago95 as the active theme (see the chicago95
+     package). Per-user settings in ~/.config/xfce4 override these. -->
+<channel name="xsettings" version="1.0">
+  <property name="Net" type="empty">
+    <property name="ThemeName" type="string" value="Chicago95"/>
+    <property name="IconThemeName" type="string" value="Chicago95"/>
+  </property>
+  <property name="Gtk" type="empty">
+    <property name="CursorThemeName" type="string" value="Chicago95_Cursor_White"/>
+  </property>
+</channel>
