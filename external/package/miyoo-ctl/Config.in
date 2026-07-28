@@ -1,0 +1,9 @@
+config BR2_PACKAGE_MIYOO_CTL
+	bool "miyoo-ctl"
+	help
+	  Hardware control CLI for the Allwinner suniv handheld family:
+	  volume, rumble, panel/keypad/layout revision selection -
+	  the userland side of the family kernel's miyoo modules, used
+	  by scripts and by miyoo-daemon's hotkeys.
+
+	  https://github.com/MiyooCFW/miyooctl
