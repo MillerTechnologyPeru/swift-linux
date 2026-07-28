@@ -1,26 +1,10 @@
 #!/bin/sh
-# Shared (arch/board independent) post-build tweaks:
-#   - autologin the default user on tty1, the VT Weston runs on.
+# Shared (arch/board independent) post-build tweaks.
 set -e
 TARGET_DIR="$1"
-INITTAB="${TARGET_DIR}/etc/inittab"
 
-[ -f "${INITTAB}" ] || exit 0
-
-# Drop any stock getty on tty1 and any previous autologin entry we added,
-# then install our autologin entry (idempotent across rebuilds).
-sed -i '\#getty.*tty1#d' "${INITTAB}"
-sed -i '\#autologin on tty1#d' "${INITTAB}"
-
-cat >> "${INITTAB}" <<'EOF'
-
-# autologin on tty1
-tty1::respawn:/sbin/getty -n -l /usr/bin/autologin -L tty1 0 linux
-EOF
-
-# Keep the rootfs read-only: busybox's stock inittab remounts / read-write
-# during sysinit, which silently undoes the kernel's "ro" mount.
-sed -i '\#mount -o remount,rw /#d' "${INITTAB}"
+# /etc/inittab (busybox pid 1 handing over to OpenRC, tty1 autologin, no rw
+# remount of /) is owned by the rootfs overlay now - nothing to edit here.
 
 # The rootfs is mounted read-only, so DHCP cannot rewrite /etc/resolv.conf.
 # Point it at the /tmp tmpfs instead.
@@ -32,6 +16,10 @@ fi
 # Remove files from earlier layouts. The rootfs overlay only adds files, so
 # anything renamed or replaced would otherwise linger in an incremental build.
 rm -f "${TARGET_DIR}/etc/init.d/S05data"
+# Pre-OpenRC eudev installed S10udevd; under OpenRC udev is started from the
+# sysinit runlevel instead, and a lingering S10udevd would start a second
+# udevd from sysv-rcs.
+rm -f "${TARGET_DIR}/etc/init.d/S10udevd"
 rm -f "${TARGET_DIR}/usr/bin/weston-session" \
       "${TARGET_DIR}/etc/profile.d/weston.sh"
 rm -rf "${TARGET_DIR}/etc/xdg/weston"

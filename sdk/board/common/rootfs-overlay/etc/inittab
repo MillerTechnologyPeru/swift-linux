@@ -1,0 +1,29 @@
+# /etc/inittab - busybox init stays pid 1; OpenRC runs the runlevels.
+# (Alpine Linux boots exactly this way.) Buildroot only installs busybox's
+# stock inittab under BR2_INIT_BUSYBOX, so with BR2_INIT_OPENRC this overlay
+# owns the file.
+#
+# The stock inittab's sysinit lines (mount /proc, mount -a, hostname, /dev
+# symlinks...) are not replicated here: OpenRC's sysinit and boot runlevels
+# (init.sh, localmount, hostname, bootmisc) cover all of them, and localmount
+# honours the "ro" root entry in /etc/fstab, keeping the rootfs read-only.
+# udev also starts in the sysinit runlevel (udev-gentoo-scripts), so device
+# symlinks exist before the default runlevel's sysv-rcs runs /etc/init.d/S??*.
+::sysinit:/sbin/openrc sysinit
+::sysinit:/sbin/openrc boot
+::wait:/sbin/openrc default
+
+# autologin the default user on tty1, the VT sway runs on (previously
+# appended to busybox's inittab by post-build.sh).
+tty1::respawn:/sbin/getty -n -l /usr/bin/autologin -L tty1 0 linux
+
+# The serial console is not listed here: OpenRC's agetty.<port> service in
+# the default runlevel provides it (from BR2_TARGET_GENERIC_GETTY_PORT).
+
+::ctrlaltdel:/sbin/reboot
+
+# "openrc shutdown" stops the default runlevel's services - including
+# sysv-rcs, which runs the /etc/init.d/S??* stop actions in reverse order,
+# so S15data unmounts /data, /home and /boot. The umount sweeps up the rest.
+::shutdown:/sbin/openrc shutdown
+::shutdown:/bin/umount -a -r
