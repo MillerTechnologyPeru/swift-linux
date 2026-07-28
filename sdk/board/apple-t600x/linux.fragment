@@ -1,0 +1,57 @@
+# Apple Silicon t600x kernel options - the non-Rust subset of the downstream
+# tree's asahi.config. 16K pages are effectively mandatory (the IOMMUs only
+# support 16K-aligned pages). GPU (DRM_ASAHI) needs CONFIG_RUST and is
+# deferred; DRM_APPLE (display controller) is C and included.
+CONFIG_ARM64_16K_PAGES=y
+# Platform
+CONFIG_ARCH_APPLE=y
+CONFIG_APPLE_AIC=y
+CONFIG_APPLE_MAILBOX=y
+CONFIG_APPLE_RTKIT=y
+CONFIG_APPLE_SART=y
+CONFIG_APPLE_DART=y
+CONFIG_APPLE_PMGR_PWRSTATE=y
+CONFIG_ARM_APPLE_SOC_CPUFREQ=y
+CONFIG_SPMI_APPLE=y
+CONFIG_I2C_APPLE=y
+CONFIG_SPI_APPLE=y
+CONFIG_PINCTRL_APPLE_GPIO=y
+CONFIG_NVMEM_APPLE_EFUSES=y
+CONFIG_SERIAL_SAMSUNG=y
+CONFIG_SERIAL_SAMSUNG_CONSOLE=y
+# Storage / network / BT (firmware-needing drivers as modules so the vendor
+# firmware from the ESP is available before they probe)
+CONFIG_NVME_APPLE=y
+CONFIG_PCIE_APPLE=y
+CONFIG_BRCMFMAC=m
+CONFIG_BRCMFMAC_PCIE=m
+CONFIG_BT_HCIBCM4377=m
+# Display (DCP - C driver) + framebuffer fallback
+CONFIG_DRM=y
+CONFIG_DRM_APPLE=m
+CONFIG_DRM_SIMPLEDRM=y
+CONFIG_FB=y
+# Input: keyboard/trackpad over SPI-HID (downstream driver)
+CONFIG_SPI_HID_APPLE_CORE=m
+CONFIG_SPI_HID_APPLE_OF=m
+CONFIG_INPUT_EVDEV=y
+# SMC: battery, hwmon, reboot
+CONFIG_MFD_MACSMC=y
+CONFIG_CHARGER_MACSMC=y
+CONFIG_SENSORS_MACSMC_HWMON=y
+CONFIG_POWER_RESET_MACSMC=y
+CONFIG_RTC_DRV_MACSMC=y
+# Audio codecs/transport (speaker use additionally needs the safety daemon;
+# see README - headphones work without)
+CONFIG_APPLE_ADMAC=y
+CONFIG_APPLE_SIO=y
+CONFIG_COMMON_CLK_APPLE_NCO=y
+CONFIG_SND_SOC_APPLE_MCA=m
+CONFIG_SND_SOC_APPLE_MACAUDIO=m
+CONFIG_SND_SOC_TAS2764=m
+CONFIG_SND_SOC_CS42L84=m
+# USB
+CONFIG_USB_DWC3=y
+CONFIG_TYPEC_TPS6598X=m
+CONFIG_PHY_APPLE_ATC=m
+CONFIG_EXT4_FS=y
