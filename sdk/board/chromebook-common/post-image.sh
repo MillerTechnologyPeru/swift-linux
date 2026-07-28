@@ -4,7 +4,7 @@
 #
 # DEFINITION ONLY - not verified on hardware. Layout (sectors), following the
 # ChromeOS convention: KERN-A @ 8192, KERN-B @ 73728 (32 MiB each, ChromeOS
-# kernel GUID), rootfs from 139264. Slot attributes: A priority 10 / tries 2 /
+# kernel GUID), then a rootfs per slot from 139264 so updates have a target. Slot attributes: A priority 10 / tries 2 /
 # successful; B priority 5 / tries 2. Root is found via
 # root=PARTUUID=%U/PARTNROFF=N (Depthcharge substitutes %U).
 set -e
@@ -62,13 +62,16 @@ done
 # 3. A/B disk: GPT via sgdisk, ChromeOS kernel partitions + attributes via cgpt.
 ROOTFS="${BINARIES_DIR}/rootfs.ext4"
 ROOT_SECTORS=$(( ($(stat -c%s "$ROOTFS") + 511) / 512 ))
-TOTAL=$(( 139264 + ROOT_SECTORS + 2048 ))
+TOTAL=$(( 139264 + 2 * ROOT_SECTORS + 2048 ))
 rm -f "$OUT"; truncate -s $(( TOTAL * 512 )) "$OUT"
 "${HOST_DIR}/sbin/sgdisk" -o "$OUT" >/dev/null
 CGPT="${HOST_DIR}/bin/cgpt"
 "$CGPT" add -i 1 -t kernel -b 8192  -s 65536 -l KERN-A -S 1 -T 2 -P 10 "$OUT"
 "$CGPT" add -i 2 -t kernel -b 73728 -s 65536 -l KERN-B -S 0 -T 2 -P 5  "$OUT"
-"$CGPT" add -i 3 -t data   -b 139264 -s "$ROOT_SECTORS" -l ROOT "$OUT"
+"$CGPT" add -i 3 -t data   -b 139264 -s "$ROOT_SECTORS" -l ROOT-A "$OUT"
+# Slot B's rootfs, so RAUC has somewhere to install an update. It starts empty;
+# the firmware only reaches it once RAUC has written it and raised KERN-B.
+"$CGPT" add -i 4 -t data   -b $(( 139264 + ROOT_SECTORS )) -s "$ROOT_SECTORS" -l ROOT-B "$OUT"
 dd if="${BINARIES_DIR}/vmlinux.kpart.A" of="$OUT" bs=512 seek=8192  conv=notrunc 2>/dev/null
 dd if="${BINARIES_DIR}/vmlinux.kpart.B" of="$OUT" bs=512 seek=73728 conv=notrunc 2>/dev/null
 dd if="$ROOTFS" of="$OUT" bs=512 seek=139264 conv=notrunc 2>/dev/null

@@ -1,0 +1,80 @@
+#!/bin/sh
+# RAUC custom bootloader backend for ChromeOS kernel partitions.
+#
+# Depthcharge boots the kernel partition with the highest priority whose tries
+# are not exhausted, so "which slot boots next" is a set of GPT attribute bits
+# rather than a bootloader variable. ChromeOS packs them into the partition
+# attributes, bits 48-63 of the GPT entry:
+#
+#   bits 48-51  priority   (higher wins; 0 disables the partition)
+#   bits 52-55  tries      (the firmware decrements this on each attempt)
+#   bit  56     successful (set once the slot has proven itself)
+#
+# cgpt is the usual tool for this, but Buildroot only builds it for the host,
+# so this drives the same bits with sgdisk, which is available on the target.
+#
+# RAUC calls this with: get-primary | set-primary <slot> |
+#                       get-state <slot> | set-state <slot> good|bad
+set -e
+
+DISK="${RAUC_CGPT_DISK:-}"
+if [ -z "$DISK" ]; then
+	root_src=$(findmnt -no SOURCE / 2>/dev/null || true)
+	DISK="/dev/$(lsblk -no pkname "$root_src" 2>/dev/null | head -1)"
+fi
+[ -b "$DISK" ] || { echo "cannot determine the boot disk (set RAUC_CGPT_DISK)" >&2; exit 1; }
+
+part_for() {
+	case "$1" in
+		A|kernel.0) echo 1 ;;
+		B|kernel.1) echo 2 ;;
+		*) echo "unknown slot: $1" >&2; exit 1 ;;
+	esac
+}
+
+# The attribute word is printed by sgdisk as a 16-hex-digit value.
+attrs() { sgdisk --attributes="$1":show "$DISK" 2>/dev/null | grep -oE '[0-9A-Fa-f]{16}' | head -1; }
+field() { # <partnum> <shift> <mask>  -> decimal value of that bit range
+	a=$(attrs "$1"); [ -n "$a" ] || { echo 0; return; }
+	echo $(( (0x$a >> $2) & $3 ))
+}
+set_field() { # <partnum> <shift> <mask> <value>
+	a=$(attrs "$1"); [ -n "$a" ] || a=0000000000000000
+	new=$(( (0x$a & ~($3 << $2)) | (($4 & $3) << $2) ))
+	sgdisk --attributes="$1":=:$(printf '%016X' "$new") "$DISK" >/dev/null
+}
+
+PRIO_SHIFT=48; PRIO_MASK=15
+TRY_SHIFT=52;  TRY_MASK=15
+SUCC_SHIFT=56; SUCC_MASK=1
+
+case "$1" in
+get-primary)
+	[ "$(field 1 $PRIO_SHIFT $PRIO_MASK)" -ge "$(field 2 $PRIO_SHIFT $PRIO_MASK)" ] && echo A || echo B
+	;;
+set-primary)
+	n=$(part_for "$2"); other=$(( n == 1 ? 2 : 1 ))
+	# Boot the new slot first, with tries so the firmware can fall back, and
+	# leave the previous one bootable at a lower priority.
+	set_field "$n" $PRIO_SHIFT $PRIO_MASK 10
+	set_field "$n" $TRY_SHIFT  $TRY_MASK  2
+	set_field "$n" $SUCC_SHIFT $SUCC_MASK 0
+	set_field "$other" $PRIO_SHIFT $PRIO_MASK 5
+	;;
+get-state)
+	n=$(part_for "$2")
+	[ "$(field "$n" $PRIO_SHIFT $PRIO_MASK)" -eq 0 ] && echo bad || echo good
+	;;
+set-state)
+	n=$(part_for "$2")
+	case "$3" in
+		good) set_field "$n" $SUCC_SHIFT $SUCC_MASK 1; set_field "$n" $TRY_SHIFT $TRY_MASK 0 ;;
+		bad)  set_field "$n" $PRIO_SHIFT $PRIO_MASK 0; set_field "$n" $SUCC_SHIFT $SUCC_MASK 0 ;;
+		*) echo "unknown state: $3" >&2; exit 1 ;;
+	esac
+	;;
+*)
+	echo "usage: $0 {get-primary|set-primary <slot>|get-state <slot>|set-state <slot> good|bad}" >&2
+	exit 1
+	;;
+esac
