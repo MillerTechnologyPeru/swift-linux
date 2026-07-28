@@ -1,0 +1,12 @@
+config BR2_PACKAGE_ALSA_UCM_CONF
+	bool "alsa-ucm-conf"
+	depends on BR2_PACKAGE_ALSA_LIB
+	depends on BR2_PACKAGE_ALSA_LIB_UCM
+	help
+	  ALSA Use Case Manager configuration: the per-codec routing data
+	  that tells ALSA how a SoC's sound hardware is wired - speakers
+	  versus headphones, which amplifier to enable, jack detection.
+	  alsa-lib carries the UCM code but none of this data; without it
+	  audio on most ARM devices does not route at all.
+
+	  https://github.com/alsa-project/alsa-ucm-conf

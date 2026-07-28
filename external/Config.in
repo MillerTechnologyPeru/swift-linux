@@ -1,5 +1,7 @@
 menu "Swift Linux packages"
 
+source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/alsa-topology-conf/Config.in"
+source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/alsa-ucm-conf/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/box64/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/box86/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/emulationstation/Config.in"
