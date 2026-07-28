@@ -1,0 +1,109 @@
+#!/bin/sh
+# Bluetooth helper with the CLI contract EmulationStation's ApiSystem
+# expects (the BLUETOOTH menu appears when /usr/bin/rocknix-bluetooth
+# exists). Same commands and the same "<device id=... name=... type=...
+# connected=... />" line format as ROCKNIX's script, but self-contained
+# over bluetoothctl instead of their bluetooth agent daemon:
+#
+#   rocknix-bluetooth enable | disable
+#   rocknix-bluetooth list                        - trusted devices
+#   rocknix-bluetooth live_devices                - stream discoveries
+#   rocknix-bluetooth stop_live_devices
+#   rocknix-bluetooth trust|connect|disconnect|remove <mac>
+#   rocknix-bluetooth trust input                 - no-op (agent feature)
+#
+# BlueZ is root-only over D-Bus for the session user, so re-exec through
+# the NOPASSWD rule in /etc/sudoers.d/es-platform.
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+
+LIVE_FLAG=/tmp/es-bt-live.on
+SCAN_PID=/tmp/es-bt-scan.pid
+
+# device_line <mac> <status> - emit one ES-parseable line for a device.
+device_line() {
+	info="$(bluetoothctl -- info "$1" 2>/dev/null)"
+	name="$(echo "$info" | sed -n 's/^\s*Name: //p' | head -1)"
+	[ -n "$name" ] || name="$1"
+	case "$(echo "$info" | sed -n 's/^\s*Icon: //p' | head -1)" in
+		input-gaming) type="joystick" ;;
+		audio-*) type="audio" ;;
+		*) type="" ;;
+	esac
+	if echo "$info" | grep -q "Connected: yes"; then
+		connected="yes"
+	else
+		connected="no"
+	fi
+	printf '<device id="%s" name="%s" type="%s" status="%s" connected="%s" />\n' \
+		"$1" "$name" "$type" "$2" "$connected"
+}
+
+trusted_macs() {
+	bluetoothctl -- devices 2>/dev/null | awk '{print $2}' | while read -r mac; do
+		bluetoothctl -- info "$mac" 2>/dev/null | grep -q "Trusted: yes" && echo "$mac"
+	done
+}
+
+case "$1" in
+	enable)
+		bluetoothctl -- power on >/dev/null 2>&1
+		;;
+	disable)
+		bluetoothctl -- power off >/dev/null 2>&1
+		;;
+	list)
+		for mac in $(trusted_macs); do
+			device_line "$mac" paired
+		done
+		;;
+	live_devices|start_live_devices)
+		bluetoothctl -- power on >/dev/null 2>&1
+		touch "$LIVE_FLAG"
+		# bluetoothctl only discovers while a client holds "scan on";
+		# keep one in the background for the lifetime of the stream.
+		bluetoothctl --timeout 3600 scan on >/dev/null 2>&1 &
+		echo $! > "$SCAN_PID"
+		seen=""
+		while [ -e "$LIVE_FLAG" ]; do
+			for mac in $(bluetoothctl -- devices 2>/dev/null | awk '{print $2}'); do
+				case " $seen " in *" $mac "*) continue ;; esac
+				seen="$seen $mac"
+				if bluetoothctl -- info "$mac" 2>/dev/null | grep -q "Paired: yes"; then
+					device_line "$mac" paired
+				else
+					device_line "$mac" new
+				fi
+			done
+			sleep 2
+		done
+		;;
+	stop_live_devices)
+		rm -f "$LIVE_FLAG"
+		[ -f "$SCAN_PID" ] && kill "$(cat "$SCAN_PID")" 2>/dev/null
+		rm -f "$SCAN_PID"
+		bluetoothctl -- scan off >/dev/null 2>&1
+		;;
+	trust)
+		if [ "$2" = "input" ]; then
+			# ROCKNIX implements auto-trust through its agent daemon;
+			# pairing here goes through explicit "trust <mac>" instead.
+			exit 0
+		fi
+		bluetoothctl -- pair "$2" >/dev/null 2>&1
+		bluetoothctl -- trust "$2" >/dev/null 2>&1 && \
+			bluetoothctl -- connect "$2" >/dev/null 2>&1
+		;;
+	connect)
+		bluetoothctl -- connect "$2" >/dev/null 2>&1
+		;;
+	disconnect)
+		bluetoothctl -- disconnect "$2" >/dev/null 2>&1
+		;;
+	remove)
+		bluetoothctl -- remove "$2" >/dev/null 2>&1
+		;;
+	*)
+		echo "usage: rocknix-bluetooth enable|disable|list|live_devices|stop_live_devices|trust|connect|disconnect|remove" >&2
+		exit 1
+		;;
+esac

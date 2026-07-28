@@ -1,0 +1,100 @@
+#!/bin/sh
+# WiFi helper with the CLI contract EmulationStation's ApiSystem expects
+# (see isScriptingSupported: the WIFI menu appears when /usr/bin/wifictl
+# exists). ROCKNIX's own wifictl wraps NetworkManager/iwd; this image runs
+# ConnMan, so the same contract is implemented over connmanctl:
+#
+#   wifictl enable | disable
+#   wifictl list | scanlist          - one SSID per line
+#   wifictl connect <ssid> <psk> [country]
+#   wifictl has_ap_mode              - AP/netplay mode: not supported here
+#
+# ConnMan is root-only over D-Bus and the frontend runs as the session
+# user, so re-exec through the NOPASSWD rule in /etc/sudoers.d/es-platform.
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+
+# ConnMan names wifi services wifi_<hexdev>_<hexssid>_managed_<security>;
+# the human SSID is everything before that field in "connmanctl services"
+# output, after the 4-character state prefix (*AO / *AR / ...).
+service_lines() {
+	connmanctl services 2>/dev/null | grep ' wifi_'
+}
+
+ssid_of() {
+	echo "$1" | sed -e 's/ *wifi_[0-9a-f]*_[0-9a-f]*_[a-z0-9_]*$//' -e 's/^....//' \
+		-e 's/^ *//' -e 's/ *$//'
+}
+
+service_of() {
+	echo "$1" | grep -o 'wifi_[0-9a-f]*_[0-9a-f]*_[a-z0-9_]*$'
+}
+
+list_networks() {
+	service_lines | while read -r line; do
+		ssid="$(ssid_of "$line")"
+		[ -n "$ssid" ] && echo "$ssid"
+	done | sort -u
+}
+
+case "$1" in
+	enable)
+		connmanctl enable wifi >/dev/null 2>&1
+		;;
+	disable)
+		connmanctl disable wifi >/dev/null 2>&1
+		;;
+	scanlist)
+		connmanctl enable wifi >/dev/null 2>&1
+		connmanctl scan wifi >/dev/null 2>&1
+		list_networks
+		;;
+	list)
+		list_networks
+		;;
+	connect)
+		ssid="$2"
+		psk="$3"
+		country="$4"
+		[ -n "$ssid" ] || exit 1
+		[ -n "$country" ] && command -v iw >/dev/null 2>&1 && \
+			iw reg set "$country" 2>/dev/null
+
+		# Provision the network: ConnMan watches /var/lib/connman (bind-
+		# mounted from the data partition, so this persists) and connects
+		# to provisioned favorites on its own - which also sidesteps the
+		# interactive passphrase agent connmanctl would otherwise need.
+		cfg=/var/lib/connman/wifi-es.config
+		{
+			echo "[service_wifi_es]"
+			echo "Type = wifi"
+			echo "Name = $ssid"
+			[ -n "$psk" ] && echo "Passphrase = $psk"
+		} > "$cfg"
+
+		# Nudge an explicit connect too, so success is immediate rather
+		# than whenever ConnMan's autoconnect gets around to it.
+		connmanctl scan wifi >/dev/null 2>&1
+		svc=""
+		lines="$(service_lines)"
+		while read -r line; do
+			[ "$(ssid_of "$line")" = "$ssid" ] || continue
+			svc="$(service_of "$line")"
+			break
+		done <<EOF
+$lines
+EOF
+		[ -n "$svc" ] && connmanctl connect "$svc" >/dev/null 2>&1
+		exit 0
+		;;
+	has_ap_mode)
+		exit 1
+		;;
+	channels)
+		# Only meaningful for AP/netplay mode, which is not supported.
+		exit 0
+		;;
+	*)
+		echo "usage: wifictl enable|disable|list|scanlist|connect <ssid> <psk> [country]|has_ap_mode" >&2
+		exit 1
+		;;
+esac

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Suspend-to-RAM. EmulationStation shows its SUSPEND menu entry only when
+# both /usr/sbin/pm-suspend and /usr/bin/pm-is-supported exist (the
+# pm-utils interface); this pair provides it without pulling in pm-utils.
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+echo mem > /sys/power/state
