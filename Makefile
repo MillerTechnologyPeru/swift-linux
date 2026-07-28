@@ -54,6 +54,16 @@ else
 CONTAINER_OPTS ?=
 endif
 
+# $(OUTPUT_BASE) as the *build* sees it. Only BR_SWIFT and REPO_DIR are bind-
+# mounted, so a container build's output necessarily lives under the container's
+# /workspaces/buildroot-swift; passing the host path through would make Buildroot
+# look for a defconfig at a path that does not exist inside the container.
+ifeq ($(CONTAINER),1)
+BUILD_OUTPUT_BASE := /workspaces/buildroot-swift/output
+else
+BUILD_OUTPUT_BASE := $(OUTPUT_BASE)
+endif
+
 # ---- target discovery ----------------------------------------------------
 IMAGE_ARCHES := x86_64 arm64
 ALL_BOARD_DIRS := $(notdir $(patsubst %/board.config,%,$(wildcard $(REPO_DIR)/sdk/board/*/board.config)))
@@ -88,7 +98,7 @@ define br
 		-v $(REPO_DIR):/workspaces/swift-linux \
 		-w /workspaces/swift-linux $(CONTAINER_IMAGE):swift_$(call cont_arch,$(1))_defconfig \
 		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C /workspaces/buildroot-swift/buildroot \
-			O=/workspaces/buildroot-swift/output/$(1) \
+			O=$(BUILD_OUTPUT_BASE)/$(1) \
 			BR2_EXTERNAL=/workspaces/buildroot-swift:/workspaces/swift-linux/external \
 			$(BR2_MAKE_OPTS) $(2)'
 endef
@@ -113,7 +123,7 @@ $(addsuffix -defconfig,$(TARGETS)): %-defconfig:
 
 # %-config: configure Buildroot from the generated defconfig.
 $(addsuffix -config,$(TARGETS)): %-config: %-defconfig
-	$(call br,$*,BR2_DEFCONFIG=$(OUTPUT_BASE)/$*.defconfig defconfig)
+	$(call br,$*,BR2_DEFCONFIG=$(BUILD_OUTPUT_BASE)/$*.defconfig defconfig)
 
 # %-build: build the image (or override with CMD=...).
 $(addsuffix -build,$(TARGETS)): %-build: %-config
@@ -126,7 +136,7 @@ $(addsuffix -pkg,$(TARGETS)): %-pkg:
 
 # %-shell: interactive shell in the build environment.
 $(addsuffix -shell,$(TARGETS)): %-shell:
-	$(call br,$*,BR2_DEFCONFIG=$(OUTPUT_BASE)/$*.defconfig defconfig)
+	$(call br,$*,BR2_DEFCONFIG=$(BUILD_OUTPUT_BASE)/$*.defconfig defconfig)
 	@echo "(shell target is most useful with CONTAINER=1)"
 
 # %-clean: remove the target's output dir (keeps shared dl/ccache).
