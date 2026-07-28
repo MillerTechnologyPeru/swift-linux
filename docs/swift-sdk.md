@@ -9,6 +9,12 @@ x86_64 host:
 swift build --swift-sdk aarch64-unknown-linux-gnu
 ```
 
+The SDK sysroot is built from the **app-sdk profile**, so every architecture's
+bundle carries the same libraries *and headers*: the Swift runtime plus the
+graphics/app stack - libGL/EGL/GLES (with `gl.pc`/`glx.pc`), SDL2/SDL3,
+wayland, X11, cairo, ALSA - which is what lets both SwiftPM and the generated
+CMake toolchain link real applications.
+
 ## Prerequisites
 
 - A built target toolchain: run `build-images.sh` for the arch so

@@ -64,36 +64,18 @@ jobs:
           path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
-      # Package this arch's sysroot into a portable Swift SDK artifactbundle so
-      # it can be downloaded and used to cross-compile Swift for the image
-      # (see docs/swift-sdk.md).
-      - name: Generate Swift SDK
-        run: |
-          set -eu
-          export BR_SWIFT=/workspaces/buildroot-swift
-          bundle="/workspaces/buildroot-swift/output/swift-linux-${{ matrix.arch }}.artifactbundle"
-          bash "$GITHUB_WORKSPACE/util/make-swift-sdk.sh" \
-            --arch ${{ matrix.arch }} --portable --out "$bundle"
-          tar czf "$GITHUB_WORKSPACE/swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz" \
-            -C "$(dirname "$bundle")" "$(basename "$bundle")"
 
-      - name: Upload Swift SDK
-        uses: actions/upload-artifact@v4
-        with:
-          name: swift-linux-${{ matrix.arch }}-swift-sdk
-          path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
-          if-no-files-found: error
-
-  # The 32-bit companion arches (armv7, i386) are not bootable image targets,
-  # so they get a dedicated job: build the app-sdk profile (Swift + the full
-  # applibs graphics/app stack) and publish a Swift SDK for each. These feed the
-  # combined all-arch SDK alongside the arm64/x86_64 image SDKs.
+  # Every architecture's Swift SDK comes from the app-sdk profile (Swift plus
+  # the full applibs graphics/app stack), so all four bundles carry the same
+  # libraries and headers - libGL/EGL/GLES, SDL, wayland, X11, cairo, ALSA -
+  # rather than arm64/x86_64 shipping only what the image profile happened to
+  # build. armv7 and i386 have no bootable image target and exist only here.
   app-sdk:
     name: App SDK (${{ matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
-        arch: [armv7, i386]
+        arch: [x86_64, arm64, armv7, i386]
     runs-on: ubuntu-latest
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
     steps:
@@ -151,7 +133,7 @@ jobs:
   # Runs on a plain runner - it only rearranges files (jq + tar).
   combined-swift-sdk:
     name: Combined Swift SDK
-    needs: [image, app-sdk]
+    needs: app-sdk
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
