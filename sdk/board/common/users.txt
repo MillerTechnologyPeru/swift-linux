@@ -3,4 +3,12 @@
 #   password "=swift"  -> clear-text password "swift"
 #   group "video"      -> access to the seatd socket (seatd -g video), which
 #                         grants the Weston session DRM/input without root.
-swift 1000 swift 1000 =swift /home/swift /bin/sh video,tty,audio,dialout,wheel Swift User
+#   group "input"      -> /dev/input/event* (udev's 50-udev-default.rules
+#                         assigns them GROUP="input"). The compositor gets
+#                         input through seatd, but SDL2 reads game
+#                         controllers from evdev directly, so the session
+#                         user needs it for gamepads in EmulationStation
+#                         and games. Buildroot's skeleton has no such
+#                         group, hence the group-only line below.
+- - input -1 * - - - -
+swift 1000 swift 1000 =swift /home/swift /bin/sh video,tty,audio,dialout,wheel,input Swift User

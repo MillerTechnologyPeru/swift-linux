@@ -19,8 +19,11 @@ exec /usr/bin/pipewire
 exec /usr/bin/wireplumber
 exec /usr/bin/pipewire-pulse
 
-# Open a terminal as soon as the session starts.
-exec $term
+# Session start: the game frontend when the image ships it (fullscreen,
+# controller-driven - the handhelds' main interface), a terminal otherwise.
+# $mod+Return still opens a terminal either way.
+exec sh -c 'if command -v emulationstation >/dev/null 2>&1; then exec emulationstation; else exec foot; fi'
+for_window [app_id="emulationstation"] fullscreen enable
 
 ### Key bindings
 bindsym $mod+Return exec $term

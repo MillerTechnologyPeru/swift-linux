@@ -18,9 +18,17 @@ EMULATIONSTATION_GIT_SUBMODULES = YES
 EMULATIONSTATION_LICENSE = MIT
 EMULATIONSTATION_LICENSE_FILES = LICENSE.md
 
+# No boost: this fork dropped it (nothing in its CMake references Boost),
+# so it is deliberately absent from the selects and dependencies.
 EMULATIONSTATION_DEPENDENCIES = \
-	host-pkgconf boost sdl2 sdl2_mixer freetype freeimage libcurl \
+	host-pkgconf sdl2 sdl2_mixer freetype freeimage libcurl \
 	rapidjson pugixml vlc alsa-lib
+
+# libudev is an optional probe (light-gun support); depend on it when the
+# config has it so the feature set does not vary with build order.
+ifeq ($(BR2_PACKAGE_HAS_UDEV),y)
+EMULATIONSTATION_DEPENDENCIES += udev
+endif
 
 EMULATIONSTATION_CONF_OPTS = \
 	-DCEC=0 \

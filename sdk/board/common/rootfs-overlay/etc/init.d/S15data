@@ -107,6 +107,16 @@ start() {
 	fi
 	mount -o bind "${DATA}/home" /home
 
+	# EmulationStation user-content groups (see /etc/emulationstation/
+	# es_systems.cfg): ROMs, apps and games live on the data partition,
+	# owned by the default user so content can be dropped in over sftp.
+	for d in roms/nes apps games; do
+		[ -d "${DATA}/${d}" ] && continue
+		mkdir -p "${DATA}/${d}"
+		chown swift:swift "${DATA}/${d}"
+	done
+	chown swift:swift "${DATA}/roms" 2>/dev/null
+
 	# BlueZ pairings and ConnMan network profiles live under /var/lib, which
 	# is a tmpfs on this read-only rootfs; bind them to the data partition so
 	# they survive a reboot. Must happen before S40bluetoothd/S45connman.
