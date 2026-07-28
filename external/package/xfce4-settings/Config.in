@@ -1,0 +1,9 @@
+config BR2_PACKAGE_XFCE4_SETTINGS
+	bool "xfce4-settings"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_EXO
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  The XFCE settings daemon and dialogs (xsettings, display, input).
+
+	  https://docs.xfce.org/
