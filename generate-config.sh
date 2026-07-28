@@ -19,7 +19,7 @@
 #   sdk       = arch + toolchain + libs + swift
 #   app-sdk   = arch + toolchain + libs + swift + applibs
 #   image     = arch + toolchain + libs + swift + network + audio + daemons
-#               + image + steam + board.config   (bootable A/B UEFI image)
+#               + image + board.config           (bootable A/B UEFI image)
 #   lib32     = arch + toolchain + libs + swift + network + audio + daemons
 #               + lib32 + applibs [+ lib32-arm]  (32-bit companion userland,
 #               mirroring the image's library-bearing fragments; merged into a
@@ -99,7 +99,7 @@ case "$profile" in
                 exit 1
             fi
         fi
-        fragments=(toolchain libs swift network audio daemons image steam) ;;
+        fragments=(toolchain libs swift network audio daemons image) ;;
     lib32)
         # 32-bit companion userland, merged into a 64-bit image as /usr/lib32
         # by sdk/board/common/post-build-lib32.sh. Buildroot has no multilib
