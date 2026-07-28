@@ -1,0 +1,48 @@
+#!/bin/sh
+# Root half of squashfs app launching (the session-user half is es-launch):
+# only mounting needs privilege, so this helper does exactly that and
+# nothing else, and es-launch runs the app itself unprivileged.
+#
+#   es-squashfs mount <image> <dir>
+#   es-squashfs umount <dir>
+#
+# The sudoers rule (/etc/sudoers.d/es-platform) lets the session user run
+# this without a password, so it validates its arguments instead of
+# trusting them: the mountpoint must live under /run/es-squash, and images
+# are mounted read-only with nosuid/nodev - a setuid binary inside a
+# user-supplied image must not become a privilege escalation.
+
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+
+BASE=/run/es-squash
+
+valid_dir() {
+	case "$1" in
+		"$BASE"/*..*) return 1 ;;
+		"$BASE"/?*) return 0 ;;
+	esac
+	return 1
+}
+
+case "$1" in
+	mount)
+		image="$2"
+		dir="$3"
+		[ -f "$image" ] || { echo "es-squashfs: no such image: $image" >&2; exit 1; }
+		valid_dir "$dir" || { echo "es-squashfs: refusing mountpoint outside $BASE" >&2; exit 1; }
+		mkdir -p "$dir" || exit 1
+		mount -t squashfs -o loop,ro,nosuid,nodev "$image" "$dir" || { rmdir "$dir" 2>/dev/null; exit 1; }
+		;;
+	umount)
+		dir="$2"
+		valid_dir "$dir" || exit 1
+		grep -q " $dir squashfs " /proc/mounts || exit 0
+		umount "$dir" 2>/dev/null || umount -l "$dir" 2>/dev/null
+		rmdir "$dir" 2>/dev/null
+		exit 0
+		;;
+	*)
+		echo "usage: es-squashfs mount <image> <dir> | umount <dir>" >&2
+		exit 1
+		;;
+esac
