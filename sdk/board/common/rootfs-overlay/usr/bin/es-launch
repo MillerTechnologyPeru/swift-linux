@@ -1,0 +1,51 @@
+#!/bin/sh
+# Entry dispatcher for the EmulationStation Apps/Games/Tools groups
+# (es_systems.cfg runs "es-launch %ROM%" for them). Two entry kinds:
+#
+#   *.sh        - run with /bin/sh, as before.
+#   *.squashfs  - batocera-style app bundle: loop-mounted (via the
+#                 es-squashfs root helper), the entry point inside runs
+#                 unprivileged with the mount as its working directory,
+#                 and the image is unmounted again when it exits.
+#
+# Entry point resolution inside a bundle, first match wins:
+#   autorun.sh, run.sh, <name>.sh, an executable file named <name>
+# (where <name> is the image filename without its extension).
+
+rom="$1"
+[ -n "$rom" ] || { echo "usage: es-launch <entry>" >&2; exit 1; }
+
+case "$rom" in
+	*.sh|*.SH)
+		exec /bin/sh "$rom"
+		;;
+	*.squashfs|*.SQUASHFS)
+		name="$(basename "$rom")"
+		name="${name%.*}"
+		dir="/run/es-squash/$name.$$"
+
+		/usr/bin/es-squashfs mount "$rom" "$dir" || exit 1
+		trap '/usr/bin/es-squashfs umount "$dir"' EXIT INT TERM
+
+		entry=""
+		for candidate in autorun.sh run.sh "$name.sh"; do
+			if [ -f "$dir/$candidate" ]; then
+				entry="$dir/$candidate"
+				break
+			fi
+		done
+
+		if [ -n "$entry" ]; then
+			( cd "$dir" && /bin/sh "$entry" )
+		elif [ -x "$dir/$name" ] && [ -f "$dir/$name" ]; then
+			( cd "$dir" && "$dir/$name" )
+		else
+			echo "es-launch: no entry point in $rom (want autorun.sh, run.sh, $name.sh or executable $name)" >&2
+			exit 1
+		fi
+		;;
+	*)
+		echo "es-launch: unsupported entry type: $rom" >&2
+		exit 1
+		;;
+esac
