@@ -131,6 +131,7 @@ start() {
 stop() {
 	umount /var/lib/bluetooth 2>/dev/null || true
 	umount /var/lib/connman 2>/dev/null || true
+	umount /var/lib/NetworkManager 2>/dev/null || true
 	umount /home 2>/dev/null || true
 	umount "${DATA}" 2>/dev/null || true
 	umount /boot 2>/dev/null || true
