@@ -1,0 +1,12 @@
+config BR2_PACKAGE_COLORD
+	bool "colord"
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_LCMS2
+	select BR2_PACKAGE_LIBGUDEV
+	select BR2_PACKAGE_LIBGUSB
+	select BR2_PACKAGE_SQLITE
+	help
+	  Color management daemon and library; mutter links libcolord
+	  for its color management and night light.
+
+	  https://www.freedesktop.org/software/colord/
