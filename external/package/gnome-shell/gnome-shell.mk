@@ -11,7 +11,7 @@ GNOME_SHELL_LICENSE = GPL-2.0+
 GNOME_SHELL_LICENSE_FILES = COPYING
 GNOME_SHELL_DEPENDENCIES = \
 	host-pkgconf mutter gjs gnome-desktop gcr4 evolution-data-server \
-	ibus polkit gtk4 gsettings-desktop-schemas host-python3 \
+	ibus polkit libgtk4 gsettings-desktop-schemas host-python3 \
 	host-libglib2
 
 GNOME_SHELL_CONF_OPTS = \

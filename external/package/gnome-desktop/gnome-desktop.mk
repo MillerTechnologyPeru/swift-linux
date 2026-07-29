@@ -10,7 +10,7 @@ GNOME_DESKTOP_SITE = https://download.gnome.org/sources/gnome-desktop/44
 GNOME_DESKTOP_LICENSE = GPL-2.0+, LGPL-2.1+ (libraries)
 GNOME_DESKTOP_LICENSE_FILES = COPYING COPYING.LIB
 GNOME_DESKTOP_INSTALL_STAGING = YES
-GNOME_DESKTOP_DEPENDENCIES = host-pkgconf gtk4 gdk-pixbuf gsettings-desktop-schemas iso-codes libseccomp xkeyboard-config
+GNOME_DESKTOP_DEPENDENCIES = host-pkgconf libgtk4 gdk-pixbuf gsettings-desktop-schemas iso-codes libseccomp xkeyboard-config
 
 GNOME_DESKTOP_CONF_OPTS = -Dgtk_doc=false -Ddesktop_docs=false -Dinstalled_tests=false -Dlegacy_library=false -Dbuild_gtk4=true -Ddebug_tools=false -Dudev=enabled
 

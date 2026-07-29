@@ -12,7 +12,7 @@ LIBADWAITA_SITE = https://download.gnome.org/sources/libadwaita/1.6
 LIBADWAITA_LICENSE = LGPL-2.1+
 LIBADWAITA_LICENSE_FILES = COPYING
 LIBADWAITA_INSTALL_STAGING = YES
-LIBADWAITA_DEPENDENCIES = host-pkgconf gtk4 appstream
+LIBADWAITA_DEPENDENCIES = host-pkgconf libgtk4 appstream
 
 LIBADWAITA_CONF_OPTS = \
 	-Dexamples=false \

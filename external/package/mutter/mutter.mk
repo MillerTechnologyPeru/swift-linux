@@ -17,7 +17,7 @@ MUTTER_LICENSE = GPL-2.0+
 MUTTER_LICENSE_FILES = COPYING
 MUTTER_INSTALL_STAGING = YES
 MUTTER_DEPENDENCIES = \
-	host-pkgconf graphene gtk4 libei libdisplay-info colord lcms2 \
+	host-pkgconf graphene libgtk4 libei libdisplay-info colord lcms2 \
 	libinput libdrm libxkbcommon wayland wayland-protocols pipewire \
 	libwacom elogind gsettings-desktop-schemas xkeyboard-config \
 	host-wayland
