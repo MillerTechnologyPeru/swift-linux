@@ -46,6 +46,14 @@ define FREEIMAGE_BUILD_CMDS
 	$(TARGET_MAKE_ENV) $(MAKE) -C $(@D) -f Makefile.gnu $(FREEIMAGE_MAKE_OPTS)
 endef
 
+# Upstream's install target chowns to root:root, which a rootless
+# container build cannot do (CI runs as root and never noticed); the
+# ownership flags are pointless under fakeroot/rootless either way.
+define FREEIMAGE_DROP_INSTALL_OWNERSHIP
+	$(SED) 's/ -o root -g root//g' $(@D)/Makefile.gnu $(@D)/Makefile.fip
+endef
+FREEIMAGE_POST_PATCH_HOOKS += FREEIMAGE_DROP_INSTALL_OWNERSHIP
+
 define FREEIMAGE_INSTALL_STAGING_CMDS
 	$(TARGET_MAKE_ENV) $(MAKE) -C $(@D) -f Makefile.gnu \
 		$(FREEIMAGE_MAKE_OPTS) DESTDIR=$(STAGING_DIR) INCDIR=$(STAGING_DIR)/usr/include \
