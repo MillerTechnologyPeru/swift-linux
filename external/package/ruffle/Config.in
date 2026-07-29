@@ -1,0 +1,22 @@
+config BR2_PACKAGE_RUFFLE
+	bool "ruffle"
+	# Upstream publishes Linux builds for x86_64 and aarch64 only.
+	# Building from source is not realistic here: Ruffle's minimum
+	# supported Rust moves within months of stable, far ahead of the
+	# Rust toolchain this Buildroot carries, so the package installs
+	# the upstream-built binary and the hash pins the exact build.
+	depends on BR2_x86_64 || BR2_aarch64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on BR2_PACKAGE_HAS_UDEV # binary links libudev
+	select BR2_PACKAGE_ALSA_LIB
+	select BR2_PACKAGE_OPENSSL
+	help
+	  Ruffle, the Flash Player emulator written in Rust: plays
+	  SWF movies and games without the Adobe plugin, rendering
+	  through wgpu (Vulkan, or GL where that is all there is).
+
+	  https://ruffle.rs
+
+comment "ruffle needs udev and an x86_64/aarch64 glibc toolchain"
+	depends on !(BR2_x86_64 || BR2_aarch64) || \
+		!BR2_TOOLCHAIN_USES_GLIBC || !BR2_PACKAGE_HAS_UDEV

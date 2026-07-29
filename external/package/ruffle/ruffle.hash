@@ -1,0 +1,3 @@
+# Locally computed from the upstream release tarballs
+sha256  228d848634726a4918af576bef49b6bcb555327e41559918c3cd89318e5cbc92  ruffle-nightly-2026_07_29-linux-x86_64.tar.gz
+sha256  968ca5c7bc3fb304ef70241162d2ffda02bbe3b27e514f7830b5adc8250817b2  ruffle-nightly-2026_07_29-linux-aarch64.tar.gz

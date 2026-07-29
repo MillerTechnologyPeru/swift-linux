@@ -3,8 +3,8 @@
 #
 #   engine-launch <system> <command> [args...]
 #
-# The engines this runs (LOVE, python/pygame) keep their state where the
-# XDG basedir spec says to, $XDG_DATA_HOME, which defaults to
+# The engines this runs (LOVE, python/pygame, Ruffle) keep their state
+# where the XDG basedir spec says to, $XDG_DATA_HOME, which defaults to
 # ~/.local/share. Pointing that at /data/saves/<system> puts them in the
 # same place as the libretro cores' saves (see retro-launch) without
 # patching anything.
