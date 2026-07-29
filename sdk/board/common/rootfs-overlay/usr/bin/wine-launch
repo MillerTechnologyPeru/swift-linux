@@ -1,0 +1,161 @@
+#!/bin/sh
+# Launch a Windows game from the EmulationStation "windows" system.
+#
+#   wine-launch <entry>
+#
+# Entry formats (the established convention for a Windows system on a
+# game frontend):
+#
+#   game.exe        a bare executable; a prefix is created per game
+#   game.pc/        a folder of game files with an autorun.cmd; prefix
+#                   per game, created on first launch
+#   game.wine/      a full Wine prefix (has drive_c/) with the game
+#                   inside; used as-is
+#   game.wsquashfs  a squashed .pc or .wine tree; mounted read-only, and
+#                   a prefix-style image gets a writable overlay so the
+#                   game can save into it
+#   game.wtgz       a tarred .pc or .wine tree; unpacked into the save
+#                   tree once, then launched from the working copy
+#
+# autorun.cmd, LF line endings, KEY=VALUE:
+#   CMD=game.exe                     executable to run (required)
+#   DIR=drive_c/Program Files/Game   directory to run it from (optional)
+#
+# State follows the image's split: per-game prefixes, overlay writes and
+# unpacked working copies all live under /data/saves/windows/<game>.
+# The Wine used is the self-contained WoW64 build in /usr/wine/prebuilt
+# when the image ships it (on arm64 it runs through box64 via binfmt),
+# with any wine on PATH as fallback.
+
+set -e
+
+SAVES=/data/saves/windows
+RUNBASE=/run/es-squash
+
+rom="$1"
+[ -n "$rom" ] || { echo "usage: wine-launch <entry>" >&2; exit 1; }
+[ -e "$rom" ] || { echo "wine-launch: no such entry: $rom" >&2; exit 1; }
+
+if [ -x /usr/wine/prebuilt/bin/wine ]; then
+	PATH="/usr/wine/prebuilt/bin:$PATH"
+	export PATH
+fi
+command -v wine >/dev/null 2>&1 || {
+	echo "wine-launch: no wine on this image" >&2; exit 1; }
+
+name="$(basename "$rom")"
+name="${name%.*}"
+
+# Parse CMD= and DIR= out of an autorun.cmd, tolerating CRLF.
+AUTO_CMD=""
+AUTO_DIR=""
+read_autorun() {
+	[ -f "$1/autorun.cmd" ] || return 1
+	AUTO_CMD=$(sed -n 's/\r$//; s/^CMD=//p' "$1/autorun.cmd" | head -1)
+	AUTO_DIR=$(sed -n 's/\r$//; s/^DIR=//p' "$1/autorun.cmd" | head -1)
+	[ -n "$AUTO_CMD" ]
+}
+
+# Run from a full prefix (a tree with drive_c/): the tree is WINEPREFIX.
+run_prefix() {
+	dir="$1"
+	read_autorun "$dir" || {
+		echo "wine-launch: $name: prefix has no autorun.cmd (CMD=...)" >&2
+		exit 1
+	}
+	cd "$dir/${AUTO_DIR:-.}"
+	WINEPREFIX="$dir" exec wine "$AUTO_CMD"
+}
+
+# Run plain game files: the prefix is per game, in the save tree. With no
+# autorun.cmd, a folder containing exactly one top-level .exe still works.
+run_content() {
+	dir="$1"
+	prefix="$SAVES/$name/prefix"
+	mkdir -p "$prefix"
+	if ! read_autorun "$dir"; then
+		set -- "$dir"/*.exe "$dir"/*.EXE
+		exes=0; only=""
+		for f in "$@"; do [ -f "$f" ] && { exes=$((exes+1)); only="$f"; }; done
+		[ "$exes" = 1 ] || {
+			echo "wine-launch: $name: no autorun.cmd and no single top-level exe" >&2
+			exit 1
+		}
+		AUTO_CMD="$(basename "$only")"
+		AUTO_DIR=""
+	fi
+	cd "$dir/${AUTO_DIR:-.}"
+	WINEPREFIX="$prefix" exec wine "$AUTO_CMD"
+}
+
+# Dispatch a directory tree: a prefix if it has drive_c, game files if not.
+run_tree() {
+	if [ -d "$1/drive_c" ]; then
+		run_prefix "$1"
+	else
+		run_content "$1"
+	fi
+}
+
+case "$rom" in
+	*.exe|*.EXE)
+		prefix="$SAVES/$name/prefix"
+		mkdir -p "$prefix"
+		cd "$(dirname "$rom")"
+		WINEPREFIX="$prefix" exec wine "$rom"
+		;;
+
+	*.pc|*.PC)
+		run_content "$rom"
+		;;
+
+	*.wine|*.WINE)
+		run_tree "$rom"
+		;;
+
+	*.wsquashfs|*.WSQUASHFS)
+		mnt="$RUNBASE/wine-$name.$$"
+		/usr/bin/es-squashfs mount "$rom" "$mnt" || exit 1
+		if [ -d "$mnt/drive_c" ]; then
+			# Prefix-style image: overlay a writable layer from the
+			# save tree so the game can write into "its" prefix while
+			# the squash stays pristine.
+			upper="$SAVES/$name/upper"
+			work="$SAVES/$name/.work"
+			merged="$RUNBASE/wine-merged-$name.$$"
+			mkdir -p "$upper" "$work"
+			/usr/bin/es-squashfs overlay "$mnt" "$upper" "$work" "$merged" || {
+				/usr/bin/es-squashfs umount "$mnt"; exit 1; }
+			trap '/usr/bin/es-squashfs unoverlay "$merged"; /usr/bin/es-squashfs umount "$mnt"' EXIT INT TERM
+			( run_prefix "$merged" ) || true
+			exit 0
+		fi
+		trap '/usr/bin/es-squashfs umount "$mnt"' EXIT INT TERM
+		( run_content "$mnt" ) || true
+		exit 0
+		;;
+
+	*.wtgz|*.WTGZ)
+		# Unpack once into the save tree and launch the working copy
+		# from then on (it accumulates state, so it is state).
+		dest="$SAVES/$name/extracted"
+		if [ ! -d "$dest" ]; then
+			mkdir -p "$dest.part"
+			gzip -dc "$rom" | tar -xf - -C "$dest.part"
+			# A tarball of "game.wine/" nests one directory; flatten it.
+			set -- "$dest.part"/*
+			if [ $# = 1 ] && [ -d "$1" ]; then
+				mv "$1" "$dest"
+				rmdir "$dest.part"
+			else
+				mv "$dest.part" "$dest"
+			fi
+		fi
+		run_tree "$dest"
+		;;
+
+	*)
+		echo "wine-launch: unsupported entry: $rom" >&2
+		exit 1
+		;;
+esac
