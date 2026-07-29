@@ -1,0 +1,13 @@
+config BR2_PACKAGE_NAUTILUS
+	bool "nautilus"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_LIBADWAITA
+	select BR2_PACKAGE_GNOME_AUTOAR
+	select BR2_PACKAGE_GEXIV2
+	select BR2_PACKAGE_TINYSPARQL
+	select BR2_PACKAGE_GNOME_DESKTOP
+	select BR2_PACKAGE_LOCALSEARCH # runtime search index
+	help
+	  Files (nautilus), the GNOME file manager.
+
+	  https://apps.gnome.org/Nautilus/
