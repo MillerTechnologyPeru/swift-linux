@@ -61,6 +61,27 @@ if [ -x "${LIB32_ROOT}/usr/bin/box86" ]; then
 	echo "lib32: installed box86 (32-bit x86 emulator)"
 fi
 
+# Wine, when the companion built it (i386 only - Buildroot's package is
+# x86-specific, which is exactly what the x86_64 pairing provides).
+#
+# Unlike the libraries above, Wine needs its programs and its data: the
+# loader stubs in /usr/bin, and share/wine with the built-in DLLs and the
+# fake Windows drive skeleton. Its own libraries came across with the lib
+# trees already, and /usr/lib32 is on the search path, so the 32-bit
+# binaries resolve them.
+if [ -x "${LIB32_ROOT}/usr/bin/wine" ]; then
+	for prog in wine wine-preloader wineserver winecfg wineboot \
+	            winepath winedbg regedit msiexec notepad; do
+		[ -e "${LIB32_ROOT}/usr/bin/${prog}" ] || continue
+		cp -a "${LIB32_ROOT}/usr/bin/${prog}" "${TARGET_DIR}/usr/bin/${prog}"
+	done
+	if [ -d "${LIB32_ROOT}/usr/share/wine" ]; then
+		mkdir -p "${TARGET_DIR}/usr/share"
+		cp -a "${LIB32_ROOT}/usr/share/wine" "${TARGET_DIR}/usr/share/"
+	fi
+	echo "lib32: installed wine (32-bit Windows applications)"
+fi
+
 # Teach the dynamic loader about /usr/lib32. The rootfs is read-only at
 # runtime, so the cache has to be generated here at build time; ldconfig -r
 # treats the given directory as /.
