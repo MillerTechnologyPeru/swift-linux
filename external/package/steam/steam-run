@@ -1,6 +1,20 @@
 #!/bin/sh
 # Launch Steam inside the running graphical session.
 #
+# Two paths on aarch64:
+#
+#   native    ~/.local/share/Steam/steamrtarm64/steam, Valve's aarch64
+#             client (it is not in the amd64-only launcher .deb - see
+#             steam-arm64-install). The x86 binfmt handlers are switched
+#             off while it starts, so none of its helper processes fall
+#             into translation by accident, then switched back on as soon
+#             as it is up.
+#   emulated  /usr/bin/steam, the x86 bootstrap, through box86/box64 via
+#             those same handlers.
+#
+# x86_64 always runs /usr/bin/steam natively. SWIFT_STEAM_MODE=x86 forces
+# the emulated path on aarch64.
+#
 # Stage 1 target: native x86_64 Steam under sway's XWayland. The bootstrap
 # binary is 32-bit (needs /usr/lib32) and the UI is X11, so a running
 # XWayland display is required. This launcher uses no
@@ -31,4 +45,51 @@ if [ -f "${vdf}" ] && ! grep -q '"/roms/steam"' "${vdf}"; then
 	sed -i '$ s|}|\t"9"\n\t{\n\t\t"path"\t\t"/roms/steam"\n\t}\n}|' "${vdf}"
 fi
 
-exec /usr/bin/steam "$@"
+NATIVE="${HOME}/.local/share/Steam/steamrtarm64/steam"
+NATIVE_LIBS="${HOME}/.local/share/Steam/lib/aarch64-linux-gnu"
+
+if [ "$(uname -m)" != "aarch64" ] || [ "${SWIFT_STEAM_MODE}" = "x86" ] || \
+   [ ! -x "${NATIVE}" ]; then
+	exec /usr/bin/steam "$@"
+fi
+
+# Native aarch64 client.
+#
+# The x86 handlers go down only for the launch itself. Leaving them off
+# for the session would break everything else that relies on them - the
+# ports, Wine, any x86 tool the user runs - and Steam only needs them
+# absent while it works out what it is. Once its own processes are up,
+# re-enabling is harmless, and Proton's x86 tooling will want them back.
+disabled=no
+restore_binfmt() {
+	[ "${disabled}" = yes ] || return 0
+	disabled=no
+	binfmtctl enable box64 2>/dev/null || true
+	binfmtctl enable box86 2>/dev/null || true
+}
+
+if command -v binfmtctl >/dev/null 2>&1; then
+	binfmtctl disable box64 2>/dev/null || true
+	binfmtctl disable box86 2>/dev/null || true
+	disabled=yes
+fi
+# Restore on every exit path, including a failure before the client is up.
+trap 'restore_binfmt' EXIT INT TERM
+
+export LD_LIBRARY_PATH="${NATIVE_LIBS}${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+
+"${NATIVE}" -steamdeck -gamepadui "$@" &
+steam_pid=$!
+
+# Re-enable once the client is actually up, rather than when it exits:
+# Steam forks its real processes within a few seconds, and from then on
+# the handlers are needed BY it, not held off from it.
+i=0
+while [ "${i}" -lt 5 ]; do
+	kill -0 "${steam_pid}" 2>/dev/null || break
+	i=$((i + 1))
+	sleep 1
+done
+restore_binfmt
+
+wait "${steam_pid}"
