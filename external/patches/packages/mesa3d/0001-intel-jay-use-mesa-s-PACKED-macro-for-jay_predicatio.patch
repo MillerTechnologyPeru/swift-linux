@@ -1,0 +1,28 @@
+From: Swift Linux <noreply@localhost>
+Subject: [PATCH] intel/jay: use mesa's PACKED macro for jay_predication
+
+jay_predication is the only enum in jay_ir.h declared with C23's fixed
+underlying type; every other enum in the file uses mesa's own PACKED
+macro to get the same one-byte representation. GCC only understands the
+C23 form from version 13 onwards, so the host build fails with
+
+    jay_ir.h:582:22: error: expected identifier or '(' before ':' token
+
+on distributions whose host compiler is older - Debian 12 ships GCC 12 -
+and takes host-mesa3d down with it, which every mesa driver needing the
+precompiled-shader compiler (iris, crocus, panfrost, asahi) depends on.
+
+PACKED expands to __attribute__((packed)), so the enum keeps its
+single-byte size and the surrounding static_asserts on packed struct
+sizes continue to hold.
+
+--- a/src/intel/compiler/jay/jay_ir.h
++++ b/src/intel/compiler/jay/jay_ir.h
+@@ -580,6 +580,6 @@
+ }
+ 
+-enum jay_predication : uint8_t {
++enum PACKED jay_predication {
+    /** No predication. */
+    JAY_NOT_PREDICATED = 0,
+ 
