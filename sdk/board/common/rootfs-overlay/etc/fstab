@@ -1,5 +1,7 @@
 # <device>                          <mount>   <type>   <options>          <dump> <pass>
-/dev/root                           /         ext4     ro                 0      1
+# pass=0: EROFS is read-only with no fsck.erofs consistency repair the way
+# ext4 has e2fsck; checkfs would just skip it, so avoid invoking fsck at all.
+/dev/root                           /         erofs    ro                 0      0
 proc                                /proc     proc     defaults           0      0
 devtmpfs                            /dev      devtmpfs defaults           0      0
 # devpts is required for pty allocation - without it terminal emulators fail
