@@ -13,12 +13,13 @@
 ::sysinit:/sbin/openrc boot
 ::wait:/sbin/openrc default
 
-# autologin the default user on tty1, the VT sway runs on (previously
-# appended to busybox's inittab by post-build.sh).
-tty1::respawn:/sbin/getty -n -l /usr/bin/autologin -L tty1 0 linux
-
-# The serial console is not listed here: OpenRC's agetty.<port> service in
-# the default runlevel provides it (from BR2_TARGET_GENERIC_GETTY_PORT).
+# No getty lines here. BR2_INIT_OPENRC makes openrc-init pid 1, so this file
+# is only read when the image is built with busybox init instead, and a getty
+# listed here would be silently dead the rest of the time. Both consoles are
+# OpenRC services in the default runlevel: agetty.<port> for the serial
+# console (Buildroot generates it from BR2_TARGET_GENERIC_GETTY_PORT) and
+# agetty.tty1 from this overlay, which autologins the default user on the VT
+# the graphical session runs on.
 
 ::ctrlaltdel:/sbin/reboot
 

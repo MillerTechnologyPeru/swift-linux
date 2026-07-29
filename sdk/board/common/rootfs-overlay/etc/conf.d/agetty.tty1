@@ -1,0 +1,10 @@
+# Autologin the default user on tty1, the VT the graphical session runs on.
+#
+# OpenRC is pid 1 here (BR2_INIT_OPENRC installs openrc-init), so nothing
+# reads /etc/inittab and the session has to be a service like any other.
+# The agetty service builds "getty ${agetty_options} tty1 0 linux"; -n skips
+# the login prompt and -l runs /usr/bin/autologin, which execs "login -f
+# swift". The user's profile then starts the frontend.
+baud="0"
+term_type="linux"
+agetty_options="-n -l /usr/bin/autologin"
