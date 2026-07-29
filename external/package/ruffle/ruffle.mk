@@ -2,54 +2,63 @@
 #
 # ruffle
 #
-# Flash Player emulator, from upstream's prebuilt Linux tarballs (see
-# Config.in for why it is not built from source). Upstream only publishes
-# dated nightlies; the pin is the tag date, bumped deliberately.
+# Flash Player emulator, built from source. Upstream publishes no release
+# tags, only dated nightlies, so the pin is a nightly tag and is bumped
+# deliberately.
 #
-# The binaries are produced on a newer distribution than this tree targets
-# and carry a GLIBC_2.39 version requirement - for nothing but the two
-# pidfd_* symbols Rust's libstd references weakly and falls back from at
-# runtime. relax-verneed.py rewrites that requirement (see the script), so
-# the binary loads against this tree's glibc; everything else it needs is
-# at GLIBC_2.35 or older.
+# The install step is overridden rather than using the cargo infrastructure's
+# default: that runs "cargo install --path ./", which needs an unambiguous
+# package at the manifest root, and upstream's root Cargo.toml is a virtual
+# manifest (a [workspace] with no [package]). Copying the binary out of
+# cargo's own target directory also avoids a second build invocation.
+#
+# --package ruffle_desktop is passed explicitly even though the workspace's
+# default-members already selects it, so an upstream change there cannot
+# quietly alter what gets built.
+#
+# host-rustc is not listed: the cargo infrastructure adds it to both the
+# download and build dependencies itself (it runs cargo at download time to
+# vendor the crates). The dependencies here are only what the binary links:
+# alsa-lib for cpal's audio backend and udev for gilrs' gamepad probing.
+# Neither OpenSSL nor nghttp2 is needed - this pin's Cargo.lock has no
+# OpenSSL at all, since its TLS is rustls over ring. The windowing and GPU
+# crates (winit, wgpu) dlopen their backends - Vulkan through ash, Wayland
+# through wayland-backend, X11 through the pure-Rust x11rb - so they need no
+# build-time libraries either, only the ones the image already ships.
+#
+# There is deliberately no ruffle.hash yet. The cargo infrastructure rewrites
+# the downloaded archive before it is hashed (it repacks it with the vendored
+# crate sources), so the recorded hash would have to be of Buildroot's own
+# post-vendored tarball, not of upstream's. It can only be computed by
+# running the download once:
+#
+#     make x86_64-pkg PKG=ruffle
+#     sha256sum $(BR2_DL_DIR)/ruffle/ruffle-$(RUFFLE_VERSION).tar.gz
+#
+# A hash file that exists but has no entry for the archive is a hard error
+# (support/download/check-hash exits 3), so it is left absent - which is only
+# a warning - until that value is filled in.
 #
 ################################################################################
 
-RUFFLE_VERSION = 2026-07-29
-RUFFLE_SITE = https://github.com/ruffle-rs/ruffle/releases/download/nightly-$(RUFFLE_VERSION)
-
-ifeq ($(BR2_aarch64),y)
-RUFFLE_ARCH = aarch64
-else
-RUFFLE_ARCH = x86_64
-endif
-RUFFLE_SOURCE = ruffle-nightly-$(subst -,_,$(RUFFLE_VERSION))-linux-$(RUFFLE_ARCH).tar.gz
-
+RUFFLE_VERSION = nightly-2026-01-31
+RUFFLE_SITE = $(call github,ruffle-rs,ruffle,$(RUFFLE_VERSION))
 RUFFLE_LICENSE = MIT or Apache-2.0
 RUFFLE_LICENSE_FILES = LICENSE.md
 
-# The tarball has no top-level directory.
-RUFFLE_STRIP_COMPONENTS = 0
+RUFFLE_DEPENDENCIES = host-pkgconf alsa-lib udev
 
-# Only for relax-verneed.py: python3 is not one of Buildroot's mandatory
-# host programs, so the interpreter is depended on rather than assumed.
-# Every image that selects this package builds host-python3 anyway (the
-# target python3 the frontend's other systems need pulls it in).
-RUFFLE_DEPENDENCIES = host-python3
+RUFFLE_CARGO_BUILD_OPTS = --package ruffle_desktop
 
-# The version requirement is rewritten on the installed copy, not in the
-# build directory: the extracted binary stays pristine, which keeps this
-# idempotent when the install step runs again, and the install step is late
-# enough that host-python3 is built (extract-time hooks are not - they run
-# before a package's dependencies).
+RUFFLE_BIN_DIR = target/$(RUSTC_TARGET_NAME)/$(if $(BR2_ENABLE_DEBUG),debug,release)
+
 define RUFFLE_INSTALL_TARGET_CMDS
-	$(INSTALL) -D -m 0755 $(@D)/ruffle $(TARGET_DIR)/usr/bin/ruffle
-	$(HOST_DIR)/bin/python3 $(RUFFLE_PKGDIR)/relax-verneed.py \
-		$(TARGET_DIR)/usr/bin/ruffle GLIBC_2.39
-	$(INSTALL) -D -m 0644 $(@D)/extras/rs.ruffle.Ruffle.desktop \
+	$(INSTALL) -D -m 0755 $(@D)/$(RUFFLE_BIN_DIR)/ruffle_desktop \
+		$(TARGET_DIR)/usr/bin/ruffle
+	$(INSTALL) -D -m 0644 $(@D)/desktop/packages/linux/rs.ruffle.Ruffle.desktop \
 		$(TARGET_DIR)/usr/share/applications/rs.ruffle.Ruffle.desktop
-	$(INSTALL) -D -m 0644 $(@D)/extras/rs.ruffle.Ruffle.svg \
+	$(INSTALL) -D -m 0644 $(@D)/desktop/packages/linux/rs.ruffle.Ruffle.svg \
 		$(TARGET_DIR)/usr/share/icons/hicolor/scalable/apps/rs.ruffle.Ruffle.svg
 endef
 
-$(eval $(generic-package))
+$(eval $(cargo-package))
