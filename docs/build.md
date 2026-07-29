@@ -37,7 +37,16 @@ make arm64-shell                 # shell in the build env
 make retroid-pocket-5-defconfig  # generate a defconfig only
 make x86_64-clean                # remove that target's output
 make x86_64-refresh DAYS=7       # dirclean local packages changed recently
+make arm64-seed                  # pre-populate a fresh output from the
+                                 # container's baked toolchain build
 ```
+
+`<t>-seed` copies the toolchain container's prebuilt Buildroot output into
+the host tree, the way CI reuses it: a fresh tree then skips the multi-hour
+toolchain/Swift build, and the next `<t>-config` applies this repo's
+defconfig incrementally on top. The `CONTAINER=1` bind mount shadows the
+baked copy, which is why it must be copied out once. Refuses to touch an
+existing output directory.
 
 Adding a board is dropping a `board.config`; no Makefile edits.
 

@@ -11,6 +11,8 @@
 #   make retroid-pocket-5-defconfig # generate a defconfig only
 #   make x86_64-clean               # remove that target's output dir
 #   make x86_64-refresh             # dirclean recently-changed local packages
+#   make arm64-seed                 # pre-populate output from the container's
+#                                   # baked toolchain build (fresh trees only)
 #
 # Backends:
 #   (default)     build on the host toolchain (needs a prebuilt output/<arch>).
@@ -120,7 +122,7 @@ endif
 .PHONY: list help
 help list:
 	@echo "Targets: $(TARGETS)"
-	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-shell <t>-clean <t>-refresh"
+	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-shell <t>-clean <t>-refresh <t>-seed"
 	@echo "Backend: CONTAINER=1 for a containerized build ($(if $(CONTAINER_RUNTIME),$(CONTAINER_RUNTIME),no docker/podman found)); PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
 
 # ---- per-target pattern rules -------------------------------------------
@@ -145,6 +147,22 @@ $(addsuffix -pkg,$(TARGETS)): %-pkg:
 $(addsuffix -shell,$(TARGETS)): %-shell:
 	$(call br,$*,BR2_DEFCONFIG=$(BUILD_OUTPUT_BASE)/$*.defconfig defconfig)
 	@echo "(shell target is most useful with CONTAINER=1)"
+
+# %-seed: pre-populate a fresh target output dir from the toolchain
+# container's baked output, the way CI reuses it - skipping the multi-hour
+# from-scratch toolchain and Swift build that an empty tree otherwise
+# implies (the CONTAINER=1 bind mount shadows the baked copy, so it has to
+# be copied out once). The baked output was built with the container's own
+# swift_<arch>_defconfig; the next %-config applies this repo's defconfig
+# on top and Buildroot rebuilds only the difference. Refuses to touch an
+# existing output dir.
+$(addsuffix -seed,$(TARGETS)): %-seed:
+	@[ -n "$(CONTAINER_RUNTIME)" ] || { echo "seed needs docker or podman on PATH"; exit 1; }
+	@[ ! -e $(OUTPUT_BASE)/$* ] || { echo "$(OUTPUT_BASE)/$* already exists; refusing to overwrite"; exit 1; }
+	@mkdir -p $(OUTPUT_BASE)
+	cid=$$($(CONTAINER_RUNTIME) create $(CONTAINER_IMAGE):swift_$(call cont_arch,$*)_defconfig) && \
+	{ $(CONTAINER_RUNTIME) cp $$cid:/workspaces/buildroot-swift/output/$(call cont_arch,$*) $(OUTPUT_BASE)/$*; \
+	  rc=$$?; $(CONTAINER_RUNTIME) rm -f $$cid >/dev/null; exit $$rc; }
 
 # %-clean: remove the target's output dir (keeps shared dl/ccache).
 $(addsuffix -clean,$(TARGETS)): %-clean:
