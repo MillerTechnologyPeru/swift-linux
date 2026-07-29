@@ -1,0 +1,4 @@
+# Locally computed
+sha256  f8dcfc36107c1715e456cb4d15690aa50bb6f75cdefc3ab1fb32d0a13b245297  libretro-common-70ed90c42ddea828f53dd1b984c6443ddb39dbd6.tar.gz
+sha256  d7b3437ab94280c12ce24582c5adbc977bd01a1dfd73ea1a34971dd43f6eb24a  libretro-deps-7e6e34f0319f4c7448d72f0e949e76265ccf55a1.tar.gz
+sha256  ba0b54087391877fe6cb7f40e127931d81c39a278ee9a16ee8bf10a9b16d59f7  libretro-scummvm-660e13b0764fe2be39b6d723345ecabfbb318cc5.tar.gz

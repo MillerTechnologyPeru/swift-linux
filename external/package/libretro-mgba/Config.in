@@ -1,0 +1,12 @@
+config BR2_PACKAGE_LIBRETRO_MGBA
+	bool "libretro-mgba"
+	depends on BR2_PACKAGE_RETROARCH
+	select BR2_PACKAGE_LIBZIP
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_ZLIB
+	help
+	  mGBA libretro core: Game Boy Advance emulation (and Game
+	  Boy/Game Boy Color via its GB mode), the accuracy/speed
+	  sweet spot for GBA.
+
+	  https://github.com/mgba-emu/mgba

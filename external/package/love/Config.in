@@ -1,0 +1,20 @@
+config BR2_PACKAGE_LOVE
+	bool "love"
+	depends on BR2_PACKAGE_LUAJIT_ARCH_SUPPORTS
+	select BR2_PACKAGE_LUAJIT
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_SDL2_OPENGL if BR2_PACKAGE_HAS_LIBGL
+	select BR2_PACKAGE_OPENAL
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_LIBMODPLUG
+	select BR2_PACKAGE_MPG123
+	select BR2_PACKAGE_LIBVORBIS
+	select BR2_PACKAGE_LIBOGG
+	select BR2_PACKAGE_LIBTHEORA
+	select BR2_PACKAGE_ZLIB
+	help
+	  LOVE: the Lua 2D game framework. Runs .love game bundles
+	  (zipped Lua projects) with LuaJIT; graphics through
+	  SDL2/OpenGL, audio through OpenAL.
+
+	  https://love2d.org

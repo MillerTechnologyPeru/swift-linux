@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBRETRO_SCUMMVM
+	bool "libretro-scummvm"
+	depends on BR2_PACKAGE_RETROARCH
+	help
+	  ScummVM libretro core: point-and-click adventure engines
+	  (SCUMM, AGI, SCI, and the rest of ScummVM's engine
+	  collection) inside RetroArch. Games launch from a .scummvm
+	  file containing the game id.
+
+	  https://github.com/libretro/scummvm

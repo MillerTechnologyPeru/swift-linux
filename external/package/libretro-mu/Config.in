@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBRETRO_MU
+	bool "libretro-mu"
+	depends on BR2_PACKAGE_RETROARCH
+	help
+	  Mu libretro core: Palm OS handheld emulation (Palm m515,
+	  OS 4/5 era). Needs the Palm OS ROM (palmos41-en-m515.rom)
+	  in the system directory.
+
+	  https://github.com/libretro/Mu

@@ -1,0 +1,8 @@
+config BR2_PACKAGE_LIBRETRO_GAMBATTE
+	bool "libretro-gambatte"
+	depends on BR2_PACKAGE_RETROARCH
+	help
+	  Gambatte libretro core: Game Boy / Game Boy Color emulation
+	  with a focus on accuracy, the standard GBC core.
+
+	  https://github.com/libretro/gambatte-libretro

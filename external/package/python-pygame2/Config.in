@@ -1,0 +1,14 @@
+config BR2_PACKAGE_PYTHON_PYGAME2
+	bool "python-pygame2"
+	depends on BR2_PACKAGE_PYTHON3
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_SDL2_IMAGE
+	select BR2_PACKAGE_SDL2_MIXER
+	select BR2_PACKAGE_SDL2_TTF
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_JPEG
+	help
+	  pygame: the Python game library on SDL2. Lets the image run
+	  plain-Python games (a .py entry point) without a build step.
+
+	  https://www.pygame.org

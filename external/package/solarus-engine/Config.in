@@ -1,0 +1,29 @@
+config BR2_PACKAGE_SOLARUS_ENGINE
+	bool "solarus-engine"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on BR2_PACKAGE_LUAJIT_ARCH_SUPPORTS
+	depends on !BR2_STATIC_LIBS # SDL2
+	depends on BR2_PACKAGE_HAS_LIBGL || BR2_PACKAGE_HAS_LIBGLES
+	select BR2_PACKAGE_LUAJIT
+	select BR2_PACKAGE_GLM
+	select BR2_PACKAGE_LIBMODPLUG
+	select BR2_PACKAGE_LIBOGG
+	select BR2_PACKAGE_LIBVORBIS
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_OPENAL
+	select BR2_PACKAGE_PHYSFS
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_SDL2_IMAGE
+	select BR2_PACKAGE_SDL2_TTF
+	help
+	  Solarus: a free ARPG (Zelda-like) game engine scripted in
+	  Lua. Runs .solarus quest packages via solarus-run.
+
+	  Same source and options as Buildroot's solarus package, but
+	  linked against LuaJIT directly: Solarus quests are Lua 5.1
+	  only, and Buildroot's package requires the system-wide Lua
+	  provider to be 5.1 - impossible here, since WirePlumber
+	  holds it at 5.4. Engines embed their own interpreter, so
+	  the two coexist.
+
+	  https://www.solarus-games.org

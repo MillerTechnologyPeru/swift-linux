@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBLCF
+	bool "liblcf"
+	select BR2_PACKAGE_EXPAT
+	select BR2_PACKAGE_ICU
+	help
+	  liblcf: library for reading and writing the RPG Maker
+	  2000/2003 data formats (LCF, LDB, LMT, LMU) plus their XML
+	  serialisation. The data layer of the EasyRPG player.
+
+	  https://github.com/EasyRPG/liblcf

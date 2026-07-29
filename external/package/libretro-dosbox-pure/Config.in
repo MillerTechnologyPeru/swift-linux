@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBRETRO_DOSBOX_PURE
+	bool "libretro-dosbox-pure"
+	depends on BR2_PACKAGE_RETROARCH
+	help
+	  DOSBox Pure libretro core: DOS games, tuned for ease of use
+	  (loads .zip and .dosz archives directly, save states,
+	  rewind). C++ with a plain Makefile and no external
+	  dependencies - SDL is stubbed out for the libretro build.
+
+	  https://github.com/schellingb/dosbox-pure
