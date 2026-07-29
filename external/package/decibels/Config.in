@@ -1,0 +1,12 @@
+config BR2_PACKAGE_DECIBELS
+	bool "decibels"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_LIBADWAITA
+	depends on BR2_PACKAGE_GJS
+	select BR2_PACKAGE_GST1_PLUGINS_BASE
+	select BR2_PACKAGE_GST1_PLUGINS_GOOD
+	help
+	  Decibels, the GNOME audio player (a GJS application over
+	  GStreamer).
+
+	  https://apps.gnome.org/Decibels/
