@@ -1,0 +1,9 @@
+# PAM stack for login(1) from util-linux (the GNOME frontend replaces
+# busybox login with it). Inert on images without linux-pam. The
+# pam_elogind session line is what registers the login with logind -
+# mutter cannot start without a registered session.
+auth		required	pam_unix.so nullok
+account		required	pam_unix.so
+password	required	pam_unix.so
+session		required	pam_unix.so
+session		optional	pam_elogind.so
