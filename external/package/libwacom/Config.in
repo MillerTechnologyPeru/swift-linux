@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBWACOM
+	bool "libwacom"
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_LIBGUDEV
+	select BR2_PACKAGE_LIBEVDEV
+	help
+	  Tablet description library; mutter and gnome-settings-daemon
+	  require it on Linux even without a tablet present.
+
+	  https://github.com/linuxwacom/libwacom
