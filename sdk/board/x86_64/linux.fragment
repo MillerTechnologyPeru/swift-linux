@@ -1,6 +1,6 @@
 # Extra kernel options for QEMU x86_64: virtio graphics/input, DRM/KMS for
 # Weston, evdev input, ext4 root, plus the Bluetooth and wireless subsystems
-# BlueZ and ConnMan need. Merged on top of the arch default config.
+# BlueZ and NetworkManager need. Merged on top of the arch default config.
 CONFIG_DRM=y
 CONFIG_DRM_VIRTIO_GPU=y
 CONFIG_DRM_BOCHS=y
