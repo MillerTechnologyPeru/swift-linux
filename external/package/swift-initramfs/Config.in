@@ -1,0 +1,10 @@
+config BR2_PACKAGE_SWIFT_INITRAMFS
+	bool "swift-initramfs"
+	help
+	  Minimal initramfs for the A/B images: a static busybox and an
+	  init that resolves root=PARTUUID= via sysfs, waits for slow
+	  media, mounts the slot read-only and switch_roots - dropping
+	  to a rescue shell instead of a kernel panic when the root
+	  device never appears. Carries no update logic: RAUC owns
+	  updates. Opt-in via sdk/defconfig/boot/initramfs.config; the
+	  GRUB configs load /boot/initrd only when a slot ships it.

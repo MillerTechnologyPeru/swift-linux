@@ -1,0 +1,87 @@
+#!/bin/busybox sh
+# Minimal A/B-aware init: resolve the root= the bootloader passed, wait
+# for slow media, mount read-only, hand over to the slot's /sbin/init.
+# No update logic lives here - RAUC owns updates. If the root device
+# never appears, drop to a rescue shell instead of a kernel panic.
+
+bb=/bin/busybox
+
+$bb mount -t devtmpfs devtmpfs /dev 2>/dev/null
+$bb mount -t proc -o nodev,noexec,nosuid proc /proc
+$bb mount -t sysfs -o nodev,noexec,nosuid sysfs /sys
+
+root=
+rootfstype=
+rootflags=ro
+retries=30
+for param in $($bb cat /proc/cmdline); do
+	case "$param" in
+		root=*)       root="${param#root=}" ;;
+		rootfstype=*) rootfstype="${param#rootfstype=}" ;;
+		rootflags=*)  rootflags="ro,${param#rootflags=}" ;;
+		rootdelay=*)  retries="${param#rootdelay=}" ;;
+	esac
+done
+
+# Resolve root=PARTUUID=... through sysfs: the kernel publishes each
+# partition's PARTUUID in its uevent, so no udev and no GPT parsing.
+resolve_root() {
+	case "$root" in
+	PARTUUID=*)
+		want="${root#PARTUUID=}"
+		for uevent in /sys/class/block/*/uevent; do
+			dev= ; pu=
+			while IFS== read -r k v; do
+				case "$k" in
+					DEVNAME) dev="$v" ;;
+					PARTUUID) pu="$v" ;;
+				esac
+			done < "$uevent"
+			if [ -n "$dev" ] && [ "$pu" = "$want" ]; then
+				echo "/dev/$dev"
+				return 0
+			fi
+		done
+		return 1
+		;;
+	/dev/*)
+		[ -b "$root" ] && echo "$root" && return 0
+		return 1
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
+echo "swift-initramfs: waiting for root ($root)"
+dev=
+i=0
+while [ "$i" -lt "$retries" ]; do
+	dev="$(resolve_root)" && [ -n "$dev" ] && break
+	i=$((i + 1))
+	$bb sleep 1
+done
+
+mounted=n
+if [ -n "$dev" ]; then
+	if [ -n "$rootfstype" ]; then
+		$bb mount -t "$rootfstype" -o "$rootflags" "$dev" /new_root && mounted=y
+	else
+		$bb mount -o "$rootflags" "$dev" /new_root && mounted=y
+	fi
+fi
+
+if [ "$mounted" = y ] && [ -x /new_root/sbin/init ]; then
+	$bb umount /proc
+	$bb umount /sys
+	$bb umount /dev 2>/dev/null
+	exec $bb switch_root /new_root /sbin/init
+fi
+
+echo "swift-initramfs: root '$root' not mountable - rescue shell."
+echo "  blkid / dmesg / ls /sys/class/block may help; exit to retry."
+while :; do
+	$bb sh
+	exec /init
+done
