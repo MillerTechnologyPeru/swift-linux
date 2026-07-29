@@ -1,0 +1,10 @@
+config BR2_PACKAGE_MODEMMANAGER
+	bool "modemmanager"
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_LIBGUDEV
+	help
+	  ModemManager daemon and libmm-glib, built without qmi/mbim;
+	  here chiefly because the control center's network code links
+	  libmm-glib.
+
+	  https://modemmanager.org
