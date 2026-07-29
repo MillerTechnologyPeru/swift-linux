@@ -1,0 +1,24 @@
+--- a/package/pipewire/pipewire.mk	2026-07-28 23:18:54.305783288 -0400
++++ b/package/pipewire/pipewire.mk	2026-07-28 23:18:54.335914457 -0400
+@@ -20,7 +20,6 @@
+ 	-Dspa-plugins=enabled \
+ 	-Daudiomixer=enabled \
+ 	-Daudioconvert=enabled \
+-	-Dbluez5-codec-lc3=disabled \
+ 	-Dbluez5-codec-lc3plus=disabled \
+ 	-Dcontrol=enabled \
+ 	-Daudiotestsrc=enabled \
+@@ -122,6 +121,13 @@
+ else
+ PIPEWIRE_CONF_OPTS += -Dbluez5-codec-opus=disabled
+ endif
++
++ifeq ($(BR2_PACKAGE_LIBLC3),y)
++PIPEWIRE_CONF_OPTS += -Dbluez5-codec-lc3=enabled
++PIPEWIRE_DEPENDENCIES += liblc3
++else
++PIPEWIRE_CONF_OPTS += -Dbluez5-codec-lc3=disabled
++endif
+ ifeq ($(BR2_PACKAGE_FDK_AAC),y)
+ PIPEWIRE_CONF_OPTS += -Dbluez5-codec-aac=enabled
+ PIPEWIRE_DEPENDENCIES += fdk-aac
