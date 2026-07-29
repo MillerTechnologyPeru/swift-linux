@@ -4,7 +4,9 @@ config BR2_PACKAGE_STEAM
 	depends on BR2_TOOLCHAIN_USES_GLIBC
 	select BR2_PACKAGE_BASH # /usr/bin/steam is a bash script
 	select BR2_PACKAGE_XWAYLAND # Steam's UI is X11
-	# On ARM64 the x86 launcher and x86_64 games run through box64.
+	# Every Steam binary is x86: the 32-bit bootstrap needs box86 (built
+	# in the armv7 companion, merged by post-build-lib32.sh), the client
+	# and games need box64.
 	select BR2_PACKAGE_BOX64 if BR2_aarch64
 	help
 	  Valve's Steam client bootstrap.
@@ -14,13 +16,19 @@ config BR2_PACKAGE_STEAM
 	  libraries, are downloaded into the user's home directory on first
 	  launch, so Steam needs network access the first time it runs.
 
-	  On x86_64 Steam runs natively. On ARM64 the x86 launcher binary and
-	  x86_64 games run through box64 (see the binfmt_misc registration in
-	  S07binfmt); the native ARM64 Steam client and its ARM64 Proton are
-	  fetched by Steam at runtime. Either way a 32-bit userland must be
-	  merged into the image (the "lib32" profile / SWIFT_LINUX_LIB32_ROOT)
-	  for the 32-bit bootstrap binary, along with a running X11/XWayland
-	  session such as sway with XWayland enabled.
+	  There is no native ARM64 Steam: the launcher's own
+	  detect_platform() hard-codes "ubuntu12_32" ("the only platform
+	  we have a bootstrap for"), the .deb is published for amd64
+	  only, and the bootstrap it unpacks is a 32-bit i386 binary.
+
+	  So on x86_64 the client runs natively, and on ARM64 every part
+	  of it is translated: the 32-bit bootstrap through box86, the
+	  64-bit client and games through box64, dispatched by the
+	  binfmt_misc handlers S07binfmt registers. box86 is built in the
+	  armv7 companion, so an ARM64 image needs that companion merged
+	  (the "lib32" profile / SWIFT_LINUX_LIB32_ROOT) or Steam cannot
+	  start at all. x86_64 images need the i386 companion for the same
+	  bootstrap. Both also need a running X11/XWayland session.
 
 	  Steam is proprietary; it is not redistributed in the image sources.
 
