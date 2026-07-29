@@ -32,7 +32,12 @@ endef
 # GNU fallback; map it to the GCC builtin. LibJXR also calls wcslen without
 # including <wchar.h>, which modern GCC treats as an error, so the header is
 # force-included everywhere.
+# PNG_ARM_NEON_OPT=0: the bundled libpng enables its NEON filter paths on
+# aarch64 but FreeImage's source list omits the NEON implementation files,
+# leaving png_init_filter_functions_neon undefined at link time in every
+# consumer. Harmless off-arm.
 FREEIMAGE_DEFINES = -DOPJ_STATIC -DNO_LCMS -DDISABLE_PERF_MEASUREMENT \
+	-DPNG_ARM_NEON_OPT=0 \
 	-D__ANSI__ -D_byteswap_ulong=__builtin_bswap32 -include wchar.h
 
 FREEIMAGE_MAKE_OPTS = \
