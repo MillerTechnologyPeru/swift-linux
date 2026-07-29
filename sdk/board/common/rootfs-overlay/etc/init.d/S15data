@@ -136,6 +136,20 @@ start() {
 		chown swift:swift "${DATA}/roms/bios/README.txt"
 	fi
 
+	# Seed the EmulationStation Apps group with entries for the
+	# application managers the image ships (GNOME Software today). The
+	# marker makes seeding once-only, so an entry the user deletes stays
+	# deleted; it is set only when something was actually seeded, so an
+	# image upgraded to one that ships GNOME Software still gets it.
+	if [ ! -f "${DATA}/apps/.seeded" ] && [ -x /usr/bin/gnome-software ] && \
+	   [ -d /usr/share/swift-linux/apps ]; then
+		cp /usr/share/swift-linux/apps/*.sh "${DATA}/apps/" 2>/dev/null || true
+		chown swift:swift "${DATA}/apps/"*.sh 2>/dev/null || true
+		chmod +x "${DATA}/apps/"*.sh 2>/dev/null || true
+		touch "${DATA}/apps/.seeded"
+		chown swift:swift "${DATA}/apps/.seeded"
+	fi
+
 	# BlueZ pairings, NetworkManager connection profiles and the flatpak
 	# system installation live under /var/lib, which is on this read-only
 	# rootfs; bind them to the data partition so they survive a reboot
