@@ -1,0 +1,4 @@
+# Ethernet interfaces whose MAC the kernel had to invent this boot
+# (addr_assign_type 1 = randomly generated; boards without a burned-in
+# address) get a stable, serial-derived one instead. See persistent-mac.
+ACTION=="add", SUBSYSTEM=="net", KERNEL=="eth*|end*|enp*", ATTR{addr_assign_type}=="1", RUN+="/usr/sbin/persistent-mac %k"
