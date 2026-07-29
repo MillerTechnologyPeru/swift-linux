@@ -1,6 +1,10 @@
 # Allwinner H700 kernel / U-Boot patches
 
-Shared patches for all H700 handhelds (applied via `BR2_GLOBAL_PATCH_DIR`,
-stacked before each device's own `patches/`). `linux/*.patch` patch the kernel,
-`uboot/*.patch` patch U-Boot. Put SoC-wide fixes here (panel/DSI, AXP charger,
-ADC joystick) and device-specific ones in the device board's `patches/`.
+Imported kernel patch set for this family (22 patches, 14 device trees in ../dts),
+applied via BR2_GLOBAL_PATCH_DIR and stacked before each device's own
+patches/ dir. Source: the upstream handheld distribution's device tree at
+https://github.com/ROCKNIX/distribution/tree/main/projects/ROCKNIX/devices/H700
+(patches/linux and linux/dts); resync from there when bumping.
+
+Target kernel: 6.15.6 - the family fragment pins it; the patches will not
+apply to other versions.
