@@ -28,6 +28,8 @@ define STEAM_INSTALL_TARGET_CMDS
 	cp -a $(@D)/usr/lib/steam $(TARGET_DIR)/usr/lib/steam
 	$(INSTALL) -D -m 0755 $(STEAM_PKGDIR)/steam-run \
 		$(TARGET_DIR)/usr/bin/steam-run
+	$(INSTALL) -D -m 0755 $(STEAM_PKGDIR)/steam-arm64-install \
+		$(TARGET_DIR)/usr/bin/steam-arm64-install
 endef
 
 $(eval $(generic-package))
