@@ -183,6 +183,26 @@ rescan() {
 	sleep 1
 }
 
+# The installed system must not carry the installer: it is a removable-
+# medium tool, and on the internal disk it could only ever re-erase the
+# machine it runs from. The rootfs copy is bit-exact, so the tooling is
+# removed from the DESTINATION afterwards - the running medium keeps its
+# own copy untouched.
+strip_installer() { # <root partition>
+	m=/run/system-install-root.$$
+	mkdir -p "$m"
+	if mount "$1" "$m" 2>/dev/null; then
+		rm -f "$m/usr/bin/system-install" \
+			"$m/usr/share/es-tools/Install to Internal Disk.sh"
+		sed -i 's|, /usr/bin/system-install||' \
+			"$m/etc/sudoers.d/es-platform" 2>/dev/null || true
+		umount "$m"
+	else
+		say "WARNING: could not mount the installed root to remove the installer"
+	fi
+	rmdir "$m" 2>/dev/null || true
+}
+
 install_depthcharge() {
 	need=$(( CROS_ROOT_START + 2 * src_root_sectors + 2048 ))
 	[ "$int_sectors" -gt "$need" ] || \
@@ -211,6 +231,7 @@ install_depthcharge() {
 
 	say "Copying the running rootfs to slot A (this takes a while) ..."
 	dd if="$root_src" of="$(part "$int_disk" 3)" bs=4M conv=fsync status=none
+	strip_installer "$(part "$int_disk" 3)"
 
 	say "Creating the data partition ..."
 	mkfs.ext4 -q -F -L data "$(part "$int_disk" 5)" </dev/null
@@ -262,6 +283,7 @@ install_uefi() {
 
 	say "Copying the running rootfs to slot A (this takes a while) ..."
 	dd if="$root_src" of="$(part "$int_disk" 2)" bs=4M conv=fsync status=none
+	strip_installer "$(part "$int_disk" 2)"
 
 	say "Creating the data partition ..."
 	mkfs.ext4 -q -F -L data "$(part "$int_disk" 4)" </dev/null
