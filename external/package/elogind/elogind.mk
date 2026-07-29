@@ -26,12 +26,21 @@ ELOGIND_CONF_OPTS = \
 	-Ddefault-hierarchy=unified \
 	-Dman=disabled \
 	-Dhtml=disabled \
-	-Dpam=disabled \
 	-Dselinux=disabled \
 	-Dacl=disabled \
 	-Dsmack=disabled \
 	-Dutmp=false \
 	-Dbashcompletiondir=no \
 	-Dzshcompletiondir=no
+
+# Session registration happens through pam_elogind: without PAM in the
+# login path, logind knows no sessions and a compositor cannot attach.
+# The GNOME frontend fragment enables linux-pam; elogind follows it.
+ifeq ($(BR2_PACKAGE_LINUX_PAM),y)
+ELOGIND_CONF_OPTS += -Dpam=enabled -Dpamlibdir=/lib/security
+ELOGIND_DEPENDENCIES += linux-pam
+else
+ELOGIND_CONF_OPTS += -Dpam=disabled
+endif
 
 $(eval $(meson-package))
