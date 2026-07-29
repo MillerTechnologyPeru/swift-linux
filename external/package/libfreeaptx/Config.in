@@ -1,0 +1,8 @@
+config BR2_PACKAGE_LIBFREEAPTX
+	bool "libfreeaptx"
+	depends on !BR2_STATIC_LIBS
+	help
+	  Free implementation of the aptX and aptX HD Bluetooth audio
+	  codecs; PipeWire's bluez plugin detects and uses it.
+
+	  https://github.com/iamthehorker/libfreeaptx

@@ -7,7 +7,7 @@
 #
 ################################################################################
 
-ALSA_UCM_CONF_VERSION = 1.2.14
+ALSA_UCM_CONF_VERSION = 1.2.16.1
 ALSA_UCM_CONF_SOURCE = alsa-ucm-conf-$(ALSA_UCM_CONF_VERSION).tar.bz2
 ALSA_UCM_CONF_SITE = https://www.alsa-project.org/files/pub/lib
 ALSA_UCM_CONF_LICENSE = BSD-3-Clause

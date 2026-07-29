@@ -1,0 +1,10 @@
+config BR2_PACKAGE_CHROMEBOOK_UCM_CONF
+	bool "chromebook-ucm-conf"
+	select BR2_PACKAGE_ALSA_UCM_CONF
+	help
+	  Community ALSA UCM profiles for Chromebooks (the standalone
+	  branch of alsa-ucm-conf-cros): the routing data that makes
+	  Chromebook speakers, microphones and jacks actually work
+	  outside ChromeOS. Layered over the stock UCM set.
+
+	  https://github.com/WeirdTreeThing/alsa-ucm-conf-cros

@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBLDAC
+	bool "libldac"
+	depends on !BR2_STATIC_LIBS
+	help
+	  LDAC Bluetooth audio encoder (the open ldacBT packaging of
+	  Sony's codec); PipeWire's bluez plugin detects and uses it
+	  for LDAC-capable headphones.
+
+	  https://github.com/EHfive/ldacBT

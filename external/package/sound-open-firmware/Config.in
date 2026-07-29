@@ -1,0 +1,9 @@
+config BR2_PACKAGE_SOUND_OPEN_FIRMWARE
+	bool "sound-open-firmware"
+	help
+	  Signed Sound Open Firmware binaries for DSP-routed audio
+	  (Intel and MediaTek - the MT8183 Chromebooks' ADSP among
+	  them). Firmware only; the topology data comes from
+	  alsa-topology-conf.
+
+	  https://github.com/thesofproject/sof-bin
