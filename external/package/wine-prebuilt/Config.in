@@ -1,0 +1,25 @@
+config BR2_PACKAGE_WINE_PREBUILT
+	bool "wine-prebuilt"
+	depends on BR2_x86_64 || BR2_aarch64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	help
+	  Wine as an upstream-built x86-64 WoW64 binary (Kron4ek's
+	  builds, the same source the reference distributions ship).
+	  A prebuilt, deliberately: Buildroot's from-source wine is
+	  i386-only, and a 64-bit WoW64 Wine - which runs 32-bit
+	  Windows applications without any 32-bit Unix libraries - is
+	  what both targets need. On x86_64 it runs natively; on
+	  aarch64 the same binaries run through box64 via the binfmt
+	  handlers (S07binfmt).
+
+	  Installed self-contained under /usr/wine/prebuilt, so it
+	  never collides with the i386 companion's /usr/bin/wine on
+	  x86_64 images; wine-launch prefers it when present.
+
+	  Wine itself is LGPL; the tarball is upstream's own release
+	  artifact, hash-pinned.
+
+	  https://github.com/Kron4ek/Wine-Builds
+
+comment "wine-prebuilt needs an x86_64/aarch64 glibc toolchain"
+	depends on !(BR2_x86_64 || BR2_aarch64) || !BR2_TOOLCHAIN_USES_GLIBC

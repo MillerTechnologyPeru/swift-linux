@@ -154,9 +154,10 @@ start() {
 	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
 		roms/solarus roms/love roms/pygame roms/ports roms/steam \
-		roms/bios roms/screenshots roms/flatpak roms/lutris roms/heroic \
+		roms/windows roms/bios roms/screenshots \
+		roms/flatpak roms/lutris roms/heroic \
 		saves saves/flatpak saves/lutris saves/lutris/share \
-		saves/lutris/config saves/heroic saves/steam apps; do
+		saves/lutris/config saves/heroic saves/steam saves/windows apps; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
 		chown swift:swift "${DATA}/${d}"
