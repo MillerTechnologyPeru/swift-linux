@@ -114,10 +114,14 @@ case "$profile" in
         # same libraries its 64-bit counterpart would. Only the image-assembly
         # fragments (kernel, bootloader, init, steam) are omitted - the 64-bit
         # image supplies those, and the merge script copies only lib trees.
-        # The armv7 companion also carries box86.
+        #
+        # Graphics drivers are architecture-specific, so each companion ends
+        # with its own GPU fragment: a 32-bit process cannot load the 64-bit
+        # image's DRI drivers or Vulkan ICDs. The armv7 companion also
+        # carries box86 (both live in lib32-arm.config).
         case "$arch" in
             arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs lib32-arm) ;;
-            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs) ;;
+            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs gpu/lib32-x86) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
