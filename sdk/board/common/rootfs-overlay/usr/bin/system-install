@@ -8,15 +8,22 @@
 # currently running, copied partition-for-partition, so what you tested
 # from the removable medium is exactly what lands internally.
 #
-# One script for every boot firmware this distribution targets; the path
-# is detected, not configured (the shape follows the Cadmium installer,
-# https://github.com/Maccraft123/Cadmium):
+# One script for every boot firmware this distribution targets (the
+# shape follows the Cadmium installer,
+# https://github.com/Maccraft123/Cadmium). The install path comes from
+# the image's own board metadata - /usr/share/boardinfo/current, the
+# BOOTFW field - not from runtime sniffing: the image was built for a
+# board, and the build already knows how that board boots.
 #
-#   depthcharge  cros_secure on the kernel command line (Chromebooks):
-#                ChromeOS kernel partitions, slot attributes via sgdisk
-#   uefi         /sys/firmware/efi present (x86_64 and arm64 UEFI images):
-#                ESP + A/B roots + data, GRUB from the ESP's removable
-#                fallback path, so no NVRAM entry is needed
+#   depthcharge  Chromebooks: ChromeOS kernel partitions, slot
+#                attributes via sgdisk
+#   uefi         the x86_64 and arm64 UEFI images: ESP + A/B roots +
+#                data, GRUB from the ESP's removable fallback path, so
+#                no NVRAM entry is needed
+#
+# Runtime evidence is still consulted, but only to WARN on a mismatch -
+# an installer this destructive should say something if the machine it
+# is on does not look like the board the image claims.
 #
 # Either way the internal disk gets the data partition the image itself
 # has no room for, carrying the fixed PARTUUID S15data looks for.
@@ -63,15 +70,30 @@ for t in sgdisk blkid findmnt lsblk mkfs.ext4 blockdev dd; do
 	command -v "$t" >/dev/null 2>&1 || die "missing required tool: $t"
 done
 
-# --- Firmware detection -----------------------------------------------------
+# --- Boot firmware, from the board metadata ---------------------------------
+BOARDINFO=/usr/share/boardinfo/current
+[ -f "$BOARDINFO" ] || die "no $BOARDINFO - this image carries no board metadata"
 BOOTFW=""
-if grep -qs cros_secure /proc/cmdline; then
-	BOOTFW=depthcharge
-elif [ -d /sys/firmware/efi ]; then
-	BOOTFW=uefi
-fi
-[ -n "$BOOTFW" ] || die "neither Depthcharge nor UEFI detected - unsupported boot path"
-say "Boot firmware: $BOOTFW"
+BOARD=""
+. "$BOARDINFO"
+[ -n "$BOOTFW" ] || die "boardinfo has no BOOTFW field"
+say "Board: ${BOARD:-unknown}  boot firmware: $BOOTFW (from boardinfo)"
+
+case "$BOOTFW" in
+	depthcharge|uefi) ;;
+	*) die "no install path for BOOTFW=$BOOTFW boards yet" ;;
+esac
+
+# Sanity: warn (only) when the running machine does not look like what
+# the metadata says. The metadata still decides.
+case "$BOOTFW" in
+	depthcharge)
+		grep -qs cros_secure /proc/cmdline || 			say "WARNING: boardinfo says depthcharge but cros_secure is not on the command line"
+		;;
+	uefi)
+		[ -d /sys/firmware/efi ] || 			say "WARNING: boardinfo says uefi but /sys/firmware/efi is absent"
+		;;
+esac
 
 # --- Battery ----------------------------------------------------------------
 # A machine that dies midway leaves neither system bootable; refuse below
