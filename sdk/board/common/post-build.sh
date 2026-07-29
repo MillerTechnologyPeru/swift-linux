@@ -43,7 +43,8 @@ fi
 # The rootfs is read-only, so they have to exist in the image (BlueZ ships
 # /var/lib/bluetooth itself; NetworkManager does not create its directory).
 mkdir -p "${TARGET_DIR}/var/lib/bluetooth" \
-         "${TARGET_DIR}/var/lib/NetworkManager"
+         "${TARGET_DIR}/var/lib/NetworkManager" \
+         "${TARGET_DIR}/var/lib/flatpak"
 chmod 0700 "${TARGET_DIR}/var/lib/bluetooth" \
            "${TARGET_DIR}/var/lib/NetworkManager"
 
