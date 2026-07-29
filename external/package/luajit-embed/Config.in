@@ -1,0 +1,22 @@
+config BR2_PACKAGE_LUAJIT_EMBED
+	bool "luajit-embed"
+	depends on BR2_PACKAGE_LUAJIT_ARCH_SUPPORTS
+	depends on !BR2_STATIC_LIBS # dlopen
+	help
+	  LuaJIT built as an embeddable library rather than as the
+	  system Lua interpreter.
+
+	  Buildroot's luajit package registers itself as the provider
+	  of the "luainterpreter" virtual package and symlinks
+	  /usr/bin/lua to itself, so it cannot coexist with lua - the
+	  build stops with a configuration error if both are selected.
+	  That is a problem for this image, which needs both:
+	  WirePlumber requires the Lua 5.4 ABI, while love and
+	  solarus-engine require the LuaJIT (Lua 5.1) API.
+
+	  This package builds the same sources and installs the
+	  library, headers and the luajit binary, but claims neither
+	  the virtual package nor the /usr/bin/lua name. Engines link
+	  it directly; lua stays the system interpreter.
+
+	  https://luajit.org

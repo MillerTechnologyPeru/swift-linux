@@ -30,6 +30,15 @@ rm -rf "${TARGET_DIR}/usr/lib/weston" "${TARGET_DIR}/usr/share/weston"
 # libweston-<abi> is a directory, so this must be rm -rf, not rm -f.
 rm -rf "${TARGET_DIR}"/usr/lib/libweston*
 
+# Buildroot's luajit package symlinks /usr/bin/lua to itself; luajit-embed
+# (which replaced it, see external/package/luajit-embed) does not, because
+# lua 5.4 owns that name. An incremental target/ keeps the old symlink,
+# where it shadows the real interpreter - so drop it and let lua reinstall
+# its own binary.
+if [ -L "${TARGET_DIR}/usr/bin/lua" ]; then
+	rm -f "${TARGET_DIR}/usr/bin/lua"
+fi
+
 # Mountpoints for the state that S15data bind-mounts off the data partition.
 # The rootfs is read-only, so they have to exist in the image (BlueZ ships
 # /var/lib/bluetooth itself; ConnMan and NetworkManager do not create

@@ -18,7 +18,7 @@ SOLARUS_ENGINE_LICENSE_FILES = license.txt
 SOLARUS_ENGINE_INSTALL_STAGING = YES
 
 SOLARUS_ENGINE_DEPENDENCIES = glm libmodplug libogg libvorbis openal physfs \
-	sdl2 sdl2_image sdl2_ttf luajit
+	sdl2 sdl2_image sdl2_ttf luajit-embed
 
 # No launcher GUI (it requires Qt5). The write directory is fixed at build
 # time (solarus has no runtime option for it), which is why quests save to
