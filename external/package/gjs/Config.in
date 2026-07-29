@@ -1,0 +1,11 @@
+config BR2_PACKAGE_GJS
+	bool "gjs"
+	depends on BR2_PACKAGE_MOZJS128
+	select BR2_PACKAGE_GOBJECT_INTROSPECTION
+	select BR2_PACKAGE_CAIRO
+	help
+	  GNOME's JavaScript bindings: SpiderMonkey plus GObject
+	  introspection. gnome-shell's UI is gjs code; the typelibs the
+	  rest of the stack installs are what it calls into.
+
+	  https://gitlab.gnome.org/GNOME/gjs
