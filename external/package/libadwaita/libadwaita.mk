@@ -17,8 +17,16 @@ LIBADWAITA_DEPENDENCIES = host-pkgconf gtk4 appstream
 LIBADWAITA_CONF_OPTS = \
 	-Dexamples=false \
 	-Dtests=false \
-	-Dintrospection=disabled \
 	-Dvapi=false \
 	-Dgtk_doc=false
+
+# gnome-shell drives everything through GObject introspection typelibs, so
+# build them whenever the config carries gobject-introspection.
+ifeq ($(BR2_PACKAGE_GOBJECT_INTROSPECTION),y)
+LIBADWAITA_CONF_OPTS += -Dintrospection=enabled
+LIBADWAITA_DEPENDENCIES += gobject-introspection
+else
+LIBADWAITA_CONF_OPTS += -Dintrospection=disabled
+endif
 
 $(eval $(meson-package))
