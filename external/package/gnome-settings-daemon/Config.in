@@ -1,0 +1,17 @@
+config BR2_PACKAGE_GNOME_SETTINGS_DAEMON
+	bool "gnome-settings-daemon"
+	depends on BR2_PACKAGE_MUTTER
+	select BR2_PACKAGE_COLORD
+	select BR2_PACKAGE_LIBGWEATHER
+	select BR2_PACKAGE_GEOCODE_GLIB
+	select BR2_PACKAGE_GNOME_DESKTOP
+	select BR2_PACKAGE_LIBNOTIFY
+	select BR2_PACKAGE_LIBWACOM
+	select BR2_PACKAGE_UPOWER
+	select BR2_PACKAGE_POLKIT
+	select BR2_PACKAGE_PULSEAUDIO # libpulse for volume control (gvc)
+	help
+	  The GNOME settings daemons (xsettings, power, media keys,
+	  color, keyboard...); gnome-session starts them.
+
+	  https://gitlab.gnome.org/GNOME/gnome-settings-daemon
