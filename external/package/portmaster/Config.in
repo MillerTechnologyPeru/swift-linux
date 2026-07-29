@@ -1,0 +1,27 @@
+config BR2_PACKAGE_PORTMASTER
+	bool "portmaster"
+	# The ports themselves are distributed as armhf/aarch64 binaries;
+	# there is no x86 ports library, and PortMaster's own helper
+	# binaries (gptokeyb, 7zzs, innoextract) ship for those two
+	# architectures too.
+	depends on BR2_arm || BR2_aarch64
+	depends on BR2_PACKAGE_EMULATIONSTATION
+	select BR2_PACKAGE_BASH
+	select BR2_PACKAGE_PYTHON3
+	select BR2_PACKAGE_UNZIP
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_CA_CERTIFICATES # https downloads
+	help
+	  PortMaster: a downloader and launcher for the community's
+	  Linux game ports (native ARM builds of commercial and open
+	  source games, plus the runtimes they need).
+
+	  The image ships the launcher only. It unpacks itself to
+	  /roms/ports on first run and downloads ports on demand, so
+	  everything it installs lands on the data partition.
+
+	  https://github.com/PortsMaster/PortMaster-GUI
+
+comment "portmaster needs an ARM target with EmulationStation"
+	depends on !(BR2_arm || BR2_aarch64) || !BR2_PACKAGE_EMULATIONSTATION
