@@ -1,0 +1,11 @@
+config BR2_PACKAGE_XFCE4_SESSION
+	bool "xfce4-session"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_LIBWNCK
+	select BR2_PACKAGE_LIBXFCE4UI
+	select BR2_PACKAGE_XLIB_LIBSM
+	select BR2_PACKAGE_XAPP_ICEAUTH # runtime
+	help
+	  The XFCE session manager; provides startxfce4.
+
+	  https://docs.xfce.org/

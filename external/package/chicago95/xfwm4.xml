@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Image-wide defaults: Chicago95 window decorations (see the chicago95
+     package). Per-user settings in ~/.config/xfce4 override these. -->
+<channel name="xfwm4" version="1.0">
+  <property name="general" type="empty">
+    <property name="theme" type="string" value="Chicago95"/>
+    <property name="title_font" type="string" value="Sans Bold 8"/>
+  </property>
+</channel>

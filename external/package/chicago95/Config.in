@@ -1,0 +1,9 @@
+config BR2_PACKAGE_CHICAGO95
+	bool "chicago95"
+	help
+	  The Chicago95 XFCE/GTK theme: a faithful Windows 95 look for
+	  xfwm4, GTK 2/3, the panel and the icon set. This package also
+	  installs the xfconf channel defaults that make it the active
+	  theme out of the box.
+
+	  https://github.com/grassmunk/Chicago95

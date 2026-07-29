@@ -1,0 +1,11 @@
+config BR2_PACKAGE_XFCE4_PANEL
+	bool "xfce4-panel"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_EXO
+	select BR2_PACKAGE_GARCON
+	select BR2_PACKAGE_LIBWNCK
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  The XFCE panel (taskbar, launchers, plugins).
+
+	  https://docs.xfce.org/

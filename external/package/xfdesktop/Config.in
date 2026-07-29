@@ -1,0 +1,11 @@
+config BR2_PACKAGE_XFDESKTOP
+	bool "xfdesktop"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_EXO
+	select BR2_PACKAGE_GARCON
+	select BR2_PACKAGE_LIBWNCK
+	select BR2_PACKAGE_LIBXFCE4UI
+	help
+	  The XFCE desktop (wallpaper, icons, root menu).
+
+	  https://docs.xfce.org/

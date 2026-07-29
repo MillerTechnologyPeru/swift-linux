@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBXFCE4UTIL
+	bool "libxfce4util"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	help
+	  Base utility library of the XFCE desktop.
+
+	  https://docs.xfce.org/

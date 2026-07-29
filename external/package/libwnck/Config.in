@@ -1,0 +1,11 @@
+config BR2_PACKAGE_LIBWNCK
+	bool "libwnck"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_STARTUP_NOTIFICATION
+	select BR2_PACKAGE_XLIB_LIBXRES
+	help
+	  Window Navigator Construction Kit: the window-list/tasklist
+	  library the XFCE window manager, panel and desktop build on
+	  (X11 only).
+
+	  https://gitlab.gnome.org/GNOME/libwnck

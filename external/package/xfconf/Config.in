@@ -1,0 +1,11 @@
+config BR2_PACKAGE_XFCONF
+	bool "xfconf"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBXFCE4UTIL
+	select BR2_PACKAGE_DBUS # runtime
+	help
+	  XFCE configuration storage daemon and library (over D-Bus).
+
+	  https://docs.xfce.org/
