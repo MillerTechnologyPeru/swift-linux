@@ -1,7 +1,10 @@
 # Rockchip RK3588/RK3588S (4x A76 + 4x A55, Mali-G610) patches
 
-Shared kernel / bootloader patches for all Rockchip RK3588/RK3588S (4x A76 + 4x A55, Mali-G610) handhelds, applied via
-BR2_GLOBAL_PATCH_DIR and stacked before each device's own patches/ dir.
-linux/*.patch patch the kernel, uboot/*.patch patch U-Boot. Empty for now:
-a real bring-up drops the not-yet-mainlined bits here (panel/DSI, gamepad,
-charger, DTS additions).
+Imported kernel patch set for this family (16 patches),
+applied via BR2_GLOBAL_PATCH_DIR and stacked before each device's own
+patches/ dir. Source: the upstream handheld distribution's device tree at
+https://github.com/ROCKNIX/distribution/tree/main/projects/ROCKNIX/devices/RK3588
+(patches/linux); resync from there when bumping.
+
+Target kernel: 6.15.6 - the family fragment pins it; the patches will not
+apply to other versions.
