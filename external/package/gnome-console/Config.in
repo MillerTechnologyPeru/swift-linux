@@ -1,0 +1,10 @@
+config BR2_PACKAGE_GNOME_CONSOLE
+	bool "gnome-console"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_LIBADWAITA
+	select BR2_PACKAGE_VTE4
+	select BR2_PACKAGE_LIBGTOP
+	help
+	  Console (kgx), the GNOME terminal for GTK 4.
+
+	  https://apps.gnome.org/Console/
