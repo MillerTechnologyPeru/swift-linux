@@ -117,10 +117,12 @@ start() {
 	done
 	chown swift:swift "${DATA}/roms" 2>/dev/null
 
-	# BlueZ pairings and ConnMan network profiles live under /var/lib, which
-	# is a tmpfs on this read-only rootfs; bind them to the data partition so
-	# they survive a reboot. Must happen before S40bluetoothd/S45connman.
-	for d in bluetooth connman; do
+	# BlueZ pairings and network state (ConnMan profiles, or
+	# NetworkManager connections on GNOME images) live under /var/lib,
+	# which is a tmpfs on this read-only rootfs; bind them to the data
+	# partition so they survive a reboot. Must happen before
+	# S40bluetoothd and the network manager's own startup.
+	for d in bluetooth connman NetworkManager; do
 		mkdir -p "${DATA}/lib/${d}" "/var/lib/${d}"
 		mount -o bind "${DATA}/lib/${d}" "/var/lib/${d}"
 	done
