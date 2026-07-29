@@ -1,0 +1,53 @@
+#!/bin/sh
+# Mount/unmount removable drives under /media, called by udev (which
+# provides the ID_FS_* / ID_PART_ENTRY_UUID environment) and replayed at
+# boot by S16media once the /media tmpfs is up.
+
+ACTION="$1"
+NAME="$2"
+MEDIA=/media
+
+[ -n "$NAME" ] || exit 0
+
+# Never touch the image's own partitions: ESP, both A/B root slots and
+# the data partition carry fixed partition UUIDs (see genimage.cfg);
+# S15data owns /boot and /data, and the inactive root slot must stay
+# unmounted for RAUC to update it.
+case "$ID_PART_ENTRY_UUID" in
+	0a0a0a0a-*|0b0b0b0b-*|0d0d0d0d-*|0e0e0e0e-*) exit 0 ;;
+esac
+
+case "$ACTION" in
+add)
+	[ -b "/dev/$NAME" ] || exit 0
+	# tmpfs on /media not mounted yet (early coldplug): S16media replays.
+	grep -q " $MEDIA tmpfs" /proc/mounts || exit 0
+	# Already mounted somewhere (the active root, a manual mount): skip.
+	grep -q "^/dev/$NAME " /proc/mounts && exit 0
+
+	label="$(printf '%s' "${ID_FS_LABEL:-$NAME}" | tr -c 'A-Za-z0-9._-' '_')"
+	dir="$MEDIA/$label"
+	[ -e "$dir" ] && dir="$MEDIA/$label-$NAME"
+	mkdir -p "$dir" || exit 0
+
+	opts="nosuid,nodev,noatime"
+	case "$ID_FS_TYPE" in
+	vfat|msdos)
+		# flush: pull the drive without eject and lose little.
+		opts="$opts,uid=1000,gid=1000,fmask=0022,dmask=0022,flush" ;;
+	exfat|ntfs*)
+		opts="$opts,uid=1000,gid=1000,fmask=0022,dmask=0022" ;;
+	esac
+	mount -o "$opts" "/dev/$NAME" "$dir" 2>/dev/null || rmdir "$dir"
+	;;
+remove)
+	dir="$(grep "^/dev/$NAME " /proc/mounts | cut -d' ' -f2 | head -1)"
+	case "$dir" in
+	"$MEDIA"/*)
+		umount "$dir" 2>/dev/null || umount -l "$dir" 2>/dev/null
+		rmdir "$dir" 2>/dev/null
+		;;
+	esac
+	;;
+esac
+exit 0
