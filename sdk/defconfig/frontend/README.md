@@ -17,7 +17,7 @@ duplicates the default.
 | `emulationstation.config` | GL(ES)-capable gaming devices, the default | working |
 | `gmenu2x.config` | armv5 / devices with no OpenGL ES (framebuffer) | definition only |
 | `xfce.config` | desktop use: XFCE on X.org, Chicago95 theme by default | packaged + kconfig-validated, not yet booted |
-| `gnome.config` | desktop x86_64/arm64 machines | in progress: dependency audit done, stage-1 foundation (elogind, dconf, libnotify) packaged; see the staged plan in the fragment |
+| `gnome.config` | desktop x86_64/arm64 machines | in progress: stages 1-2 packaged (elogind/dconf/libnotify, gtk4/libadwaita/appstream); see the staged plan in the fragment |
 | `phosh.config` | Android-phone form factors (oneplus-*, xiaomi-*) | placeholder: Buildroot has no phosh/phoc packages |
 
 The placeholders document intent and the packaging work each needs; they
