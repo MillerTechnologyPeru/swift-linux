@@ -1,0 +1,40 @@
+config BR2_PACKAGE_FIRMWARE_EXTRA
+	bool "firmware-extra"
+	help
+	  Firmware from the upstream linux-firmware collection that
+	  Buildroot's linux-firmware package offers no options for.
+	  Each group below copies a curated set of files; the source
+	  tarball is shared with the linux-firmware package, so
+	  enabling this costs no extra download.
+
+if BR2_PACKAGE_FIRMWARE_EXTRA
+
+config BR2_PACKAGE_FIRMWARE_EXTRA_AMP
+	bool "speaker amplifiers (Cirrus Logic, TI)"
+	help
+	  Smart-amp firmware for the speaker amplifiers soldered into
+	  most x86 gaming handhelds: Cirrus CS35L41 and friends,
+	  cs42l43, and the TI TAS25xx/TAS27xx families. Without these
+	  the internal speakers stay silent while headphones work.
+
+config BR2_PACKAGE_FIRMWARE_EXTRA_QCA_BT
+	bool "Qualcomm Bluetooth (qca)"
+	help
+	  Bluetooth firmware for Qualcomm radios - the BT half of the
+	  ath10k/ath11k/ath12k wifi parts, over USB or UART.
+
+config BR2_PACKAGE_FIRMWARE_EXTRA_ATH_SOC
+	bool "Qualcomm SoC and module wifi (ath10k/ath11k/ath12k)"
+	help
+	  Wifi firmware for the Qualcomm parts Buildroot has no
+	  per-chip options for: WCN3990 (SDM845 phones), QCA6390
+	  (SM8250 handhelds), WCN6750 (SC7180 Chromebooks) and
+	  WCN7850 (wifi 7 modules).
+
+config BR2_PACKAGE_FIRMWARE_EXTRA_AVS
+	bool "Intel AVS audio DSP"
+	help
+	  DSP firmware for Intel's AVS audio path on Skylake-through-
+	  Raptor Lake laptops and handhelds.
+
+endif
