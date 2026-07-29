@@ -1,0 +1,107 @@
+#!/bin/sh
+# Install the native aarch64 Steam client and an ARM64 Proton.
+#
+#   steam-arm64-install [--proton-only]
+#
+# PROTOTYPE. Valve does publish an aarch64 Steam client, but not through
+# the launcher .deb this package installs: that .deb is amd64-only and its
+# bin_steam.sh hard-codes an "ubuntu12_32" bootstrap. The arm64 client
+# comes from the client-update channel instead, and the runtime image from
+# the Steam Runtime 3 repository, so it is fetched here at runtime rather
+# than built into the image.
+#
+# Everything lands in the save tree (~/.local/share/Steam is a symlink to
+# /data/saves/steam), so it survives A/B updates and is not part of the
+# rootfs.
+#
+# Caveat worth knowing before relying on this: the arm64 client is on
+# Valve's PUBLIC BETA channel. It can move or break without notice, which
+# is why the runtime version is resolved at install time rather than
+# pinned in the image - a pin here would rot silently.
+
+set -e
+
+STEAM_DIR="${HOME}/.local/share/Steam"
+CLIENT_DIR="${STEAM_DIR}/steamrtarm64"
+COMPAT_DIR="${STEAM_DIR}/compatibilitytools.d"
+
+CLIENT_MANIFEST="https://client-update.fastly.steamstatic.com/steam_client_publicbeta_linuxarm64"
+RUNTIME_BASE="https://repo.steampowered.com/steamrt3c/images"
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'steam-arm64-install: %s\n' "$*" >&2; exit 1; }
+
+command -v curl >/dev/null 2>&1 || die "curl is required"
+mkdir -p "${STEAM_DIR}" "${COMPAT_DIR}"
+
+install_client() {
+	say "Fetching the arm64 Steam client manifest ..."
+	manifest="$(curl -fsSL "${CLIENT_MANIFEST}")" || \
+		die "cannot reach the arm64 client channel"
+
+	# The manifest is Valve's VDF-ish key/value text; the zipvz entry is
+	# the client payload and its path is relative to the client CDN.
+	pkg=$(printf '%s' "${manifest}" | sed -n 's/.*"zipvz"[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+	[ -n "${pkg}" ] || die "no client package in the manifest (channel changed?)"
+
+	url="https://client-update.steamstatic.com/${pkg}"
+	tmp="${STEAM_DIR}/.arm64-client.zip.vz"
+	say "Downloading ${pkg} ..."
+	curl -fL# -o "${tmp}" "${url}" || die "client download failed"
+
+	# The payload is LZMA-compressed (vz); Steam normally unpacks it
+	# itself. Without the client bootstrap there is no unpacker, so this
+	# is where a prototype stops being able to proceed unattended.
+	say ""
+	say "Downloaded to ${tmp}."
+	say "Unpacking a .vz payload needs Valve's own unpacker, which is part"
+	say "of the client this would install - a chicken-and-egg the emulated"
+	say "path solves: run Steam once through box64 (Steam > x86 mode), let"
+	say "it self-update, and it will place the arm64 runtime in"
+	say "${CLIENT_DIR} itself. This script then only needs to add Proton."
+	say ""
+	return 1
+}
+
+install_proton() {
+	ver="${PROTON_GE_VERSION:-GE-Proton10-24}"
+	tar="${ver}-aarch64.tar.gz"
+	url="https://github.com/GloriousEggroll/proton-ge-custom/releases/download/${ver}/${tar}"
+	dest="${COMPAT_DIR}/${ver}"
+
+	if [ -d "${dest}" ]; then
+		say "Proton ${ver} already installed."
+		return 0
+	fi
+
+	say "Downloading ${tar} ..."
+	tmp="${COMPAT_DIR}/.${tar}"
+	if ! curl -fL# -o "${tmp}" "${url}"; then
+		rm -f "${tmp}"
+		die "Proton download failed - set PROTON_GE_VERSION to a release that publishes an aarch64 build"
+	fi
+	mkdir -p "${dest}.part"
+	gzip -dc "${tmp}" | tar -xf - -C "${dest}.part"
+	set -- "${dest}.part"/*
+	if [ $# = 1 ] && [ -d "$1" ]; then
+		mv "$1" "${dest}"; rmdir "${dest}.part"
+	else
+		mv "${dest}.part" "${dest}"
+	fi
+	rm -f "${tmp}"
+	say "Installed Proton ${ver} into ${dest}."
+}
+
+case "${1:-}" in
+	--proton-only) install_proton ;;
+	*)
+		install_proton
+		install_client || true
+		;;
+esac
+
+if [ -x "${CLIENT_DIR}/steam" ]; then
+	say "Native arm64 client present - steam-run will prefer it."
+else
+	say "No native client yet; steam-run continues to use the emulated path."
+fi

@@ -1,0 +1,51 @@
+#!/bin/sh
+# Enable or disable a registered binfmt_misc handler.
+#
+#   binfmtctl disable box64|box86
+#   binfmtctl enable  box64|box86
+#   binfmtctl status  box64|box86     - prints "enabled"/"disabled"/"absent"
+#
+# Writing to /proc/sys/fs/binfmt_misc needs root, and the frontend runs as
+# the session user, so this re-execs through the NOPASSWD rule in
+# /etc/sudoers.d/es-platform. Toggling only ever touches the two handlers
+# this image registers (see S07binfmt) - the name is matched against that
+# fixed list rather than passed through, since the sudoers rule makes
+# anything this script accepts reachable by the session user.
+#
+# Writing 0 to a handler disables it without unregistering: the entry and
+# its magic stay, so "enable" is just writing 1 back.
+
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+
+BINFMT=/proc/sys/fs/binfmt_misc
+
+case "$2" in
+	box64|box86) name="$2" ;;
+	*) echo "binfmtctl: unknown handler: $2" >&2; exit 1 ;;
+esac
+
+entry="${BINFMT}/${name}"
+
+case "$1" in
+	disable)
+		[ -e "${entry}" ] || exit 0
+		echo 0 > "${entry}" 2>/dev/null || exit 1
+		;;
+	enable)
+		[ -e "${entry}" ] || exit 0
+		echo 1 > "${entry}" 2>/dev/null || exit 1
+		;;
+	status)
+		if [ ! -e "${entry}" ]; then
+			echo absent
+		elif head -1 "${entry}" 2>/dev/null | grep -q '^enabled'; then
+			echo enabled
+		else
+			echo disabled
+		fi
+		;;
+	*)
+		echo "usage: binfmtctl enable|disable|status box64|box86" >&2
+		exit 1
+		;;
+esac
