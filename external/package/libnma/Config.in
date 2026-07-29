@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBNMA
+	bool "libnma"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_NETWORK_MANAGER
+	help
+	  NetworkManager UI library (the GTK 4 build); the control
+	  center's network panel requires it.
+
+	  https://gitlab.gnome.org/GNOME/libnma
