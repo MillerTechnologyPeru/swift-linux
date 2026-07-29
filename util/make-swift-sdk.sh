@@ -98,7 +98,13 @@ if [ "$PORTABLE" = 1 ]; then
 	# usr/lib/xtables holds iptables runtime plugins (dlopened, never linked at
 	# build time) whose upper/lowercase pairs (libxt_MARK/libxt_mark, ...) also
 	# case-collide, so they are excluded too.
-	rsync -a \
+	# --copy-unsafe-links: a container-built sysroot contains symlinks to
+	# absolute in-container paths (/workspaces/...) - gcc's crt*.o,
+	# libgcc.a, its include dirs, the libstdc++ headers. Preserved as
+	# symlinks they dangle the moment the bundle leaves this machine, so
+	# anything pointing outside the copied tree is turned into the real
+	# file it names. This is what makes the bundle actually portable.
+	rsync -a --copy-unsafe-links \
 		--exclude=/usr/share --exclude=/usr/bin --exclude=/usr/sbin \
 		--exclude=/usr/libexec --exclude=/usr/games \
 		--exclude=/usr/lib/xtables \
@@ -118,10 +124,16 @@ if [ "$PORTABLE" = 1 ]; then
 	done
 	# GCC install dir clang probes: <sysroot>/usr/lib/gcc/<target-triple>/<ver>
 	mkdir -p "$SYS/usr/lib/gcc/$TARGET"
+	# The copied sysroot may already carry this path as a symlink into the
+	# build tree; cp -a onto an existing symlink-to-directory copies INTO
+	# it ("cannot copy a directory into itself"). Drop it first - removing
+	# a symlink does not touch its target.
+	rm -rf "$SYS/usr/lib/gcc/$TARGET/$GCC_VER"
 	cp -a "$SRC_GCC" "$SYS/usr/lib/gcc/$TARGET/$GCC_VER"
 	# libstdc++ headers, with the triple-specific bits dir named for the target.
 	if [ -d "$SRC_CXX_INC" ]; then
 		mkdir -p "$SYS/usr/include/c++"
+		rm -rf "$SYS/usr/include/c++/$GCC_VER"
 		cp -a "$SRC_CXX_INC" "$SYS/usr/include/c++/$GCC_VER"
 		[ -d "$SYS/usr/include/c++/$GCC_VER/$TRIPLE_GNU" ] && \
 			ln -sfn "$TRIPLE_GNU" "$SYS/usr/include/c++/$GCC_VER/$TARGET"
