@@ -1,0 +1,15 @@
+config BR2_PACKAGE_APPSTREAM
+	bool "appstream"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	depends on !BR2_STATIC_LIBS
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_LIBXMLB
+	select BR2_PACKAGE_LIBYAML
+	select BR2_PACKAGE_LIBCURL
+	help
+	  Library for the freedesktop.org software metadata standard
+	  (component metainfo); libadwaita links against it.
+
+	  https://www.freedesktop.org/software/appstream/docs/
