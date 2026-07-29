@@ -1,0 +1,15 @@
+config BR2_PACKAGE_GCR4
+	bool "gcr4"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	depends on !BR2_STATIC_LIBS
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_P11_KIT
+	select BR2_PACKAGE_LIBGCRYPT
+	help
+	  GCR 4: certificate/key handling and secure prompting
+	  libraries; gnome-shell and evolution-data-server link the
+	  GTK-less core.
+
+	  https://gitlab.gnome.org/GNOME/gcr
