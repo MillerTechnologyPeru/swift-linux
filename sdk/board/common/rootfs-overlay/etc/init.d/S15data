@@ -110,14 +110,31 @@ start() {
 	# EmulationStation user-content groups (see /etc/emulationstation/
 	# es_systems.cfg): ROMs, apps and games live on the data partition,
 	# owned by the default user so content can be dropped in over sftp.
+	#
+	# Alongside them: bios/ and screenshots/ next to the ROMs, where a
+	# user looks for them (RetroArch's system_directory and
+	# screenshot_directory point there, see /etc/retroarch.cfg), and a
+	# top-level saves/ that game state is written into, one directory per
+	# system - kept out of roms/ so backing up what the player made is
+	# separable from the content they supplied (see retro-launch).
 	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
-		roms/solarus roms/love roms/pygame roms/ports apps games; do
+		roms/solarus roms/love roms/pygame roms/ports \
+		roms/bios roms/screenshots saves apps games; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
 		chown swift:swift "${DATA}/${d}"
 	done
 	chown swift:swift "${DATA}/roms" 2>/dev/null
+
+	# Drop the BIOS/saves note where someone browsing the card will meet
+	# it. Not overwritten if it is already there - the user may have
+	# replaced it with notes of their own.
+	if [ ! -f "${DATA}/roms/bios/README.txt" ] && \
+	   [ -f /usr/share/swift-linux/bios-README.txt ]; then
+		cp /usr/share/swift-linux/bios-README.txt "${DATA}/roms/bios/README.txt"
+		chown swift:swift "${DATA}/roms/bios/README.txt"
+	fi
 
 	# BlueZ pairings and network state (ConnMan profiles, or
 	# NetworkManager connections on GNOME images) live under /var/lib,
