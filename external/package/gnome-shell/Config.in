@@ -1,0 +1,18 @@
+config BR2_PACKAGE_GNOME_SHELL
+	bool "gnome-shell"
+	depends on BR2_PACKAGE_MUTTER
+	depends on BR2_PACKAGE_GJS
+	select BR2_PACKAGE_GNOME_DESKTOP
+	select BR2_PACKAGE_GCR4
+	select BR2_PACKAGE_EVOLUTION_DATA_SERVER
+	select BR2_PACKAGE_IBUS
+	select BR2_PACKAGE_POLKIT
+	select BR2_PACKAGE_GNOME_SETTINGS_DAEMON # runtime
+	select BR2_PACKAGE_GNOME_SESSION # runtime
+	select BR2_PACKAGE_ADWAITA_ICON_THEME # runtime
+	help
+	  The GNOME desktop shell, running as a mutter plugin with its
+	  UI in gjs. NetworkManager integration off: this image manages
+	  the network with ConnMan.
+
+	  https://gitlab.gnome.org/GNOME/gnome-shell
