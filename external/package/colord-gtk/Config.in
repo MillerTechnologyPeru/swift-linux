@@ -1,0 +1,9 @@
+config BR2_PACKAGE_COLORD_GTK
+	bool "colord-gtk"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_COLORD
+	help
+	  GTK 4 widgets for colord; the control center's color panel
+	  uses them.
+
+	  https://www.freedesktop.org/software/colord/

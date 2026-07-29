@@ -1,0 +1,13 @@
+config BR2_PACKAGE_LIBREST
+	bool "librest"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_LIBSOUP3
+	select BR2_PACKAGE_JSON_GLIB
+	help
+	  RESTful web API client library; gnome-online-accounts talks
+	  its providers through it.
+
+	  https://gitlab.gnome.org/GNOME/librest

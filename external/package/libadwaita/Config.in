@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBADWAITA
+	bool "libadwaita"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_APPSTREAM
+	help
+	  Building blocks and the Adwaita style for modern GNOME
+	  applications, on top of GTK 4.
+
+	  https://gitlab.gnome.org/GNOME/libadwaita

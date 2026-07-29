@@ -1,0 +1,12 @@
+config BR2_PACKAGE_TOTEM_PL_PARSER
+	bool "totem-pl-parser"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_LIBXML2
+	select BR2_PACKAGE_LIBSOUP3
+	help
+	  Playlist parser library (m3u, pls, xspf); media apps share it.
+
+	  https://gitlab.gnome.org/GNOME/totem-pl-parser

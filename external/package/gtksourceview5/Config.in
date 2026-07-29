@@ -1,0 +1,9 @@
+config BR2_PACKAGE_GTKSOURCEVIEW5
+	bool "gtksourceview5"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_PCRE2
+	help
+	  Source-code editing widget for GTK 4; gnome-calculator's
+	  equation entry uses it.
+
+	  https://gitlab.gnome.org/GNOME/gtksourceview

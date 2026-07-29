@@ -1,0 +1,13 @@
+config BR2_PACKAGE_IBUS
+	bool "ibus"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	depends on !BR2_STATIC_LIBS
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_DCONF
+	help
+	  Input method framework; gnome-shell links libibus at build
+	  time (the shell is ibus's UI on GNOME).
+
+	  https://github.com/ibus/ibus

@@ -1,0 +1,18 @@
+#!/bin/sh
+# Start a GNOME session for the current user (the mutter/Wayland
+# counterpart of sway-session; the tty1 profile hook picks whichever the
+# image ships). gnome-session runs its builtin (non-systemd) startup;
+# elogind is D-Bus activated on first login1 access, and the session must
+# have been registered through pam_elogind at login (see /etc/pam.d/login)
+# or mutter's native backend will refuse to start.
+
+XDG_RUNTIME_DIR="/tmp/xdg-$(id -u)"
+export XDG_RUNTIME_DIR
+mkdir -p "${XDG_RUNTIME_DIR}"
+chmod 0700 "${XDG_RUNTIME_DIR}"
+export XDG_SESSION_TYPE=wayland
+
+export LANG=en_US.UTF-8
+export LC_ALL=en_US.UTF-8
+
+exec dbus-run-session -- gnome-session

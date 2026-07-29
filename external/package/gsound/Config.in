@@ -1,0 +1,12 @@
+config BR2_PACKAGE_GSOUND
+	bool "gsound"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_LIBCANBERRA
+	help
+	  Small GObject wrapper over libcanberra; gnome-bluetooth and the
+	  control center play their event sounds through it.
+
+	  https://gitlab.gnome.org/GNOME/gsound

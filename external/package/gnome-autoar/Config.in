@@ -1,0 +1,12 @@
+config BR2_PACKAGE_GNOME_AUTOAR
+	bool "gnome-autoar"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_LIBARCHIVE
+	help
+	  Archive extract/compress helper library; nautilus uses it for
+	  its archive operations.
+
+	  https://gitlab.gnome.org/GNOME/gnome-autoar

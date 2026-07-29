@@ -8,6 +8,7 @@ assembled by `generate-config.sh` per profile (`sdk`, `app-sdk`, `image`,
 
 ```
 include sdk/defconfig/gpu/virgl.config
+include sdk/defconfig/frontend/gmenu2x.config
 ```
 
 Includes are expanded once (cycle-safe), so hardware families share config
@@ -17,6 +18,10 @@ instead of duplicating it. Examples:
   includes the one for its GPU.
 - `sdk/board/qualcomm-sm8250/common.config` — a **hardware-family** fragment;
   each SM8250 device board includes it and adds only its device tree name.
+- `sdk/defconfig/frontend/*.config` — the image's **frontend** (session +
+  launcher); the image profile includes the EmulationStation default and a
+  board overrides it by including another (emitted later, so its negations
+  win). See `sdk/defconfig/frontend/README.md`.
 
 ## The Makefile (per-target verbs)
 
@@ -40,8 +45,11 @@ Adding a board is dropping a `board.config`; no Makefile edits.
 
 - **default** — build on the host toolchain (needs a prebuilt `output/<arch>`).
 - **`CONTAINER=1`** — build in the matching per-arch toolchain container, as
-  your own UID/GID, with the tree bind-mounted at the container's `/workspaces`
-  path. Nothing is left root-owned and the container's baked paths resolve.
+  your own UID/GID, with the tree bind-mounted at both the container's
+  `/workspaces` path (for the baked toolchain paths) and its host path (for
+  the host-absolute paths generated defconfigs carry). Uses docker or podman,
+  whichever is on `PATH` - rootless podman gets `--userns=keep-id` so nothing
+  comes back owned by a subuid; override with `CONTAINER_RUNTIME=`.
 
 ### Accelerators
 

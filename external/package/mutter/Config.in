@@ -1,0 +1,25 @@
+config BR2_PACKAGE_MUTTER
+	bool "mutter"
+	depends on BR2_PACKAGE_LIBGTK4 # x11 frames client
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_GRAPHENE
+	select BR2_PACKAGE_LIBEI
+	select BR2_PACKAGE_LIBDISPLAY_INFO
+	select BR2_PACKAGE_COLORD
+	select BR2_PACKAGE_LCMS2
+	select BR2_PACKAGE_LIBINPUT
+	select BR2_PACKAGE_LIBDRM
+	select BR2_PACKAGE_LIBXKBCOMMON
+	select BR2_PACKAGE_WAYLAND
+	select BR2_PACKAGE_WAYLAND_PROTOCOLS
+	select BR2_PACKAGE_PIPEWIRE
+	select BR2_PACKAGE_LIBWACOM
+	select BR2_PACKAGE_ELOGIND
+	select BR2_PACKAGE_GSETTINGS_DESKTOP_SCHEMAS
+	select BR2_PACKAGE_XKEYBOARD_CONFIG
+	help
+	  GNOME's Wayland compositor and window manager; gnome-shell is
+	  a mutter client/plugin. Runs natively on KMS/DRM through its
+	  own backend (no X server), with Xwayland for X11 apps.
+
+	  https://gitlab.gnome.org/GNOME/mutter

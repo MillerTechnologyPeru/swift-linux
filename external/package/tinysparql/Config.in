@@ -1,0 +1,15 @@
+config BR2_PACKAGE_TINYSPARQL
+	bool "tinysparql"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_JSON_GLIB
+	select BR2_PACKAGE_LIBSOUP3
+	select BR2_PACKAGE_SQLITE
+	select BR2_PACKAGE_ICU
+	help
+	  SPARQL triple store (the library formerly known as tracker);
+	  nautilus queries file metadata through it.
+
+	  https://gitlab.gnome.org/GNOME/tinysparql

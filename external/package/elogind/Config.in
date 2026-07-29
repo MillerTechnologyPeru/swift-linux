@@ -1,0 +1,16 @@
+config BR2_PACKAGE_ELOGIND
+	bool "elogind"
+	depends on !BR2_STATIC_LIBS
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	depends on BR2_USE_MMU
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_LIBCAP
+	select BR2_PACKAGE_DBUS # runtime (bus activation)
+	help
+	  systemd-logind extracted as a standalone daemon: seat, session
+	  and idle/power tracking plus the org.freedesktop.login1 D-Bus
+	  API, without systemd as pid 1. The keystone for running
+	  mutter/GNOME on this OpenRC image - the combination Gentoo
+	  and Alpine ship in production.
+
+	  https://github.com/elogind/elogind

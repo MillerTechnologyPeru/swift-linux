@@ -1,0 +1,12 @@
+config BR2_PACKAGE_DCONF
+	bool "dconf"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_DBUS # runtime (activation)
+	help
+	  GNOME's low-level configuration backend: the binary settings
+	  database behind GSettings for the whole GNOME stack.
+
+	  https://gitlab.gnome.org/GNOME/dconf

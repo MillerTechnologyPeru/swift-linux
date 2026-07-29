@@ -1,0 +1,17 @@
+config BR2_PACKAGE_UDISKS2
+	bool "udisks2"
+	depends on BR2_PACKAGE_HAS_UDEV
+	select BR2_PACKAGE_LIBBLOCKDEV
+	select BR2_PACKAGE_LIBBLOCKDEV_FS
+	select BR2_PACKAGE_LIBBLOCKDEV_LOOP
+	select BR2_PACKAGE_LIBBLOCKDEV_PART
+	select BR2_PACKAGE_LIBBLOCKDEV_SWAP
+	select BR2_PACKAGE_LIBATASMART
+	select BR2_PACKAGE_LIBGUDEV
+	select BR2_PACKAGE_POLKIT
+	select BR2_PACKAGE_ACL
+	help
+	  The storage D-Bus service (org.freedesktop.UDisks2): mounting,
+	  formatting, SMART; GNOME Disks is its UI.
+
+	  https://github.com/storaged-project/udisks

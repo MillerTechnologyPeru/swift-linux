@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LOCALSEARCH
+	bool "localsearch"
+	depends on BR2_PACKAGE_TINYSPARQL
+	select BR2_PACKAGE_LIBSECCOMP
+	help
+	  File indexer over tinysparql (formerly tracker-miners);
+	  nautilus search uses its index when present.
+
+	  https://gitlab.gnome.org/GNOME/localsearch

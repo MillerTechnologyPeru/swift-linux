@@ -1,0 +1,12 @@
+config BR2_PACKAGE_VTE4
+	bool "vte4"
+	depends on BR2_PACKAGE_LIBGTK4
+	depends on BR2_INSTALL_LIBSTDCPP
+	select BR2_PACKAGE_PCRE2
+	select BR2_PACKAGE_LZ4
+	help
+	  The VTE terminal widget built for GTK 4 (Buildroot's vte
+	  package is the years-older GTK 3 line); gnome-console's
+	  terminal is this widget.
+
+	  https://gitlab.gnome.org/GNOME/vte

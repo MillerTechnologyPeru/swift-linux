@@ -1,0 +1,9 @@
+config BR2_PACKAGE_XDG_DESKTOP_PORTAL_GTK
+	bool "xdg-desktop-portal-gtk"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_XDG_DESKTOP_PORTAL
+	help
+	  The GTK3 fallback backend for xdg-desktop-portal; covers the
+	  interfaces the GNOME backend delegates.
+
+	  https://github.com/flatpak/xdg-desktop-portal-gtk

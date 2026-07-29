@@ -3,13 +3,17 @@
 A small Linux distribution with the Swift runtime built in, and a Swift SDK for
 cross-compiling applications to it.
 
-Built with [Buildroot](https://buildroot.org). There is no systemd: the images
-boot busybox init with SysV scripts, `seatd` for seat management and `basu`
-where a D-Bus system-bus library is needed.
+Built with [Buildroot](https://buildroot.org). There is no systemd: busybox
+stays pid 1 and hands boot to [OpenRC](https://github.com/OpenRC/openrc)
+runlevels (Alpine's model), with `seatd` for seat management and `basu` where
+a D-Bus system-bus library is needed.
 
-The images run a [sway](https://swaywm.org) session (wlroots, XWayland, Mesa)
-on a read-only root filesystem with A/B update slots managed by
-[RAUC](https://rauc.io), plus a separate data partition.
+Images boot into a **frontend** on a read-only root filesystem with A/B update
+slots managed by [RAUC](https://rauc.io), plus a separate data partition. The
+default frontend is [EmulationStation](https://github.com/ROCKNIX/emulationstation-next)
+on a [sway](https://swaywm.org) session (wlroots, XWayland, Mesa), with
+RetroArch and libretro cores behind it; boards can pick another - see
+[Frontends](#frontends).
 
 ## Quick start
 
@@ -57,6 +61,23 @@ include sdk/defconfig/gpu/freedreno.config
 Whatever the app-sdk can build against, the image can run: both compose the same
 application libraries, and the 32-bit companion mirrors them too.
 
+## Frontends
+
+The user-facing shell of an image is a swappable fragment
+(`sdk/defconfig/frontend/`): the image profile includes the default, and a
+board switches by including a different one from its `board.config` - board
+fragments are emitted last, so the alternative's negations unwind the default.
+
+| Frontend | For | Status |
+|---|---|---|
+| EmulationStation + sway | GL(ES) gaming devices (default) | working: RetroArch backend, NES/Apps/Games/Tools groups, squashfs app bundles, WiFi/BT/power menus wired to ConnMan/BlueZ/OpenRC |
+| gmenu2x | armv5 / no-GPU handhelds, SDL 1.2 on the framebuffer | definition only |
+| XFCE + Chicago95 | desktop use on X.org, Windows 95 look by default | packaged, not yet booted |
+| GNOME | desktop Wayland (mutter/gnome-shell via elogind on OpenRC) | packaged, not yet compiled |
+| Phosh | Android-phone form factors | placeholder |
+
+Details and per-fragment status: [sdk/defconfig/frontend/README.md](sdk/defconfig/frontend/README.md).
+
 ## Layout
 
 | Path | Description |
@@ -66,7 +87,7 @@ application libraries, and the 32-bit companion mirrors them too.
 | `sdk/defconfig/gpu/` | GPU capabilities: `virgl`, `freedreno`, `panfrost`, `radeonsi`, `x86-desktop`. |
 | `sdk/board/<target>/` | One directory per board: `board.config`, kernel fragment, overlays, patches. |
 | `sdk/board/common/` | Overlay, users and post-build scripts shared by every board. |
-| `external/` | `BR2_EXTERNAL` packages: sway, SDL3, box64/box86, grim, steam. |
+| `external/` | `BR2_EXTERNAL` packages: sway, EmulationStation + RetroArch + cores, gmenu2x, the XFCE and GNOME stacks, gtk4/libadwaita, elogind, SDL3, box64/box86, steam, … |
 | `util/` | QEMU launchers, Swift SDK and CMake toolchain generators. |
 | `docs/` | [Building](docs/build.md) and [the Swift SDK](docs/swift-sdk.md). |
 | `Makefile`, `build-images.sh` | Per-target builds; both images plus companions in parallel. |
@@ -91,6 +112,7 @@ needs.
 | Chromebooks (RK3399, MT8183, MT8173, SC7180) | kevin, bob, krane, kodama, hana, lazor, coachz, homestar |
 | Apple Silicon t600x | MacBook Pro 14"/16" (M1 Pro / M1 Max) |
 | Valve | Steam Deck (LCD, OLED) |
+| Allwinner suniv (armv5) | BittBoy 2-3.5, PocketGo, PowKiddy Q90 / V90 / Q20 |
 
 Boot chains differ by family — UEFI/GRUB with A/B slots, U-Boot with extlinux,
 Depthcharge kernel partitions, and Android boot images — but they share the same

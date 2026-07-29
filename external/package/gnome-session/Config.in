@@ -1,0 +1,11 @@
+config BR2_PACKAGE_GNOME_SESSION
+	bool "gnome-session"
+	depends on BR2_PACKAGE_MUTTER
+	select BR2_PACKAGE_UPOWER
+	select BR2_PACKAGE_JSON_GLIB
+	help
+	  The GNOME session manager, built with its builtin (non-
+	  systemd) session startup - the arrangement Gentoo ships on
+	  OpenRC.
+
+	  https://gitlab.gnome.org/GNOME/gnome-session

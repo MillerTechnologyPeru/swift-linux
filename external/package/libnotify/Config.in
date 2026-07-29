@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBNOTIFY
+	bool "libnotify"
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_GDK_PIXBUF
+	help
+	  Desktop notification client library (org.freedesktop.
+	  Notifications); GNOME's settings daemon and many applications
+	  send their notifications through it.
+
+	  https://gitlab.gnome.org/GNOME/libnotify

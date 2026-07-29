@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBPORTAL
+	bool "libportal"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_XDG_DESKTOP_PORTAL
+	help
+	  Client library for the xdg-desktop portals with a GTK 4
+	  backend; epiphany requires it.
+
+	  https://github.com/flatpak/libportal

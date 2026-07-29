@@ -1,0 +1,12 @@
+config BR2_PACKAGE_GNOME_CALENDAR
+	bool "gnome-calendar"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_LIBADWAITA
+	select BR2_PACKAGE_EVOLUTION_DATA_SERVER
+	select BR2_PACKAGE_LIBGWEATHER
+	select BR2_PACKAGE_GEOCODE_GLIB
+	select BR2_PACKAGE_GEOCLUE2
+	help
+	  Calendar, storing its events through evolution-data-server.
+
+	  https://apps.gnome.org/Calendar/

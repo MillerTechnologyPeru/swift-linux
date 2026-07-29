@@ -1,0 +1,13 @@
+config BR2_PACKAGE_ACCOUNTSSERVICE
+	bool "accountsservice"
+	depends on BR2_USE_WCHAR # libglib2
+	depends on BR2_TOOLCHAIN_HAS_THREADS # libglib2
+	depends on BR2_USE_MMU # libglib2
+	select BR2_PACKAGE_LIBGLIB2
+	select BR2_PACKAGE_POLKIT
+	select BR2_PACKAGE_ELOGIND
+	help
+	  org.freedesktop.Accounts: the user-account D-Bus service the
+	  control center's user panel talks to; built against elogind.
+
+	  https://www.freedesktop.org/wiki/Software/AccountsService/
