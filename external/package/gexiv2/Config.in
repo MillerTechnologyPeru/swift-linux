@@ -1,0 +1,9 @@
+config BR2_PACKAGE_GEXIV2
+	bool "gexiv2"
+	depends on BR2_INSTALL_LIBSTDCPP # exiv2
+	select BR2_PACKAGE_EXIV2
+	help
+	  GObject wrapper around exiv2 (image metadata); nautilus reads
+	  EXIF through it.
+
+	  https://gitlab.gnome.org/GNOME/gexiv2
