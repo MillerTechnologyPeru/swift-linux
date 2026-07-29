@@ -8,4 +8,7 @@
 # binfmtctl toggles only the two handlers this image registers, by name
 # from a fixed list - the native arm64 Steam client needs the x86
 # handlers off while it starts (see steam-run).
-swift ALL=(root) NOPASSWD: /usr/bin/wifictl, /usr/bin/rocknix-bluetooth, /usr/bin/shutdown, /usr/sbin/pm-suspend, /usr/bin/es-squashfs, /usr/bin/binfmtctl
+# system-install erases the internal disk: it authenticates intent with an
+# explicit typed confirmation, and everything before that prompt is
+# read-only probing.
+swift ALL=(root) NOPASSWD: /usr/bin/wifictl, /usr/bin/rocknix-bluetooth, /usr/bin/shutdown, /usr/sbin/pm-suspend, /usr/bin/es-squashfs, /usr/bin/binfmtctl, /usr/bin/system-install
