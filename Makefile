@@ -25,19 +25,29 @@
 # Accelerators (see build-images.sh): PARALLEL_BUILD=1, CCACHE=1. Buildroot's
 # default download dir (buildroot/dl) is shared across arches already; set
 # DL_DIR to override it.
+#
+# Buildroot and the package trees are submodules (buildroot/, swift/, ports/);
+# every build target checks them out first, or run "make submodules" by hand.
 
 SHELL := /bin/bash
 REPO_DIR := $(patsubst %/,%,$(dir $(abspath $(lastword $(MAKEFILE_LIST)))))
-BR_SWIFT ?= $(abspath $(REPO_DIR)/../buildroot-swift)
-BUILDROOT ?= $(BR_SWIFT)/buildroot
-OUTPUT_BASE ?= $(BR_SWIFT)/output
+# Buildroot and the two BR2_EXTERNAL trees this repo builds against are git
+# submodules, so a checkout pins the exact revisions it was tested with:
+#   buildroot/  MillerTechnologyPeru/buildroot        the Buildroot fork
+#   swift/      MillerTechnologyPeru/buildroot-swift  the Swift runtime packages
+#   ports/      MillerTechnologyPeru/buildroot-ports  apps, games and libraries
+# Run "git submodule update --init" (or clone with --recurse-submodules) first.
+BUILDROOT ?= $(REPO_DIR)/buildroot
+BR_SWIFT ?= $(REPO_DIR)/swift
+BR_PORTS ?= $(REPO_DIR)/ports
+OUTPUT_BASE ?= $(REPO_DIR)/output
 # Buildroot's default download dir ($(TOPDIR)/dl) is already shared across all
 # per-arch outputs; only pass BR2_DL_DIR when the caller sets DL_DIR, so a
 # prebuilt output's cached downloads keep resolving.
 DL_DIR ?=
 DL_OPT := $(if $(DL_DIR),BR2_DL_DIR=$(DL_DIR))
 CCACHE_DIR ?= $(OUTPUT_BASE)/ccache
-EXTERNALS := $(BR_SWIFT):$(REPO_DIR)/external
+EXTERNALS := $(BR_SWIFT):$(BR_PORTS):$(REPO_DIR)/external
 GENERATE := $(REPO_DIR)/generate-config.sh
 PROFILE ?= image
 CONTAINER_IMAGE ?= docker.io/colemancda/buildroot-swift
@@ -56,14 +66,21 @@ else
 CONTAINER_OPTS ?=
 endif
 
-# $(OUTPUT_BASE) as the *build* sees it. Only BR_SWIFT and REPO_DIR are bind-
-# mounted, so a container build's output necessarily lives under the container's
-# /workspaces/buildroot-swift; passing the host path through would make Buildroot
-# look for a defconfig at a path that does not exist inside the container.
+# The paths the container's prebuilt toolchain was baked against. Buildroot
+# stamps absolute paths into an output tree, so a seeded output/ (see %-seed)
+# only keeps resolving if Buildroot and the output dir appear at these paths -
+# hence the submodule and $(OUTPUT_BASE) are mounted over them rather than
+# built from their host locations.
+CONTAINER_BR := /workspaces/buildroot-swift
+CONTAINER_REPO := /workspaces/swift-linux
 ifeq ($(CONTAINER),1)
-BUILD_OUTPUT_BASE := /workspaces/buildroot-swift/output
+BUILD_BUILDROOT := $(CONTAINER_BR)/buildroot
+BUILD_OUTPUT_BASE := $(CONTAINER_BR)/output
+BUILD_EXTERNALS := $(CONTAINER_REPO)/swift:$(CONTAINER_REPO)/ports:$(CONTAINER_REPO)/external
 else
+BUILD_BUILDROOT := $(BUILDROOT)
 BUILD_OUTPUT_BASE := $(OUTPUT_BASE)
+BUILD_EXTERNALS := $(EXTERNALS)
 endif
 
 # ---- target discovery ----------------------------------------------------
@@ -89,26 +106,28 @@ define make_defconfig
 endef
 
 # br <target> <make-args...>  - run Buildroot for a target, host or container.
-# The trees are mounted twice: at the container's baked /workspaces paths (the
-# prebuilt toolchain resolves against those) AND at their host paths, because
-# generate-config.sh writes host-absolute paths into the defconfig (rootfs
-# overlays, kernel config fragments, users tables, post-build scripts) which
-# Buildroot then reads at build time.
+# The repo is mounted twice: at the container's baked $(CONTAINER_REPO) AND at
+# its host path, because generate-config.sh writes host-absolute paths into the
+# defconfig (rootfs overlays, kernel config fragments, users tables, post-build
+# scripts) which Buildroot then reads at build time. The buildroot submodule and
+# the output dir are mounted over the container's baked $(CONTAINER_BR) copies,
+# so the prebuilt toolchain still resolves while the sources come from here.
 ifeq ($(CONTAINER),1)
 ifeq ($(CONTAINER_RUNTIME),)
 $(error CONTAINER=1 needs docker or podman on PATH, or an explicit CONTAINER_RUNTIME=)
 endif
 define br
+	@mkdir -p $(OUTPUT_BASE)
 	$(CONTAINER_RUNTIME) run --rm $(CONTAINER_OPTS) \
 		--user $(shell id -u):$(shell id -g) -e HOME=/tmp \
-		-v $(BR_SWIFT):/workspaces/buildroot-swift \
-		-v $(REPO_DIR):/workspaces/swift-linux \
-		-v $(BR_SWIFT):$(BR_SWIFT) \
+		-v $(REPO_DIR):$(CONTAINER_REPO) \
 		-v $(REPO_DIR):$(REPO_DIR) \
-		-w /workspaces/swift-linux $(CONTAINER_IMAGE):swift_$(call cont_arch,$(1))_defconfig \
-		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C /workspaces/buildroot-swift/buildroot \
+		-v $(BUILDROOT):$(CONTAINER_BR)/buildroot \
+		-v $(OUTPUT_BASE):$(CONTAINER_BR)/output \
+		-w $(CONTAINER_REPO) $(CONTAINER_IMAGE):swift_$(call cont_arch,$(1))_defconfig \
+		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C $(BUILD_BUILDROOT) \
 			O=$(BUILD_OUTPUT_BASE)/$(1) \
-			BR2_EXTERNAL=/workspaces/buildroot-swift:/workspaces/swift-linux/external \
+			BR2_EXTERNAL=$(BUILD_EXTERNALS) \
 			$(BR2_MAKE_OPTS) $(2)'
 endef
 else
@@ -119,11 +138,19 @@ define br
 endef
 endif
 
-.PHONY: list help
+.PHONY: list help submodules
 help list:
 	@echo "Targets: $(TARGETS)"
 	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-shell <t>-clean <t>-refresh <t>-seed"
 	@echo "Backend: CONTAINER=1 for a containerized build ($(if $(CONTAINER_RUNTIME),$(CONTAINER_RUNTIME),no docker/podman found)); PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
+
+# submodules: check out buildroot/, swift/ and ports/ if the clone skipped them.
+# Every build depends on this, so a plain "git clone" still just works.
+submodules:
+	@for d in $(BUILDROOT) $(BR_SWIFT) $(BR_PORTS); do \
+		[ -e "$$d/Config.in" ] || { echo "checking out submodules..."; \
+			git -C $(REPO_DIR) submodule update --init || exit 1; break; }; \
+	done
 
 # ---- per-target pattern rules -------------------------------------------
 # %-defconfig: just generate the defconfig.
@@ -131,7 +158,7 @@ $(addsuffix -defconfig,$(TARGETS)): %-defconfig:
 	$(call make_defconfig,$*)
 
 # %-config: configure Buildroot from the generated defconfig.
-$(addsuffix -config,$(TARGETS)): %-config: %-defconfig
+$(addsuffix -config,$(TARGETS)): %-config: submodules %-defconfig
 	$(call br,$*,BR2_DEFCONFIG=$(BUILD_OUTPUT_BASE)/$*.defconfig defconfig)
 
 # %-build: build the image (or override with CMD=...).
@@ -168,13 +195,16 @@ $(addsuffix -seed,$(TARGETS)): %-seed:
 $(addsuffix -clean,$(TARGETS)): %-clean:
 	rm -rf $(OUTPUT_BASE)/$* $(OUTPUT_BASE)/$*.defconfig
 
-# %-refresh: dirclean this repo's own (external) packages that changed
-# recently in git, then let the next build rebuild them - faster than a full
-# clean, more correct than trusting stamps for locally-edited packages.
+# %-refresh: dirclean the packages that changed recently in git - this repo's
+# own external/package tree plus the ports submodule - then let the next build
+# rebuild them: faster than a full clean, more correct than trusting stamps for
+# locally-edited packages.
 DAYS ?= 7
 $(addsuffix -refresh,$(TARGETS)): %-refresh:
-	@pkgs=$$(cd $(REPO_DIR) && git log --since="$(DAYS) days ago" --name-only --pretty=format: \
-		-- external/package | sed -n 's,^external/package/\([^/]*\)/.*,\1,p' | sort -u); \
+	@pkgs=$$({ cd $(REPO_DIR) && git log --since="$(DAYS) days ago" --name-only --pretty=format: \
+			-- external/package | sed -n 's,^external/package/\([^/]*\)/.*,\1,p'; \
+		cd $(BR_PORTS) 2>/dev/null && git log --since="$(DAYS) days ago" --name-only --pretty=format: \
+			-- package | sed -n 's,^package/[^/]*/\([^/]*\)/.*,\1,p'; } | sort -u); \
 	[ -n "$$pkgs" ] || { echo "no local packages changed in the last $(DAYS) days"; exit 0; }; \
 	echo "refreshing: $$pkgs"; \
 	for p in $$pkgs; do $(call br,$*,$$p-dirclean) || true; done

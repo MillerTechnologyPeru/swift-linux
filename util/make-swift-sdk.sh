@@ -22,7 +22,10 @@
 # Usage:
 #   util/make-swift-sdk.sh [--arch arm64|x86_64|armv7|i386] [--portable] [--out DIR] [--install]
 # Env:
-#   BR_SWIFT   buildroot-swift checkout (default: ../../buildroot-swift)
+#   OUTPUT_BASE  Buildroot output dir (default: <repo>/output, where the
+#                Makefile and build-images.sh put per-target trees)
+#   BR_SWIFT     legacy alias for the tree holding output/ (CI points it at the
+#                container's /workspaces/buildroot-swift)
 set -eu
 
 ARCH="arm64"
@@ -49,8 +52,9 @@ case "$ARCH" in
 esac
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-BR_SWIFT="${BR_SWIFT:-$SCRIPT_DIR/../../buildroot-swift}"
-BR_OUT="$BR_SWIFT/output/$ARCH"
+BR_SWIFT="${BR_SWIFT:-$SCRIPT_DIR/..}"
+OUTPUT_BASE="${OUTPUT_BASE:-$BR_SWIFT/output}"
+BR_OUT="$OUTPUT_BASE/$ARCH"
 HOST="$BR_OUT/host"
 SRC_SYSROOT="$HOST/$TRIPLE_GNU/sysroot"
 

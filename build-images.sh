@@ -10,12 +10,12 @@
 # parallel; per-track logs go to $OUTPUT_BASE/<arch>-image.log.
 #
 # Environment:
-#   BUILDROOT           Buildroot source tree
-#                       (default: <repo>/../buildroot-swift/buildroot)
-#   BR2_EXTERNAL_SWIFT  buildroot-swift external
-#                       (default: <repo>/../buildroot-swift)
+#   BUILDROOT           Buildroot source tree (default: <repo>/buildroot,
+#                       the buildroot submodule)
+#   BR2_EXTERNAL_SWIFT  buildroot-swift external (default: <repo>/swift)
+#   BR2_EXTERNAL_PORTS  buildroot-ports external (default: <repo>/ports)
 #   OUTPUT_BASE         where per-build output dirs go
-#                       (default: $BR2_EXTERNAL_SWIFT/output)
+#                       (default: <repo>/output)
 #   SKIP_SWIFT=1        build without the swift package, for hosts that lack
 #                       the native Swift toolchain the swift package needs.
 #                       The image is otherwise complete.
@@ -33,10 +33,13 @@
 set -u
 
 REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BUILDROOT="${BUILDROOT:-$REPO_DIR/../buildroot-swift/buildroot}"
-BR2_EXTERNAL_SWIFT="${BR2_EXTERNAL_SWIFT:-$REPO_DIR/../buildroot-swift}"
-OUTPUT_BASE="${OUTPUT_BASE:-$BR2_EXTERNAL_SWIFT/output}"
-EXTERNALS="${BR2_EXTERNAL_SWIFT}:${REPO_DIR}/external"
+# Buildroot and both BR2_EXTERNAL trees are submodules of this repo; each can
+# still be overridden, which is how CI reuses the container's prebuilt copies.
+BUILDROOT="${BUILDROOT:-$REPO_DIR/buildroot}"
+BR2_EXTERNAL_SWIFT="${BR2_EXTERNAL_SWIFT:-$REPO_DIR/swift}"
+BR2_EXTERNAL_PORTS="${BR2_EXTERNAL_PORTS:-$REPO_DIR/ports}"
+OUTPUT_BASE="${OUTPUT_BASE:-$REPO_DIR/output}"
+EXTERNALS="${BR2_EXTERNAL_SWIFT}:${BR2_EXTERNAL_PORTS}:${REPO_DIR}/external"
 GENERATE="$REPO_DIR/generate-config.sh"
 
 # Optional caches. Buildroot's default download dir ($(TOPDIR)/dl) is already
@@ -67,8 +70,10 @@ companion_of() {
 
 die() { echo "build-images: $*" >&2; exit 1; }
 
-[ -d "$BUILDROOT" ]          || die "BUILDROOT not found: $BUILDROOT"
-[ -d "$BR2_EXTERNAL_SWIFT" ] || die "buildroot-swift external not found: $BR2_EXTERNAL_SWIFT"
+submodule_hint="run: git submodule update --init"
+[ -f "$BUILDROOT/Config.in" ]          || die "Buildroot not found: $BUILDROOT ($submodule_hint)"
+[ -f "$BR2_EXTERNAL_SWIFT/Config.in" ] || die "buildroot-swift external not found: $BR2_EXTERNAL_SWIFT ($submodule_hint)"
+[ -f "$BR2_EXTERNAL_PORTS/Config.in" ] || die "buildroot-ports external not found: $BR2_EXTERNAL_PORTS ($submodule_hint)"
 [ -x "$GENERATE" ]          || die "generate-config.sh not found/executable"
 mkdir -p "$OUTPUT_BASE"
 
