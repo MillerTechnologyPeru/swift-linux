@@ -155,7 +155,7 @@ start() {
 		roms/solarus roms/love roms/pygame roms/ports \
 		roms/bios roms/screenshots roms/flatpak roms/lutris roms/heroic \
 		saves saves/flatpak saves/lutris saves/lutris/share \
-		saves/lutris/config saves/heroic apps games; do
+		saves/lutris/config saves/heroic apps; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
 		chown swift:swift "${DATA}/${d}"
@@ -201,6 +201,10 @@ start() {
 	# skeleton), keeping "what was installed" and "what the apps wrote"
 	# independently backupable, like every other system.
 	mount -o bind "${DATA}/roms/flatpak" /var/lib/flatpak
+
+	# Reflect the installed flatpak applications into the Apps group
+	# (each becomes a generated launch script; see es-flatpak-sync).
+	command -v es-flatpak-sync >/dev/null 2>&1 && es-flatpak-sync || true
 }
 
 stop() {
