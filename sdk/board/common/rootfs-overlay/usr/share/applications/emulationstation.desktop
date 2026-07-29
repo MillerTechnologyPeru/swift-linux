@@ -1,0 +1,15 @@
+[Desktop Entry]
+Type=Application
+Name=EmulationStation
+GenericName=Game Frontend
+Comment=Browse and launch games with a controller
+# The desktop images build the game stack but do not boot into it (see
+# sdk/defconfig/frontend/), so this entry is how it gets started there.
+# Harmless on the frontend images: nothing reads .desktop files under the
+# sway session, which launches ES itself.
+Exec=emulationstation
+Icon=applications-games
+Terminal=false
+Categories=Game;
+Keywords=emulator;retro;games;roms;
+StartupNotify=false
