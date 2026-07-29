@@ -62,9 +62,13 @@ else
 RETROARCH_CONF_OPTS += --disable-vulkan
 endif
 
+# CROSS_COMPILE matters beyond the tool prefix: qb's configure only
+# refrains from adding host paths like -L/usr/lib64 (which the toolchain
+# wrapper rightly rejects) when it knows it is cross-compiling.
 define RETROARCH_CONFIGURE_CMDS
 	cd $(@D) && \
 		$(TARGET_CONFIGURE_OPTS) \
+		CROSS_COMPILE="$(TARGET_CROSS)" \
 		PKG_CONF_PATH="$(PKG_CONFIG_HOST_BINARY)" \
 		./configure $(RETROARCH_CONF_OPTS)
 endef
