@@ -1,0 +1,39 @@
+#!/bin/sh
+# Launch PortMaster, expanding it onto the data partition on first run.
+#
+# PortMaster manages its own directory: it self-updates, writes logs next
+# to its scripts, and installs ports as siblings under /roms/ports. None of
+# that can live on the read-only rootfs, so the image ships only the
+# release zip (/usr/share/portmaster) and this script unpacks it to
+# /roms/ports on first use. /roms is a symlink to /data/roms (see the
+# overlay) because every port script resolves its files through that path.
+#
+# No control.txt of our own: the release's generic one already handles an
+# unrecognised system - it defaults to /roms/ports/PortMaster, probes for
+# sudo, and picks up RetroArch from /usr/bin.
+
+set -e
+
+PORTS_DIR=/roms/ports
+PM_DIR="${PORTS_DIR}/PortMaster"
+RELEASE=/usr/share/portmaster/PortMaster.zip
+
+if [ ! -d /data/roms ]; then
+	echo "portmaster: the data partition is not mounted" >&2
+	exit 1
+fi
+
+mkdir -p "${PORTS_DIR}"
+
+# First run (or a wiped install): expand the shipped release. An existing
+# install is left alone - PortMaster updates itself from then on, and
+# re-expanding would overwrite a newer copy with the image's.
+if [ ! -x "${PM_DIR}/PortMaster.sh" ]; then
+	echo "Installing PortMaster to ${PORTS_DIR} ..."
+	unzip -q -o "${RELEASE}" -d "${PORTS_DIR}"
+	chmod -R +x "${PM_DIR}" 2>/dev/null || true
+fi
+
+# PortMaster.sh writes to its own directory and expects to run from there.
+cd "${PM_DIR}"
+exec bash ./PortMaster.sh "$@"
