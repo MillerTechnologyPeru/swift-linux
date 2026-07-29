@@ -1,0 +1,56 @@
+#!/bin/sh
+# Launch a libretro core under RetroArch with per-system save paths.
+#
+#   retro-launch <system> <core.so> <rom>
+#
+# RetroArch can only sort saves by *core*, never by system, so the split
+# has to come from the launcher: each system gets /data/saves/<system>,
+# holding both its save files and its save states - a game's state is one
+# thing to find, copy or delete.
+#
+# The paths are handed over as an --appendconfig snippet rather than the
+# --save/--savestate options, which RetroArch marks deprecated and points
+# at exactly this mechanism. An appended config also takes priority over
+# the user's own retroarch.cfg, so the layout holds even after they edit
+# their settings.
+#
+# The remaining defaults (BIOS and screenshot directories) are in
+# /etc/retroarch.cfg. That lives on the read-only rootfs, so it is seeded
+# into the user's config directory on first run: RetroArch saves settings
+# into its config file, and one it cannot write is a confusing way to lose
+# them.
+
+set -e
+
+system="$1"
+core="$2"
+rom="$3"
+
+if [ -z "$system" ] || [ -z "$core" ] || [ -z "$rom" ]; then
+	echo "usage: retro-launch <system> <core.so> <rom>" >&2
+	exit 1
+fi
+
+saves="/data/saves/${system}"
+mkdir -p "${saves}"
+
+# Seed the writable config from the image's defaults on first run.
+user_cfg="${HOME}/.config/retroarch/retroarch.cfg"
+if [ ! -f "${user_cfg}" ] && [ -f /etc/retroarch.cfg ]; then
+	mkdir -p "$(dirname "${user_cfg}")"
+	cp /etc/retroarch.cfg "${user_cfg}"
+fi
+
+# Per-system snippet, regenerated each launch (it is derived, not state).
+runtime_dir="${XDG_RUNTIME_DIR:-/tmp}"
+mkdir -p "${runtime_dir}"
+snippet="${runtime_dir}/retro-launch-${system}.cfg"
+cat > "${snippet}" <<EOF
+savefile_directory = "${saves}"
+savestate_directory = "${saves}"
+EOF
+
+exec retroarch \
+	--libretro "${core}" \
+	--appendconfig "${snippet}" \
+	"${rom}"
