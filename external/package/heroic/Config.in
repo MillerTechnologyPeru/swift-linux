@@ -1,0 +1,25 @@
+config BR2_PACKAGE_HEROIC
+	bool "heroic"
+	# Upstream publishes Linux builds for x86_64 only (the arm64
+	# artifacts are macOS and Windows); Electron cannot realistically
+	# be built from source in this tree, so the package is gated to
+	# where a build exists.
+	depends on BR2_x86_64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	select BR2_PACKAGE_LIBGTK3 # Electron links the system gtk3
+	select BR2_PACKAGE_LIBNSS
+	help
+	  Heroic Games Launcher: the open-source client for GOG, Epic
+	  Games Store and Amazon Prime Gaming libraries, with Wine and
+	  Proton version management built in.
+
+	  Heroic itself is GPL-3.0, but it is an Electron application
+	  and ships as an upstream-built binary - building Electron
+	  from source is not feasible here. This is the one package in
+	  the tree installed from a prebuilt release artifact; the
+	  hash pins the exact upstream build.
+
+	  https://heroicgameslauncher.com
+
+comment "heroic needs an x86_64 glibc toolchain"
+	depends on !BR2_x86_64 || !BR2_TOOLCHAIN_USES_GLIBC

@@ -1,0 +1,21 @@
+config BR2_PACKAGE_GNOME_SOFTWARE
+	bool "gnome-software"
+	depends on BR2_PACKAGE_LIBGTK4
+	depends on BR2_PACKAGE_FLATPAK
+	select BR2_PACKAGE_LIBADWAITA
+	select BR2_PACKAGE_APPSTREAM
+	select BR2_PACKAGE_LIBXMLB
+	select BR2_PACKAGE_JSON_GLIB
+	select BR2_PACKAGE_LIBSOUP3
+	select BR2_PACKAGE_GSETTINGS_DESKTOP_SCHEMAS
+	select BR2_PACKAGE_ISO_CODES
+	help
+	  GNOME Software: the desktop application store. Built with
+	  the Flatpak backend only - there is no distro package
+	  manager on a read-only image, so Flatpak IS the way
+	  applications arrive, and this is its storefront.
+
+	  https://apps.gnome.org/Software
+
+comment "gnome-software needs gtk4 and flatpak"
+	depends on !BR2_PACKAGE_LIBGTK4 || !BR2_PACKAGE_FLATPAK

@@ -16,4 +16,19 @@ export DISPLAY="${DISPLAY:-:0}"
 # A UTF-8 locale (matches the session).
 export LANG="${LANG:-en_US.UTF-8}"
 
+# Steam follows the image's content/state split: the client and its state
+# live in /data/saves/steam (~/.local/share/Steam is a symlink there), and
+# /roms/steam is offered as a game library so installs land with the rest
+# of the user's content. Steam records libraries in libraryfolders.vdf,
+# which does not exist until the client has run once - so this is
+# re-checked every launch and appended the first time the file is there
+# without the entry. The trailing "}" of the vdf is replaced with an extra
+# library block; index 9 is arbitrary and high to stay clear of the
+# indices Steam itself assigns.
+vdf="${HOME}/.local/share/Steam/steamapps/libraryfolders.vdf"
+mkdir -p /roms/steam/steamapps 2>/dev/null || true
+if [ -f "${vdf}" ] && ! grep -q '"/roms/steam"' "${vdf}"; then
+	sed -i '$ s|}|\t"9"\n\t{\n\t\t"path"\t\t"/roms/steam"\n\t}\n}|' "${vdf}"
+fi
+
 exec /usr/bin/steam "$@"

@@ -26,8 +26,6 @@ define PORTMASTER_INSTALL_TARGET_CMDS
 		$(TARGET_DIR)/usr/share/portmaster/PortMaster.zip
 	$(INSTALL) -D -m 0755 $(PORTMASTER_PKGDIR)/portmaster \
 		$(TARGET_DIR)/usr/bin/portmaster
-	$(INSTALL) -D -m 0755 $(PORTMASTER_PKGDIR)/PortMaster.sh \
-		$(TARGET_DIR)/usr/share/es-tools/PortMaster.sh
 endef
 
 $(eval $(generic-package))

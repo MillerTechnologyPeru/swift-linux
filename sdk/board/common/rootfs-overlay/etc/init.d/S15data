@@ -107,6 +107,40 @@ start() {
 	fi
 	mount -o bind "${DATA}/home" /home
 
+	# The app managers keep their mutable state in the save tree through
+	# home-skeleton symlinks (flatpak's ~/.var, lutris' data and config,
+	# heroic's config). A home provisioned by an older image predates
+	# them - add each, but never over a real directory the user already
+	# has data in.
+	for pair in \
+		".var /data/saves/flatpak" \
+		".local/share/lutris /data/saves/lutris/share" \
+		".config/lutris /data/saves/lutris/config" \
+		".config/heroic /data/saves/heroic" \
+		".local/share/Steam /data/saves/steam"; do
+		link="/home/swift/${pair%% *}"
+		dest="${pair#* }"
+		[ -e "${link}" ] && continue
+		mkdir -p "$(dirname "${link}")"
+		chown swift:swift "$(dirname "${link}")" 2>/dev/null || true
+		ln -s "${dest}" "${link}"
+		chown -h swift:swift "${link}" 2>/dev/null || true
+	done
+
+	# Default install locations, so games land in the content tree rather
+	# than the home directory. Seeded only while the app has never written
+	# its own configuration - after that, the settings are the user's.
+	if [ -x /usr/bin/lutris ] && [ ! -f /data/saves/lutris/config/lutris.conf ]; then
+		printf '[system]\ngame_path = /data/roms/lutris\n' \
+			> /data/saves/lutris/config/lutris.conf
+		chown swift:swift /data/saves/lutris/config/lutris.conf
+	fi
+	if [ -x /usr/bin/heroic ] && [ ! -f /data/saves/heroic/config.json ]; then
+		printf '{"defaultSettings": {"defaultInstallPath": "/data/roms/heroic"}}\n' \
+			> /data/saves/heroic/config.json
+		chown swift:swift /data/saves/heroic/config.json
+	fi
+
 	# EmulationStation user-content groups (see /etc/emulationstation/
 	# es_systems.cfg): ROMs, apps and games live on the data partition,
 	# owned by the default user so content can be dropped in over sftp.
@@ -119,8 +153,10 @@ start() {
 	# separable from the content they supplied (see retro-launch).
 	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
-		roms/solarus roms/love roms/pygame roms/ports \
-		roms/bios roms/screenshots saves apps games; do
+		roms/solarus roms/love roms/pygame roms/ports roms/steam \
+		roms/bios roms/screenshots roms/flatpak roms/lutris roms/heroic \
+		saves saves/flatpak saves/lutris saves/lutris/share \
+		saves/lutris/config saves/heroic saves/steam apps; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
 		chown swift:swift "${DATA}/${d}"
@@ -136,19 +172,64 @@ start() {
 		chown swift:swift "${DATA}/roms/bios/README.txt"
 	fi
 
+	# Seed the EmulationStation Apps group with an entry per application
+	# manager the image ships. The marker file records each entry ever
+	# seeded, one name per line: an entry the user deletes stays deleted
+	# (its name is recorded), while an image upgraded to one that ships a
+	# new manager seeds that one on the next boot (its name is not).
+	seed_app() {
+		name="$1"; bin="$2"
+		[ -x "${bin}" ] || return 0
+		[ -f "/usr/share/swift-linux/apps/${name}" ] || return 0
+		grep -qxF "${name}" "${DATA}/apps/.seeded" 2>/dev/null && return 0
+		cp "/usr/share/swift-linux/apps/${name}" "${DATA}/apps/${name}"
+		chown swift:swift "${DATA}/apps/${name}"
+		chmod +x "${DATA}/apps/${name}"
+		echo "${name}" >> "${DATA}/apps/.seeded"
+		chown swift:swift "${DATA}/apps/.seeded"
+	}
+	seed_app "App Store.sh"  /usr/bin/gnome-software
+	seed_app "Lutris.sh"     /usr/bin/lutris
+	seed_app "Heroic.sh"     /usr/bin/heroic
+	seed_app "PortMaster.sh" /usr/bin/portmaster
+
+	# Seed the Steam system's launch entries (client + Big Picture) when
+	# the image ships Steam. Only ever into an empty directory: once the
+	# user has arranged their own shortcuts, theirs is the layout.
+	if [ -x /usr/bin/steam-run ] && [ -d /usr/share/swift-linux/steam ] && \
+	   [ -d "${DATA}/roms/steam" ] && \
+	   [ -z "$(ls -A "${DATA}/roms/steam" 2>/dev/null)" ]; then
+		cp /usr/share/swift-linux/steam/*.sh "${DATA}/roms/steam/"
+		chown swift:swift "${DATA}/roms/steam/"*.sh
+		chmod +x "${DATA}/roms/steam/"*.sh
+	fi
+
 	# BlueZ pairings and NetworkManager connection profiles live under
-	# /var/lib, which is a tmpfs on this read-only rootfs; bind them to
-	# the data partition so they survive a reboot. Must happen before
-	# S40bluetoothd and S45NetworkManager start.
+	# /var/lib, which is on this read-only rootfs; bind them to the data
+	# partition so they survive a reboot. Must happen before S40bluetoothd
+	# and S45NetworkManager start.
 	for d in bluetooth NetworkManager; do
 		mkdir -p "${DATA}/lib/${d}" "/var/lib/${d}"
 		mount -o bind "${DATA}/lib/${d}" "/var/lib/${d}"
 	done
+
+	# The flatpak system installation (runtimes and apps) is user-supplied
+	# content, so it lives with the rest of it: /var/lib/flatpak is backed
+	# by /data/roms/flatpak. The apps' own mutable state is separate -
+	# ~/.var/app points into /data/saves/flatpak (see the overlay's home
+	# skeleton), keeping "what was installed" and "what the apps wrote"
+	# independently backupable, like every other system.
+	mount -o bind "${DATA}/roms/flatpak" /var/lib/flatpak
+
+	# Reflect the installed flatpak applications into the Apps group
+	# (each becomes a generated launch script; see es-flatpak-sync).
+	command -v es-flatpak-sync >/dev/null 2>&1 && es-flatpak-sync || true
 }
 
 stop() {
 	umount /var/lib/bluetooth 2>/dev/null || true
 	umount /var/lib/NetworkManager 2>/dev/null || true
+	umount /var/lib/flatpak 2>/dev/null || true
 	umount /home 2>/dev/null || true
 	umount "${DATA}" 2>/dev/null || true
 	umount /boot 2>/dev/null || true

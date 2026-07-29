@@ -1,0 +1,31 @@
+config BR2_PACKAGE_FLATPAK
+	bool "flatpak"
+	depends on BR2_USE_MMU
+	depends on !BR2_STATIC_LIBS
+	depends on BR2_TOOLCHAIN_USES_GLIBC # user namespaces / bwrap setup
+	depends on BR2_TOOLCHAIN_HAS_THREADS
+	select BR2_PACKAGE_LIBOSTREE
+	select BR2_PACKAGE_BUBBLEWRAP
+	select BR2_PACKAGE_XDG_DBUS_PROXY
+	select BR2_PACKAGE_JSON_GLIB
+	select BR2_PACKAGE_APPSTREAM
+	select BR2_PACKAGE_LIBXMLB
+	select BR2_PACKAGE_LIBFUSE3
+	select BR2_PACKAGE_LIBGPGME
+	select BR2_PACKAGE_LIBSECCOMP
+	select BR2_PACKAGE_ZSTD
+	select BR2_PACKAGE_LIBCURL
+	select BR2_PACKAGE_DBUS
+	help
+	  Flatpak: sandboxed application distribution for Linux
+	  desktops. Applications install per-user or system-wide from
+	  remotes like Flathub and run against bundled runtimes, so
+	  the read-only rootfs never needs to change.
+
+	  On this image /var/lib/flatpak is backed by /data/roms/flatpak
+	  (the installation is user-supplied content, kept with the rest
+	  of it), and per-app mutable state lands in /data/saves/flatpak
+	  through the home skeleton's ~/.var symlink - both bound by
+	  S15data, both surviving reboots and A/B updates.
+
+	  https://flatpak.org

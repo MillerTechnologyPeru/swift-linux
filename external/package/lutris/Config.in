@@ -1,0 +1,20 @@
+config BR2_PACKAGE_LUTRIS
+	bool "lutris"
+	depends on BR2_PACKAGE_PYTHON3
+	depends on BR2_PACKAGE_LIBGTK3
+	select BR2_PACKAGE_PYTHON_GOBJECT
+	select BR2_PACKAGE_PYTHON_REQUESTS
+	select BR2_PACKAGE_PYTHON_PYYAML
+	select BR2_PACKAGE_PYTHON_PILLOW
+	select BR2_PACKAGE_PYTHON_DBUS_NEXT
+	help
+	  Lutris: the open game launcher. One library across sources -
+	  its own installer scripts, GOG, itch.io, and the emulators
+	  and Wine builds it manages. A GTK 3 Python application; the
+	  GTK typelibs it drives come from gobject-introspection,
+	  which the desktop frontends already build.
+
+	  https://lutris.net
+
+comment "lutris needs python3 and gtk3"
+	depends on !BR2_PACKAGE_PYTHON3 || !BR2_PACKAGE_LIBGTK3

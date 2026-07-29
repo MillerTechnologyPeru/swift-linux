@@ -43,9 +43,15 @@ fi
 # The rootfs is read-only, so they have to exist in the image (BlueZ ships
 # /var/lib/bluetooth itself; NetworkManager does not create its directory).
 mkdir -p "${TARGET_DIR}/var/lib/bluetooth" \
-         "${TARGET_DIR}/var/lib/NetworkManager"
+         "${TARGET_DIR}/var/lib/NetworkManager" \
+         "${TARGET_DIR}/var/lib/flatpak"
 chmod 0700 "${TARGET_DIR}/var/lib/bluetooth" \
            "${TARGET_DIR}/var/lib/NetworkManager"
+
+# PortMaster moved from the Tools group to the seeded Apps entries (the
+# app managers live together there); the package no longer installs this,
+# but an incremental target/ keeps the old copy.
+rm -f "${TARGET_DIR}/usr/share/es-tools/PortMaster.sh"
 
 # Remove files from earlier layouts: ConnMan was replaced by
 # NetworkManager, and Buildroot leaves a deselected package's files in an
