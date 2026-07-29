@@ -1,0 +1,17 @@
+config BR2_PACKAGE_EPIPHANY
+	bool "epiphany"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_LIBADWAITA
+	depends on BR2_PACKAGE_WEBKITGTK # GTK 4 API
+	select BR2_PACKAGE_LIBPORTAL
+	select BR2_PACKAGE_GCR4
+	select BR2_PACKAGE_ISO_CODES
+	select BR2_PACKAGE_NETTLE
+	select BR2_PACKAGE_LIBARCHIVE
+	select BR2_PACKAGE_SQLITE
+	help
+	  Web (epiphany), the GNOME browser on WebKitGTK's GTK 4 API -
+	  Buildroot's webkitgtk builds that API when libgtk4 is in the
+	  config.
+
+	  https://apps.gnome.org/Epiphany/
