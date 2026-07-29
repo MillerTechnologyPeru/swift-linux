@@ -11,6 +11,7 @@ PermitRootLogin yes
 PasswordAuthentication yes
 PermitEmptyPasswords no
 
-# Privilege separation directory (exists read-only in the image).
-UsePAM no
+# No UsePAM line: this openssh is built without PAM support and rejects
+# the keyword outright (even "UsePAM no" draws an Unsupported-option
+# warning at startup); without PAM compiled in, PAM is off anyway.
 Subsystem sftp /usr/libexec/sftp-server
