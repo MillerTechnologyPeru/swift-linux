@@ -53,6 +53,46 @@ else
 	echo "lib32: warning - loader not found, 32-bit binaries will not start" >&2
 fi
 
+# Vulkan ICD manifests for the 32-bit drivers.
+#
+# The Vulkan loader finds drivers by reading every *.json in
+# /usr/share/vulkan/icd.d, and Mesa writes an absolute "library_path" into
+# each one. A 32-bit process reads the same directory as a 64-bit one, so
+# without a 32-bit variant it tries to dlopen the 64-bit driver and gets
+# nothing - the manifests are the reason 32-bit Vulkan fails even when the
+# libraries are present.
+#
+# Emit <name>.lib32.json next to each original, with the path moved to
+# /usr/lib32 and library_arch corrected. Two guards: a library_path with no
+# '/' is a bare soname, which the loader resolves through the ld.so cache -
+# and that cache is architecture-tagged, so a 32-bit process already finds
+# the 32-bit library by itself; and a manifest is only written when the
+# library it names actually exists in /usr/lib32, so a companion built
+# without a given driver does not leave the loader chasing a missing file.
+icd_src="${LIB32_ROOT}/usr/share/vulkan/icd.d"
+if [ -d "${icd_src}" ]; then
+	icd_dst="${TARGET_DIR}/usr/share/vulkan/icd.d"
+	mkdir -p "${icd_dst}"
+	icd_count=0
+	for json in "${icd_src}"/*.json; do
+		[ -f "${json}" ] || continue
+		# Absolute (or at least path-bearing) library_path only.
+		grep -q '"library_path"[^"]*"[^"]*/' "${json}" || continue
+
+		lib=$(sed -n 's/.*"library_path"[^"]*"\([^"]*\)".*/\1/p' "${json}" | head -1)
+		libname=$(basename "${lib}")
+		[ -e "${TARGET_DIR}/usr/lib32/${libname}" ] || continue
+
+		base=$(basename "${json}" .json)
+		sed -e 's#"/usr/lib/#"/usr/lib32/#g' \
+		    -e 's#"library_arch"[[:space:]]*:[[:space:]]*"64"#"library_arch": "32"#' \
+		    "${json}" > "${icd_dst}/${base}.lib32.json"
+		icd_count=$((icd_count + 1))
+	done
+	[ "${icd_count}" -gt 0 ] && \
+		echo "lib32: wrote ${icd_count} 32-bit Vulkan ICD manifest(s)"
+fi
+
 # box86 (a 32-bit ARM binary) runs 32-bit x86 programs. When the companion is
 # an armv7 userland it is built there; carry it into the 64-bit image so the
 # S07binfmt i386 handler can use it (arm64 runs it via aarch32 compat).
