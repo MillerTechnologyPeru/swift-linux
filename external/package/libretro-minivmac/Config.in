@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBRETRO_MINIVMAC
+	bool "libretro-minivmac"
+	depends on BR2_PACKAGE_RETROARCH
+	help
+	  Mini vMac libretro core: early Macintosh (128K/512K/Plus/II)
+	  emulation. Needs the machine ROM (vMac.ROM) next to the disk
+	  images in the system directory.
+
+	  https://github.com/libretro/libretro-minivmac
