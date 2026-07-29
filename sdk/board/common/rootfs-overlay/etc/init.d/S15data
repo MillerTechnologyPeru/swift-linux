@@ -107,14 +107,37 @@ start() {
 	fi
 	mount -o bind "${DATA}/home" /home
 
-	# Flatpak apps write their per-app state to ~/.var/app; the image's
-	# home skeleton ships ~/.var as a symlink into /data/saves/flatpak so
-	# that state lands in the save tree. A home provisioned by an older
-	# image predates the symlink - add it, but never over a real
-	# directory the user already has data in.
-	if [ ! -e /home/swift/.var ]; then
-		ln -s /data/saves/flatpak /home/swift/.var
-		chown -h swift:swift /home/swift/.var 2>/dev/null || true
+	# The app managers keep their mutable state in the save tree through
+	# home-skeleton symlinks (flatpak's ~/.var, lutris' data and config,
+	# heroic's config). A home provisioned by an older image predates
+	# them - add each, but never over a real directory the user already
+	# has data in.
+	for pair in \
+		".var /data/saves/flatpak" \
+		".local/share/lutris /data/saves/lutris/share" \
+		".config/lutris /data/saves/lutris/config" \
+		".config/heroic /data/saves/heroic"; do
+		link="/home/swift/${pair%% *}"
+		dest="${pair#* }"
+		[ -e "${link}" ] && continue
+		mkdir -p "$(dirname "${link}")"
+		chown swift:swift "$(dirname "${link}")" 2>/dev/null || true
+		ln -s "${dest}" "${link}"
+		chown -h swift:swift "${link}" 2>/dev/null || true
+	done
+
+	# Default install locations, so games land in the content tree rather
+	# than the home directory. Seeded only while the app has never written
+	# its own configuration - after that, the settings are the user's.
+	if [ -x /usr/bin/lutris ] && [ ! -f /data/saves/lutris/config/lutris.conf ]; then
+		printf '[system]\ngame_path = /data/roms/lutris\n' \
+			> /data/saves/lutris/config/lutris.conf
+		chown swift:swift /data/saves/lutris/config/lutris.conf
+	fi
+	if [ -x /usr/bin/heroic ] && [ ! -f /data/saves/heroic/config.json ]; then
+		printf '{"defaultSettings": {"defaultInstallPath": "/data/roms/heroic"}}\n' \
+			> /data/saves/heroic/config.json
+		chown swift:swift /data/saves/heroic/config.json
 	fi
 
 	# EmulationStation user-content groups (see /etc/emulationstation/
@@ -130,8 +153,9 @@ start() {
 	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
 		roms/solarus roms/love roms/pygame roms/ports \
-		roms/bios roms/screenshots roms/flatpak \
-		saves saves/flatpak apps games; do
+		roms/bios roms/screenshots roms/flatpak roms/lutris roms/heroic \
+		saves saves/flatpak saves/lutris saves/lutris/share \
+		saves/lutris/config saves/heroic apps games; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
 		chown swift:swift "${DATA}/${d}"
