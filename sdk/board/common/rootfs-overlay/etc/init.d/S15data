@@ -112,7 +112,7 @@ start() {
 	# owned by the default user so content can be dropped in over sftp.
 	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
-		roms/solarus roms/love roms/pygame apps games; do
+		roms/solarus roms/love roms/pygame roms/ports apps games; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
 		chown swift:swift "${DATA}/${d}"
