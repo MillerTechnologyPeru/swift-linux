@@ -1,7 +1,7 @@
 #!/bin/sh
 # Install the running system onto internal storage.
 #
-#   system-install [--yes] [--disk /dev/XXX]
+#   system-install [--yes] [--disk /dev/XXX] [--fs ext4|f2fs]
 #
 # Boot an image from USB or SD, run this, reboot without the medium.
 # There is no download and no second image: the rootfs written is the one
@@ -26,7 +26,12 @@
 # is on does not look like the board the image claims.
 #
 # Either way the internal disk gets the data partition the image itself
-# has no room for, carrying the fixed PARTUUID S15data looks for.
+# has no room for, carrying the fixed PARTUUID S15data looks for. Its
+# filesystem defaults by architecture - f2fs on the ARM boards, whose
+# storage is eMMC/SD flash that f2fs is designed for, ext4 on x86_64
+# where the target is usually an SSD and ext4 is the safer default - and
+# --fs overrides either way. The root slot itself is EROFS, written as a
+# whole image; only the data partition is formatted here.
 #
 # DESTRUCTIVE: everything on the internal disk is erased.
 
@@ -58,10 +63,17 @@ die() { printf 'system-install: %s\n' "$*" >&2; exit 1; }
 
 FORCE=no
 DISK_OVERRIDE=""
+DATA_FS=""
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--yes) FORCE=yes; shift ;;
 		--disk) DISK_OVERRIDE="$2"; shift 2 ;;
+		--fs)
+			case "$2" in
+				ext4|f2fs) DATA_FS="$2" ;;
+				*) die "--fs takes ext4 or f2fs, not '$2'" ;;
+			esac
+			shift 2 ;;
 		*) die "unknown argument: $1" ;;
 	esac
 done
@@ -78,6 +90,22 @@ BOARD=""
 . "$BOARDINFO"
 [ -n "$BOOTFW" ] || die "boardinfo has no BOOTFW field"
 say "Board: ${BOARD:-unknown}  boot firmware: $BOOTFW (from boardinfo)"
+
+# Data filesystem: f2fs by default on everything except x86, where ext4
+# is the safer default (x86 targets are usually SSDs; the ARM boards boot
+# from eMMC/SD flash, which is what f2fs was written for). ARCH comes from
+# the same boardinfo, so this is a build-time fact, not a runtime guess.
+# --fs, parsed above, wins over both.
+if [ -z "$DATA_FS" ]; then
+	case "${ARCH:-}" in
+		x86_64|i386) DATA_FS=ext4 ;;
+		*)           DATA_FS=f2fs ;;
+	esac
+fi
+if [ "$DATA_FS" = f2fs ] && ! command -v mkfs.f2fs >/dev/null 2>&1; then
+	say "WARNING: mkfs.f2fs is missing from this image - using ext4 instead"
+	DATA_FS=ext4
+fi
 
 case "$BOOTFW" in
 	depthcharge|uefi) ;;
@@ -169,6 +197,7 @@ int_sectors=$(blockdev --getsz "$int_disk")
 say ""
 say "Source (running):   $src_disk  root $root_src"
 say "Destination:        $int_disk  ($(( int_sectors / 2 / 1024 )) MiB)"
+say "Data filesystem:    $DATA_FS"
 say ""
 say "This ERASES $int_disk completely."
 if [ "$FORCE" != yes ]; then
@@ -183,12 +212,34 @@ rescan() {
 	sleep 1
 }
 
-# The installed system must not carry the installer: it is a removable-
-# medium tool, and on the internal disk it could only ever re-erase the
-# machine it runs from. The rootfs copy is bit-exact, so the tooling is
-# removed from the DESTINATION afterwards - the running medium keeps its
-# own copy untouched.
+# Format the data partition. S15data reads whatever is actually on disk
+# (blkid TYPE) rather than assuming, so either choice is equally
+# supported from first boot onward.
+format_data() { # <partition>
+	say "Creating the data partition ($DATA_FS) ..."
+	case "$DATA_FS" in
+		f2fs) mkfs.f2fs -q -f -l data "$1" </dev/null ;;
+		*)    mkfs.ext4 -q -F -L data "$1" </dev/null ;;
+	esac
+}
+
+# The installed system ideally would not carry the installer: it is a
+# removable-medium tool, and on the internal disk it could only ever
+# re-erase the machine it runs from. That is only possible when the root
+# filesystem is actually writable, though - EROFS (this image's default,
+# see image.config) has no write path at all, mount option or not, so a
+# copied EROFS root cannot be edited after the fact. It is harmless left
+# in place: system-install itself refuses to run again once it detects it
+# is already on the internal disk. Only a non-EROFS root (a board that
+# overrides the rootfs filesystem) gets the installer actually removed.
 strip_installer() { # <root partition>
+	fstype="$(blkid -o value -s TYPE "$1" 2>/dev/null)"
+	if [ "$fstype" = erofs ]; then
+		say "Note: root is EROFS (read-only, no write path) - system-install"
+		say "stays on the installed copy. It is inert there: it refuses"
+		say "to run again once it is already on the internal disk."
+		return 0
+	fi
 	m=/run/system-install-root.$$
 	mkdir -p "$m"
 	if mount "$1" "$m" 2>/dev/null; then
@@ -233,8 +284,7 @@ install_depthcharge() {
 	dd if="$root_src" of="$(part "$int_disk" 3)" bs=4M conv=fsync status=none
 	strip_installer "$(part "$int_disk" 3)"
 
-	say "Creating the data partition ..."
-	mkfs.ext4 -q -F -L data "$(part "$int_disk" 5)" </dev/null
+	format_data "$(part "$int_disk" 5)"
 
 	# Slot attributes: priority 48-51, tries 52-55, successful 56.
 	set_attr() { # <partnum> <priority> <tries> <successful>
@@ -285,8 +335,7 @@ install_uefi() {
 	dd if="$root_src" of="$(part "$int_disk" 2)" bs=4M conv=fsync status=none
 	strip_installer "$(part "$int_disk" 2)"
 
-	say "Creating the data partition ..."
-	mkfs.ext4 -q -F -L data "$(part "$int_disk" 4)" </dev/null
+	format_data "$(part "$int_disk" 4)"
 }
 
 case "$BOOTFW" in
