@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=Heroic Games Launcher
+Comment=GOG, Epic Games Store and Amazon Gaming libraries
+Exec=heroic --no-sandbox
+Icon=heroic
+Terminal=false
+Categories=Game;
