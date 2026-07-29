@@ -1,0 +1,301 @@
+#!/bin/sh
+# Install the running system onto internal storage.
+#
+#   system-install [--yes] [--disk /dev/XXX]
+#
+# Boot an image from USB or SD, run this, reboot without the medium.
+# There is no download and no second image: the rootfs written is the one
+# currently running, copied partition-for-partition, so what you tested
+# from the removable medium is exactly what lands internally.
+#
+# One script for every boot firmware this distribution targets (the
+# shape follows the Cadmium installer,
+# https://github.com/Maccraft123/Cadmium). The install path comes from
+# the image's own board metadata - /usr/share/boardinfo/current, the
+# BOOTFW field - not from runtime sniffing: the image was built for a
+# board, and the build already knows how that board boots.
+#
+#   depthcharge  Chromebooks: ChromeOS kernel partitions, slot
+#                attributes via sgdisk
+#   uefi         the x86_64 and arm64 UEFI images: ESP + A/B roots +
+#                data, GRUB from the ESP's removable fallback path, so
+#                no NVRAM entry is needed
+#
+# Runtime evidence is still consulted, but only to WARN on a mismatch -
+# an installer this destructive should say something if the machine it
+# is on does not look like the board the image claims.
+#
+# Either way the internal disk gets the data partition the image itself
+# has no room for, carrying the fixed PARTUUID S15data looks for.
+#
+# DESTRUCTIVE: everything on the internal disk is erased.
+
+set -e
+
+# The repo's contractual partition UUIDs (grub.cfg, fstab, RAUC and
+# S15data all address by these).
+ESP_PARTUUID=0e0e0e0e-0000-4000-8000-00000000000e
+ROOT_A_PARTUUID=0a0a0a0a-0000-4000-8000-00000000000a
+ROOT_B_PARTUUID=0b0b0b0b-0000-4000-8000-00000000000b
+DATA_PARTUUID=0d0d0d0d-0000-4000-8000-00000000000d
+
+CROS_KERNEL_TYPE=FE3A2A5D-4F32-41A7-B725-ACCC3285A309
+LINUX_DATA_TYPE=0FC63DAF-8483-4772-8E79-3D69D8477DE4
+ESP_TYPE=C12A7328-F81F-11D2-BA4B-00A0C93EC93B
+
+# Depthcharge layout constants (matching post-image.sh; the signed
+# cmdline is root=PARTUUID=%U/PARTNROFF=2, relative to the booted kernel
+# partition, so ORDER is what matters there).
+KERN_A_START=8192
+KERN_SECTORS=65536
+KERN_B_START=73728
+CROS_ROOT_START=139264
+
+say() { printf '%s\n' "$*"; }
+die() { printf 'system-install: %s\n' "$*" >&2; exit 1; }
+
+[ "$(id -u)" = 0 ] || die "must run as root"
+
+FORCE=no
+DISK_OVERRIDE=""
+while [ $# -gt 0 ]; do
+	case "$1" in
+		--yes) FORCE=yes; shift ;;
+		--disk) DISK_OVERRIDE="$2"; shift 2 ;;
+		*) die "unknown argument: $1" ;;
+	esac
+done
+
+for t in sgdisk blkid findmnt lsblk mkfs.ext4 blockdev dd; do
+	command -v "$t" >/dev/null 2>&1 || die "missing required tool: $t"
+done
+
+# --- Boot firmware, from the board metadata ---------------------------------
+BOARDINFO=/usr/share/boardinfo/current
+[ -f "$BOARDINFO" ] || die "no $BOARDINFO - this image carries no board metadata"
+BOOTFW=""
+BOARD=""
+. "$BOARDINFO"
+[ -n "$BOOTFW" ] || die "boardinfo has no BOOTFW field"
+say "Board: ${BOARD:-unknown}  boot firmware: $BOOTFW (from boardinfo)"
+
+case "$BOOTFW" in
+	depthcharge|uefi) ;;
+	*) die "no install path for BOOTFW=$BOOTFW boards yet" ;;
+esac
+
+# Sanity: warn (only) when the running machine does not look like what
+# the metadata says. The metadata still decides.
+case "$BOOTFW" in
+	depthcharge)
+		grep -qs cros_secure /proc/cmdline || 			say "WARNING: boardinfo says depthcharge but cros_secure is not on the command line"
+		;;
+	uefi)
+		[ -d /sys/firmware/efi ] || 			say "WARNING: boardinfo says uefi but /sys/firmware/efi is absent"
+		;;
+esac
+
+# --- Battery ----------------------------------------------------------------
+# A machine that dies midway leaves neither system bootable; refuse below
+# 30% unless on AC. Desktops simply have no battery and pass through.
+bat=""; ac=0
+for p in /sys/class/power_supply/*; do
+	[ -r "$p/type" ] || continue
+	case "$(cat "$p/type")" in
+		Battery) [ -r "$p/capacity" ] && bat="$p" ;;
+		Mains|USB) [ "$(cat "$p/online" 2>/dev/null)" = 1 ] && ac=1 ;;
+	esac
+done
+if [ -n "$bat" ]; then
+	cap=$(cat "$bat/capacity")
+	if [ "$cap" -le 30 ] && [ "$ac" = 0 ]; then
+		die "battery at ${cap}% and not charging - plug in first"
+	fi
+	say "Battery: ${cap}%$( [ "$ac" = 1 ] && echo ', charging')"
+fi
+
+# --- Source and destination disks -------------------------------------------
+root_src=$(findmnt -no SOURCE / 2>/dev/null) || die "cannot find the root device"
+case "$root_src" in
+	/dev/*) ;;
+	*) root_src=$(blkid -l -o device -t "$root_src" 2>/dev/null) || \
+		die "cannot resolve the root device" ;;
+esac
+src_disk="/dev/$(lsblk -no pkname "$root_src" | head -1)"
+[ -b "$src_disk" ] || die "cannot determine the disk we booted from"
+
+int_disk=""
+if [ -n "$DISK_OVERRIDE" ]; then
+	int_disk="$DISK_OVERRIDE"
+	[ -b "$int_disk" ] || die "no such disk: $int_disk"
+else
+	# eMMC first (the mmcblk with a boot0 sibling - SD cards have none),
+	# then NVMe, then the largest non-USB disk that is not the source.
+	for b in /dev/mmcblk*boot0; do
+		[ -e "$b" ] && { int_disk="${b%boot0}"; break; }
+	done
+	if [ -z "$int_disk" ]; then
+		best=0
+		for d in $(lsblk -dno NAME,TRAN,SIZE -b 2>/dev/null | \
+		           awk '$2 != "usb" {print $1":"$3}'); do
+			n="/dev/${d%%:*}"; sz="${d##*:}"
+			[ "$n" = "$src_disk" ] && continue
+			[ -b "$n" ] || continue
+			case "$n" in /dev/zram*|/dev/loop*|/dev/ram*) continue ;; esac
+			if [ "$sz" -gt "$best" ]; then best="$sz"; int_disk="$n"; fi
+		done
+	fi
+fi
+[ -b "$int_disk" ] || die "no internal disk found (use --disk)"
+[ "$int_disk" != "$src_disk" ] || \
+	die "already running from $int_disk - nothing to do"
+
+part() { # <disk> <n> - mmcblk/nvme need the p separator
+	case "$1" in *[0-9]) echo "$1p$2" ;; *) echo "$1$2" ;; esac
+}
+
+# Find a source partition by PARTUUID, on the source disk only (the
+# destination will carry the same IDs once installed, so by-partuuid
+# symlinks cannot be trusted here).
+src_part_by_uuid() {
+	lsblk -lno NAME,PARTUUID "$src_disk" 2>/dev/null | \
+		awk -v u="$1" 'tolower($2) == tolower(u) {print "/dev/"$1; exit}'
+}
+
+src_root_sectors=$(blockdev --getsz "$root_src")
+int_sectors=$(blockdev --getsz "$int_disk")
+
+# --- Confirm ----------------------------------------------------------------
+say ""
+say "Source (running):   $src_disk  root $root_src"
+say "Destination:        $int_disk  ($(( int_sectors / 2 / 1024 )) MiB)"
+say ""
+say "This ERASES $int_disk completely."
+if [ "$FORCE" != yes ]; then
+	printf 'Type INSTALL to continue: '
+	read -r reply
+	[ "$reply" = INSTALL ] || die "aborted"
+fi
+
+rescan() {
+	partx -u "$int_disk" >/dev/null 2>&1 || \
+		partprobe "$int_disk" >/dev/null 2>&1 || true
+	sleep 1
+}
+
+# The installed system must not carry the installer: it is a removable-
+# medium tool, and on the internal disk it could only ever re-erase the
+# machine it runs from. The rootfs copy is bit-exact, so the tooling is
+# removed from the DESTINATION afterwards - the running medium keeps its
+# own copy untouched.
+strip_installer() { # <root partition>
+	m=/run/system-install-root.$$
+	mkdir -p "$m"
+	if mount "$1" "$m" 2>/dev/null; then
+		rm -f "$m/usr/bin/system-install" \
+			"$m/usr/share/es-tools/Install to Internal Disk.sh"
+		sed -i 's|, /usr/bin/system-install||' \
+			"$m/etc/sudoers.d/es-platform" 2>/dev/null || true
+		umount "$m"
+	else
+		say "WARNING: could not mount the installed root to remove the installer"
+	fi
+	rmdir "$m" 2>/dev/null || true
+}
+
+install_depthcharge() {
+	need=$(( CROS_ROOT_START + 2 * src_root_sectors + 2048 ))
+	[ "$int_sectors" -gt "$need" ] || \
+		die "internal disk too small (needs $need sectors, has $int_sectors)"
+
+	src_kern=$(part "$src_disk" 1)
+	[ -b "$src_kern" ] || die "no kernel partition on $src_disk"
+
+	root_b_start=$(( CROS_ROOT_START + src_root_sectors ))
+	data_start=$(( root_b_start + src_root_sectors ))
+
+	say "Partitioning $int_disk (Depthcharge A/B) ..."
+	sgdisk --zap-all "$int_disk" >/dev/null 2>&1 || true
+	sgdisk \
+		-n 1:${KERN_A_START}:+${KERN_SECTORS} -t 1:${CROS_KERNEL_TYPE} -c 1:KERN-A \
+		-n 2:${KERN_B_START}:+${KERN_SECTORS} -t 2:${CROS_KERNEL_TYPE} -c 2:KERN-B \
+		-n 3:${CROS_ROOT_START}:+${src_root_sectors} -t 3:${LINUX_DATA_TYPE} -c 3:ROOT-A \
+		-n 4:${root_b_start}:+${src_root_sectors} -t 4:${LINUX_DATA_TYPE} -c 4:ROOT-B \
+		-n 5:${data_start}:0 -t 5:${LINUX_DATA_TYPE} -c 5:data -u 5:${DATA_PARTUUID} \
+		"$int_disk" >/dev/null
+	rescan
+
+	say "Writing kernel to both slots ..."
+	dd if="$src_kern" of="$(part "$int_disk" 1)" bs=1M conv=fsync status=none
+	dd if="$src_kern" of="$(part "$int_disk" 2)" bs=1M conv=fsync status=none
+
+	say "Copying the running rootfs to slot A (this takes a while) ..."
+	dd if="$root_src" of="$(part "$int_disk" 3)" bs=4M conv=fsync status=none
+	strip_installer "$(part "$int_disk" 3)"
+
+	say "Creating the data partition ..."
+	mkfs.ext4 -q -F -L data "$(part "$int_disk" 5)" </dev/null
+
+	# Slot attributes: priority 48-51, tries 52-55, successful 56.
+	set_attr() { # <partnum> <priority> <tries> <successful>
+		v=$(( ($2 << 48) | ($3 << 52) | ($4 << 56) ))
+		sgdisk --attributes="$1":=:$(printf '%016X' "$v") "$int_disk" >/dev/null
+	}
+	set_attr 1 10 2 1
+	set_attr 2 5 2 0
+}
+
+install_uefi() {
+	src_esp=$(src_part_by_uuid "$ESP_PARTUUID")
+	[ -b "$src_esp" ] || die "no ESP with the expected PARTUUID on $src_disk"
+	esp_sectors=$(blockdev --getsz "$src_esp")
+
+	# ESP from 2048 (1 MiB alignment), then the slots back to back.
+	esp_start=2048
+	root_a_start=$(( esp_start + esp_sectors ))
+	root_b_start=$(( root_a_start + src_root_sectors ))
+	data_start=$(( root_b_start + src_root_sectors ))
+	need=$(( data_start + 2048 ))
+	[ "$int_sectors" -gt "$need" ] || \
+		die "internal disk too small (needs $need sectors, has $int_sectors)"
+
+	say "Partitioning $int_disk (UEFI A/B) ..."
+	sgdisk --zap-all "$int_disk" >/dev/null 2>&1 || true
+	# Same fixed PARTUUIDs as the image: grub.cfg, fstab, RAUC and
+	# S15data all address partitions by them. They only collide with the
+	# boot medium's while both are inserted, which is exactly the
+	# situation the "remove the medium and reboot" instruction ends.
+	sgdisk \
+		-n 1:${esp_start}:+${esp_sectors} -t 1:${ESP_TYPE} -c 1:boot -u 1:${ESP_PARTUUID} \
+		-n 2:${root_a_start}:+${src_root_sectors} -t 2:${LINUX_DATA_TYPE} -c 2:root-a -u 2:${ROOT_A_PARTUUID} \
+		-n 3:${root_b_start}:+${src_root_sectors} -t 3:${LINUX_DATA_TYPE} -c 3:root-b -u 3:${ROOT_B_PARTUUID} \
+		-n 4:${data_start}:0 -t 4:${LINUX_DATA_TYPE} -c 4:data -u 4:${DATA_PARTUUID} \
+		"$int_disk" >/dev/null
+	sgdisk --attributes=1:set:2 "$int_disk" >/dev/null 2>&1 || true # legacy boot flag, harmless
+	rescan
+
+	# The ESP is copied whole: GRUB sits on its removable fallback path
+	# (EFI/BOOT/boot*.efi), which UEFI firmware boots from any disk with
+	# no NVRAM entry - so a byte copy of the partition is a working
+	# bootloader, grubenv included.
+	say "Copying the ESP ..."
+	dd if="$src_esp" of="$(part "$int_disk" 1)" bs=1M conv=fsync status=none
+
+	say "Copying the running rootfs to slot A (this takes a while) ..."
+	dd if="$root_src" of="$(part "$int_disk" 2)" bs=4M conv=fsync status=none
+	strip_installer "$(part "$int_disk" 2)"
+
+	say "Creating the data partition ..."
+	mkfs.ext4 -q -F -L data "$(part "$int_disk" 4)" </dev/null
+}
+
+case "$BOOTFW" in
+	depthcharge) install_depthcharge ;;
+	uefi)        install_uefi ;;
+esac
+
+sync
+say ""
+say "Done. Remove the boot medium and reboot."
+say "The internal system carries its own A/B slots; RAUC updates the"
+say "inactive slot from there."

@@ -48,10 +48,15 @@ ITS
 ( cd "${BINARIES_DIR}" && "${HOST_DIR}/bin/mkimage" -D "-I dts -O dtb -p 2048" \
 	-f kernel.its vmlinux.uimg >/dev/null )
 
-# 2. Sign for both slots (root offset differs: A -> PARTNROFF=2, B -> 1).
+# 2. Sign for both slots. PARTNROFF counts partitions FROM THE KERNEL
+#    PARTITION THAT BOOTED, so both slots use 2: KERN-A(1)+2 = ROOT-A(3),
+#    KERN-B(2)+2 = ROOT-B(4). B used to say 1, which resolved to
+#    partition 3 - slot B's kernel booted slot A's rootfs, so a RAUC
+#    update that wrote ROOT-B and raised KERN-B came up running the old
+#    userland under the new kernel.
 dd if=/dev/zero of="${BINARIES_DIR}/bootloader.bin" bs=512 count=1 2>/dev/null
 for slot in A B; do
-	[ "$slot" = A ] && off=2 || off=1
+	off=2
 	echo "console=tty1 rootwait rw root=PARTUUID=%U/PARTNROFF=$off" > "${BINARIES_DIR}/cmdline.$slot"
 	"${HOST_DIR}/bin/futility" vbutil_kernel --pack "${BINARIES_DIR}/vmlinux.kpart.$slot" \
 		--version 1 --vmlinuz "${BINARIES_DIR}/vmlinux.uimg" --arch arm \

@@ -39,6 +39,27 @@ if [ -L "${TARGET_DIR}/usr/bin/lua" ]; then
 	rm -f "${TARGET_DIR}/usr/bin/lua"
 fi
 
+# Board metadata, Cadmium-style: one sourceable KEY=VALUE file per board
+# (see util/gen-boardinfo.py), installed as a full tree so tooling on the
+# image can identify any device this distribution supports - the
+# installer, and anything that wants to match a running device against
+# /proc/device-tree/compatible. /usr/share/boardinfo/current names the
+# board this image was BUILT for, recovered from the board overlay path
+# in the Buildroot configuration.
+BOARDS_SRC="$(cd "$(dirname "$0")/.." && pwd)"
+mkdir -p "${TARGET_DIR}/usr/share/boardinfo"
+for bi in "${BOARDS_SRC}"/*/boardinfo; do
+	[ -f "${bi}" ] || continue
+	bname="$(basename "$(dirname "${bi}")")"
+	install -m 0644 "${bi}" "${TARGET_DIR}/usr/share/boardinfo/${bname}"
+done
+if [ -n "${BR2_CONFIG}" ] && [ -f "${BR2_CONFIG}" ]; then
+	cur=$(sed -n 's|.*sdk/board/\([a-z0-9._-]*\)/rootfs-overlay.*||p' "${BR2_CONFIG}" | 		grep -v '^common$' | head -1)
+	if [ -n "${cur}" ] && [ -f "${TARGET_DIR}/usr/share/boardinfo/${cur}" ]; then
+		ln -sf "${cur}" "${TARGET_DIR}/usr/share/boardinfo/current"
+	fi
+fi
+
 # Mountpoints for the state that S15data bind-mounts off the data partition.
 # The rootfs is read-only, so they have to exist in the image (BlueZ ships
 # /var/lib/bluetooth itself; NetworkManager does not create its directory).
