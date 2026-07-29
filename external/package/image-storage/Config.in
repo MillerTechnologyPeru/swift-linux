@@ -1,0 +1,13 @@
+config BR2_PACKAGE_IMAGE_STORAGE
+	bool "image-storage"
+	help
+	  No upstream, no install content - this package exists only to
+	  carry LINUX_CONFIG_FIXUPS for the filesystems the image's own
+	  storage needs the kernel to support: EROFS for the read-only
+	  root slot, and ext4 plus f2fs for the data partition (S15data
+	  and system-install can format it as either). Board kernel
+	  defconfigs do not carry these; ext4 tends to be on already,
+	  EROFS and f2fs generally are not.
+
+	  Enabled unconditionally by the image profile - every image
+	  needs its root and data filesystems to actually mount.

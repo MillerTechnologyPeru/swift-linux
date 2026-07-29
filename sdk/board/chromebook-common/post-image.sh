@@ -65,8 +65,19 @@ for slot in A B; do
 done
 
 # 3. A/B disk: GPT via sgdisk, ChromeOS kernel partitions + attributes via cgpt.
-ROOTFS="${BINARIES_DIR}/rootfs.ext4"
-ROOT_SECTORS=$(( ($(stat -c%s "$ROOTFS") + 511) / 512 ))
+ROOTFS="${BINARIES_DIR}/rootfs.erofs"
+# EROFS's own size is the compressed content, not a round number, and each
+# slot has to have room for a future RAUC update whose rootfs grew past
+# today's - so the slot is a fixed 3G floor (matching the x86_64/arm64 UEFI
+# images), not just "however big this build happens to be". Actual usage is
+# far less; the rest is unwritten sectors, not bytes actually spent.
+ROOTFS_SECTORS=$(( ($(stat -c%s "$ROOTFS") + 511) / 512 ))
+FLOOR_SECTORS=6291456 # 3 GiB / 512
+if [ "$ROOTFS_SECTORS" -gt "$FLOOR_SECTORS" ]; then
+	ROOT_SECTORS="$ROOTFS_SECTORS"
+else
+	ROOT_SECTORS="$FLOOR_SECTORS"
+fi
 TOTAL=$(( 139264 + 2 * ROOT_SECTORS + 2048 ))
 rm -f "$OUT"; truncate -s $(( TOTAL * 512 )) "$OUT"
 "${HOST_DIR}/sbin/sgdisk" -o "$OUT" >/dev/null
