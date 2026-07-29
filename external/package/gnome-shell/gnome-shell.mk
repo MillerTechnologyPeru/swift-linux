@@ -12,11 +12,11 @@ GNOME_SHELL_LICENSE_FILES = COPYING
 GNOME_SHELL_DEPENDENCIES = \
 	host-pkgconf mutter gjs gnome-desktop gcr4 evolution-data-server \
 	ibus polkit libgtk4 gsettings-desktop-schemas host-python3 \
-	host-libglib2
+	host-libglib2 network-manager libsecret
 
 GNOME_SHELL_CONF_OPTS = \
 	-Dsystemd=false \
-	-Dnetworkmanager=false \
+	-Dnetworkmanager=true \
 	-Dcamera_monitor=false \
 	-Dextensions_app=false \
 	-Dgtk_doc=false \
