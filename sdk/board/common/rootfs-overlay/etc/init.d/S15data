@@ -136,11 +136,12 @@ start() {
 		chown swift:swift "${DATA}/roms/bios/README.txt"
 	fi
 
-	# BlueZ pairings and NetworkManager connection profiles live under
-	# /var/lib, which is a tmpfs on this read-only rootfs; bind them to
-	# the data partition so they survive a reboot. Must happen before
-	# S40bluetoothd and S45NetworkManager start.
-	for d in bluetooth NetworkManager; do
+	# BlueZ pairings, NetworkManager connection profiles and the flatpak
+	# system installation live under /var/lib, which is on this read-only
+	# rootfs; bind them to the data partition so they survive a reboot
+	# (and, for flatpak, so installed applications survive A/B updates).
+	# Must happen before S40bluetoothd and S45NetworkManager start.
+	for d in bluetooth NetworkManager flatpak; do
 		mkdir -p "${DATA}/lib/${d}" "/var/lib/${d}"
 		mount -o bind "${DATA}/lib/${d}" "/var/lib/${d}"
 	done
@@ -149,6 +150,7 @@ start() {
 stop() {
 	umount /var/lib/bluetooth 2>/dev/null || true
 	umount /var/lib/NetworkManager 2>/dev/null || true
+	umount /var/lib/flatpak 2>/dev/null || true
 	umount /home 2>/dev/null || true
 	umount "${DATA}" 2>/dev/null || true
 	umount /boot 2>/dev/null || true
