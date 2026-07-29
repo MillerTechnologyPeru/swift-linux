@@ -1,0 +1,10 @@
+config BR2_PACKAGE_GEOCODE_GLIB
+	bool "geocode-glib"
+	depends on BR2_USE_MMU
+	select BR2_PACKAGE_LIBSOUP3
+	select BR2_PACKAGE_JSON_GLIB
+	help
+	  Geocoding/reverse-geocoding client library (nominatim);
+	  gnome-settings-daemon and libgweather consumers use it.
+
+	  https://gitlab.gnome.org/GNOME/geocode-glib
