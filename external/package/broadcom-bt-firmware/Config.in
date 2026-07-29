@@ -1,0 +1,9 @@
+config BR2_PACKAGE_BROADCOM_BT_FIRMWARE
+	bool "broadcom-bt-firmware"
+	help
+	  Broadcom Bluetooth firmware (.hcd) collection, extracted from
+	  Windows driver packages: the BT halves of the BCM/AP6xxx
+	  combo chips on the Rockchip handhelds and ARM Chromebooks -
+	  linux-firmware carries only a few of these.
+
+	  https://github.com/winterheart/broadcom-bt-firmware
