@@ -1,0 +1,11 @@
+config BR2_PACKAGE_ROCKNIX_ABL
+	bool "rocknix-abl"
+	depends on BR2_aarch64
+	help
+	  Signed Android-bootloader (abl) payloads for the Qualcomm
+	  handhelds (SM6115/SM8250/SM8550/SM8650/SM8750): the flashable
+	  bootloader stage that chainloads the UEFI boot path these
+	  boards use. Installed under /usr/share/bootloader for the
+	  device flashing flow, not executed on the image itself.
+
+	  https://github.com/ROCKNIX/abl

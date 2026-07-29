@@ -1,7 +1,10 @@
 # Rockchip RK3576 (A72 + A53, Mali-G52) patches
 
-Shared kernel / bootloader patches for all Rockchip RK3576 (A72 + A53, Mali-G52) handhelds, applied via
-BR2_GLOBAL_PATCH_DIR and stacked before each device's own patches/ dir.
-linux/*.patch patch the kernel, uboot/*.patch patch U-Boot. Empty for now:
-a real bring-up drops the not-yet-mainlined bits here (panel/DSI, gamepad,
-charger, DTS additions).
+Imported kernel patch set for this family (19 patches, 1 device trees in ../dts),
+applied via BR2_GLOBAL_PATCH_DIR and stacked before each device's own
+patches/ dir. Source: the upstream handheld distribution's device tree at
+https://github.com/ROCKNIX/distribution/tree/main/projects/ROCKNIX/devices/RK3576
+(patches/linux and linux/dts); resync from there when bumping.
+
+Target kernel: 6.15.6 - the family fragment pins it; the patches will not
+apply to other versions.

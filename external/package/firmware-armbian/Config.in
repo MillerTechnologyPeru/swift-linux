@@ -1,0 +1,9 @@
+config BR2_PACKAGE_FIRMWARE_ARMBIAN
+	bool "firmware-armbian"
+	help
+	  The Armbian firmware blob collection: WiFi/BT and SoC blobs
+	  for the ARM boards mainline linux-firmware does not cover
+	  (AICSemi, Broadcom AP6xxx variants, SSV, XRadio and friends).
+	  The handheld families pull it for their onboard radios.
+
+	  https://github.com/armbian/firmware

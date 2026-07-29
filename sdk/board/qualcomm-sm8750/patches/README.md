@@ -1,5 +1,10 @@
 # Qualcomm SM8750 / Snapdragon 8 Elite (Adreno 830) patches
 
-Shared kernel patches for all Qualcomm SM8750 / Snapdragon 8 Elite (Adreno 830) handhelds (BR2_GLOBAL_PATCH_DIR, stacked
-before each device's own patches/). linux/*.patch patch the kernel. Empty for
-now: a real bring-up drops the not-yet-mainlined bits here.
+Imported kernel patch set for this family (35 patches),
+applied via BR2_GLOBAL_PATCH_DIR and stacked before each device's own
+patches/ dir. Source: the upstream handheld distribution's device tree at
+https://github.com/ROCKNIX/distribution/tree/main/projects/ROCKNIX/devices/SM8750
+(patches/linux); resync from there when bumping.
+
+Target kernel: 6.15.6 - the family fragment pins it; the patches will not
+apply to other versions.
