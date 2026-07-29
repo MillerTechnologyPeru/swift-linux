@@ -1,0 +1,28 @@
+#!/bin/sh
+# Runs as cage's single client: bring up a rootful Xwayland and start XFCE
+# on it. Rootful (not rootless) is what lets xfwm4 manage the root window -
+# a full X desktop inside one fullscreen Wayland surface. -terminate ends
+# Xwayland with the session, which in turn ends this script's process tree
+# and with it cage.
+
+Xwayland :0 -fullscreen -noreset -terminate &
+
+# Wait for the X socket before pointing clients at it.
+i=0
+while [ ! -S /tmp/.X11-unix/X0 ] && [ "${i}" -lt 50 ]; do
+	sleep 0.1
+	i=$((i + 1))
+done
+
+export DISPLAY=:0
+export XDG_SESSION_TYPE=x11
+# Everything in this session is an X client. Keep GTK/Qt/SDL apps from
+# finding cage's Wayland socket and bypassing Xwayland (a second direct
+# client would fight the kiosk layout for the output).
+export GDK_BACKEND=x11
+export QT_QPA_PLATFORM=xcb
+export SDL_VIDEODRIVER=x11
+unset WAYLAND_DISPLAY
+
+# startxfce4 runs the session directly (no xinit) when DISPLAY is set.
+exec startxfce4
