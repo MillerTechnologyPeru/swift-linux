@@ -21,6 +21,8 @@ define PYTHON_PYGAME2_FIX_STAGING_PATHS
 		$(@D)/buildconfig/config_unix.py
 	$(SED) 's+"/usr+"$(STAGING_DIR)/usr+g' \
 		$(@D)/buildconfig/config_unix.py
+	$(SED) "s+'/usr+'$(STAGING_DIR)/usr+g" \
+		$(@D)/buildconfig/config_unix.py
 endef
 PYTHON_PYGAME2_PRE_CONFIGURE_HOOKS += PYTHON_PYGAME2_FIX_STAGING_PATHS
 
