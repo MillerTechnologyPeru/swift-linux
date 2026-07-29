@@ -41,13 +41,19 @@ fi
 
 # Mountpoints for the state that S15data bind-mounts off the data partition.
 # The rootfs is read-only, so they have to exist in the image (BlueZ ships
-# /var/lib/bluetooth itself; ConnMan and NetworkManager do not create
-# theirs - NetworkManager is only present on GNOME images, but S15data
-# binds all three unconditionally, so the mountpoint must always exist).
-mkdir -p "${TARGET_DIR}/var/lib/bluetooth" "${TARGET_DIR}/var/lib/connman" \
+# /var/lib/bluetooth itself; NetworkManager does not create its directory).
+mkdir -p "${TARGET_DIR}/var/lib/bluetooth" \
          "${TARGET_DIR}/var/lib/NetworkManager"
 chmod 0700 "${TARGET_DIR}/var/lib/bluetooth" \
            "${TARGET_DIR}/var/lib/NetworkManager"
+
+# Remove files from earlier layouts: ConnMan was replaced by
+# NetworkManager, and Buildroot leaves a deselected package's files in an
+# incremental target/.
+rm -rf "${TARGET_DIR}/var/lib/connman" \
+       "${TARGET_DIR}/etc/init.d/S45connman" \
+       "${TARGET_DIR}/usr/sbin/connmand" \
+       "${TARGET_DIR}/usr/bin/connmanctl"
 
 # OpenRC's mtab service only tries to (re)create the /etc/mtab symlink,
 # which the image already ships; on the read-only rootfs the attempt just

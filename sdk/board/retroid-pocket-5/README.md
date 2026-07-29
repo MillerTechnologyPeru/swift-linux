@@ -42,7 +42,7 @@ which is why the board is provided but not built.
 ## Software stack (shared with the other aarch64 targets)
 
 Same as the arm64 image: sway (basu, no systemd) + foot, seatd, dbus/BlueZ/
-ConnMan, the A/B UEFI layout, and the emulation stack — box64 for x86_64 and
+NetworkManager, the A/B UEFI layout, and the emulation stack — box64 for x86_64 and
 box86 (from the armv7 lib32 userland) for 32-bit x86, both via `S07binfmt`.
 `board.config` here only overrides the SoC/GPU/DTB/console specifics.
 

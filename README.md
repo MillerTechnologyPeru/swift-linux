@@ -70,7 +70,7 @@ fragments are emitted last, so the alternative's negations unwind the default.
 
 | Frontend | For | Status |
 |---|---|---|
-| EmulationStation + sway | GL(ES) gaming devices (default) | working: RetroArch backend, NES/Apps/Games/Tools groups, squashfs app bundles, WiFi/BT/power menus wired to ConnMan/BlueZ/OpenRC |
+| EmulationStation + sway | GL(ES) gaming devices (default) | working: RetroArch backend, NES/Apps/Games/Tools groups, squashfs app bundles, WiFi/BT/power menus wired to NetworkManager/BlueZ/OpenRC |
 | gmenu2x | armv5 / no-GPU handhelds, SDL 1.2 on the framebuffer | definition only |
 | XFCE + Chicago95 | desktop use on X.org, Windows 95 look by default | packaged, not yet booted |
 | GNOME | desktop Wayland (mutter/gnome-shell via elogind on OpenRC) | packaged, not yet compiled |

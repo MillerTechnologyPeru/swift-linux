@@ -15,6 +15,6 @@ config BR2_PACKAGE_GNOME_SHELL
 	help
 	  The GNOME desktop shell, running as a mutter plugin with its
 	  UI in gjs, with the NetworkManager indicator built in (GNOME
-	  images switch from ConnMan to NetworkManager).
+	  images use NetworkManager, as every image now does).
 
 	  https://gitlab.gnome.org/GNOME/gnome-shell

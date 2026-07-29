@@ -18,7 +18,7 @@ config BR2_PACKAGE_GNOME_CONTROL_CENTER
 	  Settings (gnome-control-center). The heaviest app of the set:
 	  its panels hard-require cups, NetworkManager/libnma,
 	  ModemManager, accountsservice, online-accounts and udisks -
-	  note the image otherwise manages network with ConnMan; the
+	  note the image manages network with NetworkManager; the
 	  network panel drives NetworkManager instead.
 
 	  https://apps.gnome.org/Settings/
