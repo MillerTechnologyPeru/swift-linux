@@ -1,0 +1,11 @@
+config BR2_PACKAGE_LIBRETRO_PCSX_REARMED
+	bool "libretro-pcsx-rearmed"
+	depends on BR2_PACKAGE_RETROARCH
+	select BR2_PACKAGE_ZLIB
+	help
+	  PCSX-ReARMed libretro core: PlayStation 1 emulation. Ships a
+	  dynarec for every target this image builds: lightrec on
+	  x86_64, the ari64 backend on aarch64, the classic ReARMed
+	  recompiler on 32-bit ARM.
+
+	  https://github.com/libretro/pcsx_rearmed
