@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBEI
+	bool "libei"
+	depends on BR2_USE_MMU
+	select BR2_PACKAGE_LIBEVDEV
+	help
+	  Emulated input protocol library (with liboeffis); mutter's input
+	  capture and remote desktop paths use it.
+
+	  https://gitlab.freedesktop.org/libinput/libei
