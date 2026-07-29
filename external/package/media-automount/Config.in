@@ -1,0 +1,8 @@
+config BR2_PACKAGE_MEDIA_AUTOMOUNT
+	bool "media-automount"
+	depends on BR2_PACKAGE_HAS_UDEV
+	help
+	  Automount removable drives to /media/<label> with a udev rule
+	  and a small helper - the embedded tier of automounting, for
+	  images without a desktop volume monitor. GNOME images get the
+	  desktop tier through gvfs/udisks instead.

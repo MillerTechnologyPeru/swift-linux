@@ -1,0 +1,34 @@
+#!/bin/sh
+# Removable-media mounts. Runs after S15data (so /boot and /data are
+# claimed first): mounts the /media tmpfs - mountpoint directories cannot
+# be created on the read-only rootfs, so /media must live on tmpfs - then
+# replays block-device add events, catching drives that were attached
+# before the tmpfs existed (udev coldplug runs in the sysinit runlevel,
+# earlier than this).
+
+MEDIA=/media
+
+start() {
+	[ -d "$MEDIA" ] || return 0
+	grep -q " $MEDIA tmpfs" /proc/mounts || \
+		mount -t tmpfs -o mode=0755,nosuid,nodev tmpfs "$MEDIA"
+	command -v udevadm >/dev/null 2>&1 && \
+		udevadm trigger --subsystem-match=block --action=add 2>/dev/null
+	return 0
+}
+
+stop() {
+	for d in "$MEDIA"/*; do
+		[ -d "$d" ] || continue
+		umount "$d" 2>/dev/null || umount -l "$d" 2>/dev/null
+	done
+	umount "$MEDIA" 2>/dev/null
+	return 0
+}
+
+case "$1" in
+	start) start ;;
+	stop)  stop ;;
+	restart|reload) stop; start ;;
+	*) echo "Usage: $0 {start|stop|restart}"; exit 1 ;;
+esac

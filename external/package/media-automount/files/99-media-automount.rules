@@ -1,0 +1,8 @@
+# Automount removable filesystems (see /usr/bin/media-mount). Loop, dm,
+# zram and mtd devices are never media; everything else with a mountable
+# filesystem is offered to the helper, which excludes the image's own
+# partitions by their fixed partition UUIDs.
+ACTION=="add", SUBSYSTEM=="block", KERNEL!="loop*|ram*|dm-*|zram*|mtd*", \
+  ENV{ID_FS_USAGE}=="filesystem", RUN+="/usr/bin/media-mount add %k"
+ACTION=="remove", SUBSYSTEM=="block", KERNEL!="loop*|ram*|dm-*|zram*|mtd*", \
+  RUN+="/usr/bin/media-mount remove %k"
