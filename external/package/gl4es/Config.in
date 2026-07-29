@@ -1,0 +1,17 @@
+config BR2_PACKAGE_GL4ES
+	bool "gl4es"
+	depends on !BR2_STATIC_LIBS
+	help
+	  gl4es implements desktop OpenGL 1.5 (and much of 2.1) on top
+	  of OpenGL ES 1.1/2.0, so legacy GL games and apps run on
+	  GPUs whose drivers only expose GLES - Mali, older Adreno and
+	  friends.
+
+	  It installs to /usr/lib/gl4es so it never shadows a real
+	  libGL: programs opt in with
+	  LD_LIBRARY_PATH=/usr/lib/gl4es.
+
+	  https://github.com/ptitSeb/gl4es
+
+comment "gl4es needs a toolchain with dynamic libraries"
+	depends on BR2_STATIC_LIBS
