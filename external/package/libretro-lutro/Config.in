@@ -1,0 +1,10 @@
+config BR2_PACKAGE_LIBRETRO_LUTRO
+	bool "libretro-lutro"
+	depends on BR2_PACKAGE_RETROARCH
+	help
+	  Lutro libretro core: a Lua game framework implementing a
+	  subset of the LOVE API on libretro. Runs .lutro bundles and
+	  plain Lua games. All dependencies (lua, physfs, ogg/vorbis,
+	  zlib) are vendored in-tree.
+
+	  https://github.com/libretro/libretro-lutro
