@@ -23,7 +23,6 @@ GTK4_CONF_OPTS = \
 	-Dbuild-testsuite=false \
 	-Dbuild-examples=false \
 	-Dbuild-tests=false \
-	-Dintrospection=disabled \
 	-Ddocumentation=false \
 	-Dman-pages=false \
 	-Dmedia-gstreamer=disabled \
@@ -48,6 +47,15 @@ GTK4_DEPENDENCIES += \
 	xlib_libXinerama
 else
 GTK4_CONF_OPTS += -Dx11-backend=false
+endif
+
+# gnome-shell drives everything through GObject introspection typelibs, so
+# build them whenever the config carries gobject-introspection.
+ifeq ($(BR2_PACKAGE_GOBJECT_INTROSPECTION),y)
+GTK4_CONF_OPTS += -Dintrospection=enabled
+GTK4_DEPENDENCIES += gobject-introspection
+else
+GTK4_CONF_OPTS += -Dintrospection=disabled
 endif
 
 $(eval $(meson-package))
