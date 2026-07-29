@@ -1,0 +1,33 @@
+#!/bin/sh
+# Launch a standalone game engine with its writes pointed at the save tree.
+#
+#   engine-launch <system> <command> [args...]
+#
+# The engines this runs (LOVE, python/pygame) keep their state where the
+# XDG basedir spec says to, $XDG_DATA_HOME, which defaults to
+# ~/.local/share. Pointing that at /data/saves/<system> puts them in the
+# same place as the libretro cores' saves (see retro-launch) without
+# patching anything.
+#
+# Only set for the game being launched - exporting XDG_DATA_HOME across
+# the session would move every desktop application's data too.
+#
+# Solarus is not launched through this: it takes its write directory at
+# build time (see the solarus-engine package) and writes to
+# /data/saves/solarus directly.
+
+set -e
+
+system="$1"
+shift || true
+
+if [ -z "$system" ] || [ $# -eq 0 ]; then
+	echo "usage: engine-launch <system> <command> [args...]" >&2
+	exit 1
+fi
+
+XDG_DATA_HOME="/data/saves/${system}"
+export XDG_DATA_HOME
+mkdir -p "${XDG_DATA_HOME}"
+
+exec "$@"
