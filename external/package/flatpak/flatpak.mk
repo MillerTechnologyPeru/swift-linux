@@ -19,7 +19,12 @@ FLATPAK_DEPENDENCIES = libostree bubblewrap xdg-dbus-proxy json-glib \
 	appstream libxmlb libfuse3 libgpgme libseccomp zstd libcurl dbus \
 	host-pkgconf
 
+# profile_dir is where the XDG_DATA_DIRS snippet lands that makes desktop
+# environments see exported .desktop files and icons; /etc/profile.d is
+# also the upstream default (empty resolves to sysconfdir/profile.d), but
+# the desktop integration is load-bearing enough to pin explicitly.
 FLATPAK_CONF_OPTS = \
+	-Dprofile_dir=/etc/profile.d \
 	-Dsystem_bubblewrap=bwrap \
 	-Dsystem_dbus_proxy=xdg-dbus-proxy \
 	-Dsystem_helper=disabled \
