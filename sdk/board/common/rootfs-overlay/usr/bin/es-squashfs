@@ -5,12 +5,20 @@
 #
 #   es-squashfs mount <image> <dir>
 #   es-squashfs umount <dir>
+#   es-squashfs overlay <lower> <upper> <work> <merged>
+#   es-squashfs unoverlay <merged>
+#
+# The overlay verbs give a mounted image a writable layer (wine-launch
+# uses this for prefix-style .wsquashfs games): lower and merged must be
+# under /run/es-squash, upper and work under /data/saves - the writes
+# belong to the save tree.
 #
 # The sudoers rule (/etc/sudoers.d/es-platform) lets the session user run
 # this without a password, so it validates its arguments instead of
-# trusting them: the mountpoint must live under /run/es-squash, and images
+# trusting them: mountpoints must live under /run/es-squash, and images
 # are mounted read-only with nosuid/nodev - a setuid binary inside a
-# user-supplied image must not become a privilege escalation.
+# user-supplied image must not become a privilege escalation. The overlay
+# is mounted nosuid/nodev for the same reason.
 
 [ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
 
@@ -41,8 +49,26 @@ case "$1" in
 		rmdir "$dir" 2>/dev/null
 		exit 0
 		;;
+	overlay)
+		lower="$2"; upper="$3"; work="$4"; merged="$5"
+		valid_dir "$lower" || { echo "es-squashfs: lower must be under $BASE" >&2; exit 1; }
+		valid_dir "$merged" || { echo "es-squashfs: merged must be under $BASE" >&2; exit 1; }
+		case "$upper" in /data/saves/*..*|/data/saves) exit 1 ;; /data/saves/?*) ;; *) exit 1 ;; esac
+		case "$work" in /data/saves/*..*|/data/saves) exit 1 ;; /data/saves/?*) ;; *) exit 1 ;; esac
+		mkdir -p "$upper" "$work" "$merged" || exit 1
+		mount -t overlay overlay -o nosuid,nodev,"lowerdir=$lower,upperdir=$upper,workdir=$work" "$merged" || {
+			rmdir "$merged" 2>/dev/null; exit 1; }
+		;;
+	unoverlay)
+		merged="$2"
+		valid_dir "$merged" || exit 1
+		grep -q " $merged overlay " /proc/mounts || exit 0
+		umount "$merged" 2>/dev/null || umount -l "$merged" 2>/dev/null
+		rmdir "$merged" 2>/dev/null
+		exit 0
+		;;
 	*)
-		echo "usage: es-squashfs mount <image> <dir> | umount <dir>" >&2
+		echo "usage: es-squashfs mount <image> <dir> | umount <dir> | overlay <lower> <upper> <work> <merged> | unoverlay <merged>" >&2
 		exit 1
 		;;
 esac
