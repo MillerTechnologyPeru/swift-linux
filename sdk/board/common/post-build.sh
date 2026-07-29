@@ -32,6 +32,22 @@ rm -rf "${TARGET_DIR}"/usr/lib/libweston*
 
 # Mountpoints for the state that S15data bind-mounts off the data partition.
 # The rootfs is read-only, so they have to exist in the image (BlueZ ships
-# /var/lib/bluetooth itself, ConnMan does not create its directory).
-mkdir -p "${TARGET_DIR}/var/lib/bluetooth" "${TARGET_DIR}/var/lib/connman"
-chmod 0700 "${TARGET_DIR}/var/lib/bluetooth"
+# /var/lib/bluetooth itself; ConnMan and NetworkManager do not create
+# theirs - NetworkManager is only present on GNOME images, but S15data
+# binds all three unconditionally, so the mountpoint must always exist).
+mkdir -p "${TARGET_DIR}/var/lib/bluetooth" "${TARGET_DIR}/var/lib/connman" \
+         "${TARGET_DIR}/var/lib/NetworkManager"
+chmod 0700 "${TARGET_DIR}/var/lib/bluetooth" \
+           "${TARGET_DIR}/var/lib/NetworkManager"
+
+# OpenRC's mtab service only tries to (re)create the /etc/mtab symlink,
+# which the image already ships; on the read-only rootfs the attempt just
+# prints "/etc is not writable" at every boot. Drop it from the boot
+# runlevel - the symlink is baked in.
+rm -f "${TARGET_DIR}/etc/runlevels/boot/mtab"
+
+# OpenRC mounts the unified cgroup2 hierarchy on /sys/fs/cgroup during
+# sysinit, so the cgroupfs service Buildroot installs for non-systemd
+# inits (S30cgroupfs2, from the podman selection) always fails with
+# "Device or resource busy". Redundant here - remove it.
+rm -f "${TARGET_DIR}/etc/init.d/S30cgroupfs2"
