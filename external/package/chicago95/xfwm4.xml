@@ -5,5 +5,9 @@
   <property name="general" type="empty">
     <property name="theme" type="string" value="Chicago95"/>
     <property name="title_font" type="string" value="Sans Bold 8"/>
+    <!-- The session runs inside a Wayland compositor (cage) that already
+         composites; xfwm4 compositing on top would double the work. Also
+         period-correct for the theme. -->
+    <property name="use_compositing" type="bool" value="false"/>
   </property>
 </channel>
