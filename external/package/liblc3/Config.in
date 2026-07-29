@@ -1,0 +1,9 @@
+config BR2_PACKAGE_LIBLC3
+	bool "liblc3"
+	depends on !BR2_STATIC_LIBS
+	help
+	  The LC3 codec (Bluetooth LE Audio). PipeWire only uses it
+	  once the accompanying buildroot pipewire patch is applied -
+	  see external/patches/buildroot/README.md.
+
+	  https://github.com/google/liblc3
