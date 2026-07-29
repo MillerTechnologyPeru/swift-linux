@@ -1,0 +1,7 @@
+config BR2_PACKAGE_ISO_CODES
+	bool "iso-codes"
+	help
+	  ISO language/country/currency name lists with translations;
+	  gnome-desktop's language support reads them.
+
+	  https://salsa.debian.org/iso-codes-team/iso-codes
