@@ -1,0 +1,31 @@
+#!/bin/sh
+# wait-time-sync [timeout-seconds]
+#
+# Block until the kernel clock is NTP-synchronized, or the timeout (default
+# 60s) expires. For jobs that need *correct* time, not just the plausible
+# time S16swclock restores - certificate issuance, signed uploads, anything
+# where minutes of drift matter. Exit 0 once synced, 1 on timeout.
+#
+# The kernel keeps an unsynchronized flag (STA_UNSYNC, 0x40) that ntpd
+# clears on its first successful adjustment; busybox adjtimex reads it.
+# If no adjtimex applet is available, fall back to "the clock left the
+# epoch", which at least catches the no-sync-source-at-all case.
+
+timeout=${1:-60}
+waited=0
+
+synced() {
+	if command -v adjtimex > /dev/null 2>&1; then
+		status=$(adjtimex 2>/dev/null | awk '/status/ {print $2; exit}')
+		[ -n "$status" ] && [ $((status & 64)) -eq 0 ]
+	else
+		[ "$(date +%s)" -gt 1000000000 ]
+	fi
+}
+
+while ! synced; do
+	[ "$waited" -ge "$timeout" ] && exit 1
+	sleep 2
+	waited=$((waited + 2))
+done
+exit 0

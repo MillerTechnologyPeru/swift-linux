@@ -1,0 +1,35 @@
+#!/bin/sh
+# Persist the clock across boots on devices without an RTC.
+#
+# Handhelds mostly have no battery-backed clock, so every boot starts in
+# 1970 until NTP syncs - and until then every TLS handshake fails
+# (certificate "not yet valid"): curl, Swift's networking, podman pulls,
+# even fetching time over HTTPS. Restoring the last known time at boot
+# gives a plausible clock immediately; ntpd then corrects it.
+#
+# Runs after S15data (the timestamp lives on the data partition) and
+# before S50/ntpd and anything that speaks TLS. The restore only ever
+# moves the clock forward: a saved timestamp in the past of the current
+# clock means the system already knows better (RTC present, or ntpd
+# synced before a restart).
+
+STAMP=/data/lib/swclock/timestamp
+
+case "$1" in
+	start)
+		[ -f "$STAMP" ] || exit 0
+		saved=$(cat "$STAMP" 2>/dev/null)
+		now=$(date +%s)
+		if [ "$saved" -gt "$now" ] 2>/dev/null; then
+			date -s "@$saved" > /dev/null
+		fi
+		;;
+	stop)
+		mkdir -p "$(dirname "$STAMP")"
+		date +%s > "$STAMP"
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
