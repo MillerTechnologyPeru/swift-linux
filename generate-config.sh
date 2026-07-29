@@ -20,7 +20,7 @@
 #               + swift + applibs + runtimes
 #   image     = arch + toolchain + libs + tools + supportdata + tools-gui
 #               + swift + applibs + runtimes + network + audio + daemons
-#               + image
+#               + emulation + image
 #               + board.config
 #                                            (bootable A/B UEFI image)
 #   lib32     = arch + toolchain + libs + tools + supportdata + tools-gui + swift
@@ -101,7 +101,7 @@ case "$profile" in
                 exit 1
             fi
         fi
-        fragments=(toolchain libs tools supportdata tools-gui swift applibs runtimes network audio daemons image) ;;
+        fragments=(toolchain libs tools supportdata tools-gui swift applibs runtimes network audio daemons emulation image) ;;
     lib32)
         # 32-bit companion userland, merged into a 64-bit image as /usr/lib32
         # by sdk/board/common/post-build-lib32.sh. Buildroot has no multilib
@@ -116,8 +116,8 @@ case "$profile" in
         # image supplies those, and the merge script copies only lib trees.
         # The armv7 companion also carries box86.
         case "$arch" in
-            arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons lib32 applibs lib32-arm) ;;
-            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons lib32 applibs) ;;
+            arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons lib32 applibs emulation lib32-arm) ;;
+            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons lib32 applibs emulation) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
