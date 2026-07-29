@@ -15,6 +15,16 @@
 rom="$1"
 [ -n "$rom" ] || { echo "usage: es-launch <entry>" >&2; exit 1; }
 
+# Entries keep their state in the save tree rather than scattering it
+# through the home directory: an application following the XDG basedir
+# spec writes to $XDG_DATA_HOME, so it lands in /data/saves/<its own
+# name>. Set here rather than session-wide, which would move every
+# desktop application's data as well. (Same idea as engine-launch, which
+# does this per system for the standalone engines.)
+XDG_DATA_HOME=/data/saves
+export XDG_DATA_HOME
+mkdir -p "${XDG_DATA_HOME}" 2>/dev/null || true
+
 case "$rom" in
 	*.sh|*.SH)
 		exec /bin/sh "$rom"
