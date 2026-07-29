@@ -1,5 +1,0 @@
-# Chromebook-specific helper, layered on the shared es-platform rules.
-# The internal-disk installer needs root outright (it repartitions the
-# eMMC); the Tools entry re-execs it through sudo. It prompts for
-# confirmation itself before touching anything.
-swift ALL=(root) NOPASSWD: /usr/bin/chromebook-install
