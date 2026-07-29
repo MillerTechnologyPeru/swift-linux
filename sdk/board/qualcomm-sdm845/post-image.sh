@@ -4,7 +4,7 @@
 #
 # DEFINITION ONLY - not verified on hardware. Standard SDM845 layout: page
 # size 4096, base 0x0, kernel offset 0x8000. Rootfs is flashed to userdata
-# separately (fastboot flash userdata rootfs.ext4 / or via recovery).
+# separately (fastboot flash userdata rootfs.erofs / or via recovery).
 set -e
 DTS_NAME="$(sed -n 's/^BR2_LINUX_KERNEL_INTREE_DTS_NAME="\(.*\)"$/\1/p' "${BR2_CONFIG}")"
 DTB="${BINARIES_DIR}/$(basename "${DTS_NAME}").dtb"
