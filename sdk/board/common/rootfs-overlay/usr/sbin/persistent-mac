@@ -1,0 +1,33 @@
+#!/bin/sh
+# persistent-mac <interface>
+#
+# Give an ethernet interface whose MAC address is randomly generated at
+# every boot a stable one derived from the SoC serial number. Most of the
+# Rockchip/Allwinner boards in the tree have no burned-in address, so
+# without this the device shows up as a brand-new machine on every boot:
+# DHCP leases churn, router-side names and static leases never stick.
+#
+# Invoked from the udev rule 75-persistent-mac.rules on interfaces whose
+# addr_assign_type says "randomly generated" (1). Interfaces with a real
+# (permanent) MAC never match the rule and are left alone.
+
+iface="$1"
+[ -n "$iface" ] || exit 0
+
+# Re-check: only replace an address the kernel invented this boot.
+[ "$(cat "/sys/class/net/$iface/addr_assign_type" 2>/dev/null)" = "1" ] || exit 0
+
+# A stable per-device identity. The device-tree serial covers the ARM SoCs;
+# /proc/cpuinfo covers anything else that publishes one. Without either
+# there is nothing stable to derive from, so keep the random address.
+serial=$(tr -d '\0' < /proc/device-tree/serial-number 2>/dev/null)
+[ -n "$serial" ] || serial=$(awk -F': ' '/^Serial/ {print $2; exit}' /proc/cpuinfo)
+[ -n "$serial" ] || exit 0
+
+# First five bytes of the hash, behind an 0x02 first octet: locally
+# administered + unicast, so it can never collide with a vendor OUI.
+# The interface name is hashed in so eth0/eth1 differ on the same board.
+hash=$(printf '%s' "$serial$iface" | md5sum | cut -c1-10)
+mac="02:$(printf '%s' "$hash" | sed 's/../&:/g' | cut -c1-14)"
+
+ip link set dev "$iface" address "$mac"
