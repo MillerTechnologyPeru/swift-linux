@@ -179,7 +179,7 @@ start() {
 	# separable from the content they supplied (see retro-launch).
 	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
-		roms/solarus roms/love roms/pygame roms/ports roms/steam \
+		roms/solarus roms/love roms/pygame roms/flash roms/ports roms/steam \
 		roms/windows roms/bios roms/screenshots \
 		roms/flatpak roms/lutris roms/heroic \
 		saves saves/flatpak saves/lutris saves/lutris/share \

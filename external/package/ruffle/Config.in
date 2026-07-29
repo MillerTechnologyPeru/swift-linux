@@ -1,0 +1,28 @@
+config BR2_PACKAGE_RUFFLE
+	bool "ruffle"
+	# Built from source with cargo, so it needs a Rust toolchain that
+	# can target the board. Restricted further to the two 64-bit glibc
+	# architectures this is built and tested for; the emulator wants a
+	# GPU and a 64-bit address space, so the smaller targets that Rust
+	# itself supports are not interesting here.
+	depends on BR2_x86_64 || BR2_aarch64
+	depends on BR2_TOOLCHAIN_USES_GLIBC
+	depends on BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
+	depends on BR2_PACKAGE_HAS_UDEV # gamepad probing
+	select BR2_PACKAGE_HOST_RUSTC
+	select BR2_PACKAGE_ALSA_LIB
+	help
+	  Ruffle, the Flash Player emulator written in Rust: plays
+	  SWF movies and games without the Adobe plugin, rendering
+	  through wgpu (Vulkan, or GL where that is all there is).
+
+	  Upstream publishes no releases, only dated nightlies, so
+	  the package pins a nightly tag. Bumping it re-vendors the
+	  crate tree, so the hash has to be recomputed with it.
+
+	  https://ruffle.rs
+
+comment "ruffle needs udev and an x86_64/aarch64 glibc toolchain with Rust support"
+	depends on !(BR2_x86_64 || BR2_aarch64) || \
+		!BR2_TOOLCHAIN_USES_GLIBC || !BR2_PACKAGE_HAS_UDEV || \
+		!BR2_PACKAGE_HOST_RUSTC_TARGET_ARCH_SUPPORTS
