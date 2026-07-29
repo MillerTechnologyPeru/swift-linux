@@ -1,0 +1,12 @@
+config BR2_PACKAGE_GNOME_BLUETOOTH
+	bool "gnome-bluetooth"
+	depends on BR2_PACKAGE_LIBGTK4
+	select BR2_PACKAGE_LIBADWAITA
+	select BR2_PACKAGE_GSOUND
+	select BR2_PACKAGE_LIBNOTIFY
+	select BR2_PACKAGE_LIBGUDEV
+	help
+	  Bluetooth settings library and widgets over BlueZ; the control
+	  center's bluetooth panel is built on it.
+
+	  https://gitlab.gnome.org/GNOME/gnome-bluetooth
