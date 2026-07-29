@@ -1,0 +1,14 @@
+config BR2_PACKAGE_GNOME_ONLINE_ACCOUNTS
+	bool "gnome-online-accounts"
+	depends on BR2_PACKAGE_LIBGTK4
+	depends on BR2_PACKAGE_WEBKITGTK # provider login UIs
+	select BR2_PACKAGE_LIBADWAITA
+	select BR2_PACKAGE_LIBREST
+	select BR2_PACKAGE_LIBSECRET
+	select BR2_PACKAGE_GCR4
+	help
+	  Online-accounts D-Bus service and backend library; the control
+	  center's accounts panel requires the backend, which needs
+	  webkitgtk (GTK 4 API) for provider sign-in.
+
+	  https://gitlab.gnome.org/GNOME/gnome-online-accounts
