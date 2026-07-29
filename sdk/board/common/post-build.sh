@@ -66,3 +66,10 @@ rm -f "${TARGET_DIR}/etc/runlevels/boot/mtab"
 # inits (S30cgroupfs2, from the podman selection) always fails with
 # "Device or resource busy". Redundant here - remove it.
 rm -f "${TARGET_DIR}/etc/init.d/S30cgroupfs2"
+
+# OpenRC's seedrng service runs in the boot runlevel, before S15data mounts
+# the data partition, so its only writable target does not exist yet and it
+# fails with "Unable to create seed directory: Read-only file system" on
+# every boot. S16seedrng does the same job afterwards against /data, where
+# the seed can actually persist - drop the boot-runlevel copy.
+rm -f "${TARGET_DIR}/etc/runlevels/boot/seedrng"
