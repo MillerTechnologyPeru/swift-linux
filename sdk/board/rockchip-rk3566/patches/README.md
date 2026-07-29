@@ -1,11 +1,10 @@
 # Rockchip RK3566 kernel / U-Boot patches
 
-Shared patches for all RK3566 handhelds in this family (applied via
-`BR2_GLOBAL_PATCH_DIR`, stacked before each device's own `patches/`).
+Imported kernel patch set for this family (30 patches, 2 device trees in ../dts),
+applied via BR2_GLOBAL_PATCH_DIR and stacked before each device's own
+patches/ dir. Source: the upstream handheld distribution's device tree at
+https://github.com/ROCKNIX/distribution/tree/main/projects/ROCKNIX/devices/RK3566
+(patches/linux and linux/dts); resync from there when bumping.
 
-Buildroot applies `linux/*.patch` to the kernel and `uboot/*.patch` to U-Boot
-(subdirectory named after the package). Put SoC-wide fixes here - panel/DSI
-bring-up, RK817 audio/charger, ADC joystick - and device-specific ones in the
-device board's `patches/`.
-
-Empty for now: a real bring-up drops the not-yet-mainlined patches here.
+Target kernel: 6.15.6 - the family fragment pins it; the patches will not
+apply to other versions.
