@@ -78,21 +78,47 @@ start() {
 
 	grow_data_partition
 
-	# First boot: create an ext4 filesystem on the raw data partition.
+	# First boot: create a filesystem on the raw data partition. ext4 by
+	# default; f2fs is also fully supported (S15data's job here is just to
+	# pick a default, not to be the only place this is decided - the
+	# installer offers the same choice explicitly, see system-install
+	# --fs). Override by dropping a board overlay file at
+	# /etc/swift-linux/data-filesystem containing "ext4" or "f2fs".
+	DATA_FS=ext4
+	[ -f /etc/swift-linux/data-filesystem ] && \
+		DATA_FS="$(cat /etc/swift-linux/data-filesystem)"
+
 	# Detect an existing filesystem by ANY blkid output: busybox blkid prints
 	# LABEL/UUID but not a TYPE= field, so a type match cannot be relied on.
 	# Redirect stdin from /dev/null so mkfs can never block the boot on its
 	# "Proceed anyway?" prompt if it is ever pointed at a non-empty device.
 	if [ -z "$(blkid "${DATA_DEV}" 2>/dev/null)" ]; then
-		printf 'Formatting data partition: '
-		mkfs.ext4 -q -L data "${DATA_DEV}" < /dev/null && echo OK || { echo FAIL; return 0; }
-
+		printf 'Formatting data partition (%s): ' "${DATA_FS}"
+		case "${DATA_FS}" in
+			f2fs)
+				mkfs.f2fs -q -f -l data "${DATA_DEV}" < /dev/null && echo OK || { echo FAIL; return 0; }
+				;;
+			*)
+				mkfs.ext4 -q -L data "${DATA_DEV}" < /dev/null && echo OK || { echo FAIL; return 0; }
+				;;
+		esac
 	else
 		# The filesystem predates the partition it sits on being grown, so
-		# stretch it to the partition's current size. resize2fs is a no-op
-		# when it already fills it.
-		e2fsck -p "${DATA_DEV}" >/dev/null 2>&1 || true
-		resize2fs "${DATA_DEV}" >/dev/null 2>&1 || true
+		# stretch it to the partition's current size - a no-op when it
+		# already fills it. Dispatched on what is actually ON DISK, which
+		# may differ from DATA_FS above: the partition could have been
+		# formatted by the installer with the other choice.
+		existing_fs="$(blkid -o value -s TYPE "${DATA_DEV}" 2>/dev/null)"
+		case "${existing_fs}" in
+			f2fs)
+				command -v resize.f2fs >/dev/null 2>&1 && \
+					resize.f2fs "${DATA_DEV}" >/dev/null 2>&1 || true
+				;;
+			*)
+				e2fsck -p "${DATA_DEV}" >/dev/null 2>&1 || true
+				resize2fs "${DATA_DEV}" >/dev/null 2>&1 || true
+				;;
+		esac
 	fi
 
 	# /data exists in the rootfs image: the root is read-only and cannot be
