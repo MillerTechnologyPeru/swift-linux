@@ -116,8 +116,8 @@ case "$profile" in
         # image supplies those, and the merge script copies only lib trees.
         # The armv7 companion also carries box86.
         case "$arch" in
-            arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons lib32 applibs emulation lib32-arm) ;;
-            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons lib32 applibs emulation) ;;
+            arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs lib32-arm) ;;
+            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
