@@ -36,11 +36,14 @@ define LIBRETRO_SCUMMVM_UNPACK_DEPS
 endef
 LIBRETRO_SCUMMVM_POST_EXTRACT_HOOKS += LIBRETRO_SCUMMVM_UNPACK_DEPS
 
-# 64-bit only in this repo's images (x86_64 and aarch64 boards).
+# 64-bit only in this repo's images (x86_64 and aarch64 boards). No AR
+# override: the build's rules.mk expects AR to carry its flags ("ar cru"),
+# so a bare gcc-ar breaks the archive steps; host ar is fine for static
+# archives of cross objects.
 define LIBRETRO_SCUMMVM_BUILD_CMDS
 	$(TARGET_CONFIGURE_OPTS) $(MAKE) -C $(@D)/backends/platform/libretro \
 		platform=unix TARGET_64BIT=1 \
-		CC="$(TARGET_CC)" CXX="$(TARGET_CXX)" AR="$(TARGET_AR)"
+		CC="$(TARGET_CC)" CXX="$(TARGET_CXX)"
 endef
 
 define LIBRETRO_SCUMMVM_INSTALL_TARGET_CMDS

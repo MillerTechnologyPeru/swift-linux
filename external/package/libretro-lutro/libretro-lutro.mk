@@ -13,9 +13,12 @@ LIBRETRO_LUTRO_SITE = $(call github,libretro,libretro-lutro,$(LIBRETRO_LUTRO_VER
 LIBRETRO_LUTRO_LICENSE = MIT
 LIBRETRO_LUTRO_LICENSE_FILES = LICENSE
 
+# No AR override: the vendored lua's Makefile defines AR as "ar rcu"
+# (command plus flags), so replacing it with a bare gcc-ar breaks the
+# liblua.a archive step. Static archives are portable, host ar is fine.
 define LIBRETRO_LUTRO_BUILD_CMDS
 	$(TARGET_CONFIGURE_OPTS) $(MAKE) -C $(@D) -f Makefile platform=unix \
-		CC="$(TARGET_CC)" CXX="$(TARGET_CXX)" AR="$(TARGET_AR)"
+		CC="$(TARGET_CC)" CXX="$(TARGET_CXX)"
 endef
 
 define LIBRETRO_LUTRO_INSTALL_TARGET_CMDS
