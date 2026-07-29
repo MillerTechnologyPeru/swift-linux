@@ -1,0 +1,12 @@
+config BR2_PACKAGE_GLSLANG
+	bool "glslang"
+	depends on BR2_INSTALL_LIBSTDCPP
+	depends on !BR2_STATIC_LIBS
+	select BR2_PACKAGE_SPIRV_TOOLS
+	select BR2_PACKAGE_SPIRV_HEADERS
+	help
+	  Khronos reference GLSL/HLSL front end: compiles shader source
+	  to SPIR-V. shaderc wraps it; Vulkan consumers compile their
+	  shaders through the pair at runtime.
+
+	  https://github.com/KhronosGroup/glslang
