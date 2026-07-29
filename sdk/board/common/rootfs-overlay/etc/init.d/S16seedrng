@@ -1,0 +1,24 @@
+#!/bin/sh
+# Persist a random seed across boots.
+#
+# The rootfs is read-only, so without a writable seed location the kernel
+# RNG starts cold on every boot and early consumers (sshd host keys on
+# first boot, TLS, anything using getrandom before jitter entropy
+# accumulates) draw from a barely-seeded pool. busybox seedrng credits
+# the saved seed into the kernel and immediately writes a fresh one, so
+# a seed is never used twice. Runs after S15data: the seed directory
+# lives on the data partition.
+
+SEED_DIR=/data/lib/seedrng
+
+case "$1" in
+	start|stop)
+		command -v seedrng > /dev/null 2>&1 || exit 0
+		mkdir -p "$SEED_DIR"
+		seedrng -d "$SEED_DIR" 2>/dev/null || true
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
