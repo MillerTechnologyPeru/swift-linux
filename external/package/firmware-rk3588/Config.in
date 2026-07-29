@@ -1,0 +1,9 @@
+config BR2_PACKAGE_FIRMWARE_RK3588
+	bool "firmware-rk3588"
+	help
+	  Radio firmware collected for RK3588 boards: chiefly the
+	  rtl8821cs Bluetooth files the family's handhelds pair with
+	  their Realtek radios; the Broadcom .hcd set comes from
+	  broadcom-bt-firmware instead.
+
+	  https://github.com/stvhay/rk3588-firmware
