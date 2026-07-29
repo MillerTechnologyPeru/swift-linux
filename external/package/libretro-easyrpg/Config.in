@@ -1,0 +1,20 @@
+config BR2_PACKAGE_LIBRETRO_EASYRPG
+	bool "libretro-easyrpg"
+	depends on BR2_PACKAGE_RETROARCH
+	select BR2_PACKAGE_LIBLCF
+	select BR2_PACKAGE_SDL2
+	select BR2_PACKAGE_ZLIB
+	select BR2_PACKAGE_FMT
+	select BR2_PACKAGE_LIBPNG
+	select BR2_PACKAGE_FREETYPE
+	select BR2_PACKAGE_MPG123
+	select BR2_PACKAGE_LIBVORBIS
+	select BR2_PACKAGE_OPUSFILE
+	select BR2_PACKAGE_PIXMAN
+	select BR2_PACKAGE_SPEEXDSP
+	help
+	  EasyRPG Player libretro core: plays RPG Maker 2000 and 2003
+	  games (RPG_RT.ldb projects). The engine reimplementation,
+	  not an emulator - games run natively at full speed.
+
+	  https://github.com/EasyRPG/Player
