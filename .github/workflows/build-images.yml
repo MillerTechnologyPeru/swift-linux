@@ -9,8 +9,15 @@ name: Build Images
 # GRUB, RAUC, steam, ... - compile. Modeled on MillerTechnologyPeru/
 # buildroot-swift's own Buildroot workflow.
 
+# A full run builds four Buildroot trees and takes hours, so it is not worth
+# spending on every push: it runs once a night, and on demand from the
+# Actions tab (or "gh workflow run build-images.yml") when a change needs
+# checking before then.
 on:
-  push:
+  schedule:
+    # 07:00 UTC - after the working day in the Americas, so the nightly
+    # result is waiting in the morning.
+    - cron: '0 7 * * *'
   workflow_dispatch:
 
 jobs:
