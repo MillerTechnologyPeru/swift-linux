@@ -18,7 +18,7 @@ SOLARUS_ENGINE_LICENSE_FILES = license.txt
 SOLARUS_ENGINE_INSTALL_STAGING = YES
 
 SOLARUS_ENGINE_DEPENDENCIES = glm libmodplug libogg libvorbis openal physfs \
-	sdl2 sdl2_image sdl2_ttf luajit
+	sdl2 sdl2_image sdl2_ttf luajit-embed
 
 # No launcher GUI (it requires Qt5). The policy floor is for CMake 4,
 # which removed compatibility with the <3.5 minimum this 2019 codebase
