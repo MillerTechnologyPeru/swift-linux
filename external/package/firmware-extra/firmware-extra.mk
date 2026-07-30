@@ -4,9 +4,9 @@
 #
 # Curated firmware from the upstream linux-firmware collection that
 # Buildroot's linux-firmware package has no options for: smart-amp speaker
-# firmware, Qualcomm Bluetooth, the Qualcomm SoC wifi parts and Intel's AVS
-# audio DSP. The version and DL_SUBDIR match the linux-firmware package so
-# both share one downloaded tarball.
+# firmware, Qualcomm Bluetooth, the Qualcomm SoC wifi parts, the MediaTek SCP
+# coprocessor and Intel's AVS audio DSP. The version and DL_SUBDIR match the
+# linux-firmware package so both share one downloaded tarball.
 #
 ################################################################################
 
@@ -31,6 +31,10 @@ FIRMWARE_EXTRA_FILES += \
 	ath11k/QCA6390 \
 	ath11k/WCN6750 \
 	ath12k/WCN7850
+endif
+
+ifeq ($(BR2_PACKAGE_FIRMWARE_EXTRA_MTK_SCP),y)
+FIRMWARE_EXTRA_FILES += mediatek/mt8183
 endif
 
 ifeq ($(BR2_PACKAGE_FIRMWARE_EXTRA_AVS),y)

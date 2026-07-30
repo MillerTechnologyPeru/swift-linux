@@ -31,6 +31,15 @@ config BR2_PACKAGE_FIRMWARE_EXTRA_ATH_SOC
 	  (SM8250 handhelds), WCN6750 (SC7180 Chromebooks) and
 	  WCN7850 (wifi 7 modules).
 
+config BR2_PACKAGE_FIRMWARE_EXTRA_MTK_SCP
+	bool "MediaTek SCP coprocessor"
+	help
+	  Firmware for the System Companion Processor on MediaTek SoCs
+	  (mediatek/mt<soc>/scp.img). The MT8183 Chromebooks route
+	  hardware video decode and some sensor/EC traffic through it,
+	  so without the blob mtk_scp fails to probe and the video
+	  codec never appears.
+
 config BR2_PACKAGE_FIRMWARE_EXTRA_AVS
 	bool "Intel AVS audio DSP"
 	help

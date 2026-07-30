@@ -12,3 +12,9 @@ CONFIG_INPUT_TOUCHSCREEN=y
 CONFIG_TOUCHSCREEN_ELAN=y
 CONFIG_MOUSE_ELAN_I2C=y
 CONFIG_MOUSE_ELAN_I2C_I2C=y
+
+# Backlight: the jacuzzi boards drive it from the embedded controller
+# (google,cros-ec-pwm in the device tree), not from the SoC's display PWM,
+# so this is what makes the brightness keys do anything.
+CONFIG_PWM_CROS_EC=y
+CONFIG_BACKLIGHT_CLASS_DEVICE=y
