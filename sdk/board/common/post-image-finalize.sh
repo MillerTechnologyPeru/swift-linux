@@ -8,7 +8,11 @@ set -e
 BINARIES_DIR="$1"; TARGET="$2"
 [ -n "$BINARIES_DIR" ] && [ -n "$TARGET" ] || { echo "post-image-finalize: missing args" >&2; exit 1; }
 cd "$BINARIES_DIR"
-[ -f disk.img ] || exit 0
-ln -sf disk.img "swift-linux-$TARGET.img"
-sha256sum disk.img > SHA256SUMS
+# The UEFI boards produce disk.img; the Depthcharge ones chromebook.img.
+for img in disk.img chromebook.img; do
+	[ -f "$img" ] && break
+done
+[ -f "$img" ] || exit 0
+ln -sf "$img" "swift-linux-$TARGET.img"
+sha256sum "$img" > SHA256SUMS
 echo "post-image: swift-linux-$TARGET.img + SHA256SUMS"
