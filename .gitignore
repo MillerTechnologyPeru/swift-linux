@@ -105,3 +105,6 @@ swift_linux_defconfig
 
 # Buildroot build trees (Makefile / build-images.sh OUTPUT_BASE)
 /output/
+
+# Python bytecode from the util/ scripts
+__pycache__/
