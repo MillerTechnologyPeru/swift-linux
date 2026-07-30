@@ -40,8 +40,9 @@ util/x86_64-qemu.sh          # boot the result in QEMU with a GTK window
 Builds run on your host. A fresh checkout has no toolchain, and building gcc,
 glibc and host-swift from source takes hours, so seed the output tree once per
 architecture from the `toolchain-latest` release (`make <t>-seed`, which needs
-`gh` and `zstd`) and keep it. `PARALLEL_BUILD=1` and `CCACHE=1` speed the rest
-up. See [docs/build.md](docs/build.md).
+`gh` and `zstd`) and keep it. `PARALLEL_BUILD=1 CCACHE=1 make …` speeds the rest
+up - pass them in the environment, since `CCACHE` on the make command line would
+override Buildroot's own variable of that name. See [docs/build.md](docs/build.md).
 
 ## Configuration model
 

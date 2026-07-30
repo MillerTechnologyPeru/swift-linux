@@ -106,7 +106,11 @@ from-source replacement whose release assets `<t>-seed` consumes.
 ### Accelerators
 
 - `PARALLEL_BUILD=1` — per-package build dirs + a parallel top-level build.
-- `CCACHE=1` — compiler cache under `CCACHE_DIR`.
+- `CCACHE=1` — compiler cache under `CCACHE_DIR`. Pass it (and the other knobs)
+  in the environment - `CCACHE=1 make x86_64-build` - not as a make argument: in
+  Buildroot `CCACHE` holds the path to the ccache binary, and a command-line
+  variable would override it and break `HOSTCC`. The Makefile refuses that form
+  rather than letting it corrupt the build.
 - Downloads live in Buildroot's own `buildroot/dl`, which is already shared
   across every per-arch output; set `DL_DIR` to relocate it.
 
