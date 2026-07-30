@@ -6,6 +6,11 @@
 # arm64 differences from x86_64: the "virt" machine rather than q35, AAVMF (or
 # QEMU_EFI) rather than OVMF, and the serial console is the PL011 UART
 # (ttyAMA0), matching the kernel command line in sdk/board/arm64/grub.cfg.
+#
+# Environment: QEMU_NOGRAPHIC=1 (no window), QEMU_SMP, QEMU_MEM, and - for
+# scripted use, see util/boot-verify.sh - QEMU_SERIAL_LOG=<f> to capture the
+# serial console to <f> and expose it on a socket (QEMU_SERIAL_SOCK, default
+# <f>.sock) plus QEMU_MONITOR_SOCK=<f> for an orderly shutdown.
 set -e
 
 IMG="${1:-disk.img}"
@@ -54,12 +59,30 @@ fi
 # image still boots to the serial console.
 GPU="-device virtio-gpu-gl-pci"
 DISPLAY_OPT="-display gtk,gl=on,show-cursor=on"
-if [ -n "$QEMU_NOGRAPHIC" ] || [ -z "$DISPLAY$WAYLAND_DISPLAY" ]; then
-	GPU="-device virtio-gpu-pci"
-	DISPLAY_OPT="-display none"
-elif ! qemu-system-aarch64 -device help 2>/dev/null | grep -q virtio-gpu-gl-pci; then
+# Headless keeps the GL device: the compositor needs a render node, not a
+# window, so "no display" and "no GL" are separate choices - dropping GL here
+# would boot to a serial console with no session to verify.
+if ! qemu-system-aarch64 -device help 2>/dev/null | grep -q virtio-gpu-gl-pci; then
 	GPU="-device virtio-gpu-pci"
 	DISPLAY_OPT="-display gtk,show-cursor=on"
+fi
+if [ -n "${QEMU_NOGRAPHIC:-}" ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+	DISPLAY_OPT="-display none"
+fi
+
+# Serial console: this terminal with the monitor multiplexed in by default;
+# QEMU_SERIAL_LOG moves it to a socket with a logfile, which is what lets a
+# script read the boot log and drive the console at the same time.
+SERIAL="-serial mon:stdio"
+if [ -n "${QEMU_SERIAL_LOG:-}" ]; then
+	SERIAL_SOCK="${QEMU_SERIAL_SOCK:-$QEMU_SERIAL_LOG.sock}"
+	rm -f "$SERIAL_SOCK"
+	SERIAL="-chardev socket,id=ser0,path=$SERIAL_SOCK,server=on,wait=off,logfile=$QEMU_SERIAL_LOG -serial chardev:ser0"
+fi
+MONITOR=""
+if [ -n "${QEMU_MONITOR_SOCK:-}" ]; then
+	rm -f "$QEMU_MONITOR_SOCK"
+	MONITOR="-monitor unix:$QEMU_MONITOR_SOCK,server,nowait"
 fi
 
 # virtio-sound-pci only exists from QEMU 8.2 on; older hosts (Debian 12 ships
@@ -84,4 +107,5 @@ exec qemu-system-aarch64 \
 	-device virtio-tablet-pci \
 	$SND \
 	$DISPLAY_OPT \
-	-serial mon:stdio
+	$SERIAL \
+	$MONITOR

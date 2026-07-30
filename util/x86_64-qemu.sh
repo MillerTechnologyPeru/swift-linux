@@ -2,6 +2,20 @@
 # Boot the Swift Linux A/B UEFI image (disk.img) in QEMU with a graphical
 # console for the sway session. Run from the directory containing disk.img (Buildroot's
 # output/images/), or pass the image path as $1.
+#
+# Environment (all optional; the defaults are the interactive behaviour):
+#   QEMU_NOGRAPHIC=1    no window - but still a GL-capable virtio-gpu, since
+#                       wlroots needs a render node rather than a window, and a
+#                       non-GL device would stop the session from starting.
+#                       Implied when neither DISPLAY nor WAYLAND_DISPLAY is set.
+#   QEMU_SMP=<n>        vCPUs (default 4)
+#   QEMU_MEM=<size>     RAM (default 2G)
+#   QEMU_SERIAL_LOG=<f> capture the serial console to <f> and expose it on a
+#                       socket (QEMU_SERIAL_SOCK, default <f>.sock) instead of
+#                       this terminal, so a script can both read the boot log
+#                       and drive the console. See util/boot-verify.sh.
+#   QEMU_MONITOR_SOCK=<f>  QEMU monitor on a unix socket, so a script can shut
+#                       the machine down cleanly instead of killing it.
 set -e
 
 IMG="${1:-disk.img}"
@@ -42,6 +56,14 @@ ACCEL="-cpu qemu64"
 # GL compositor (sway, and therefore the frontend) will not come up.
 GPU="-device virtio-gpu-gl-pci"
 DISPLAY_OPTS="gtk,gl=on,show-cursor=on"
+# Headless keeps the GL device on purpose: the compositor needs a render node,
+# not a window, so "no display" and "no GL" are separate choices - dropping GL
+# here would boot to a serial console with no session to verify.
+HEADLESS=""
+if [ -n "${QEMU_NOGRAPHIC:-}" ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
+	HEADLESS=1
+	DISPLAY_OPTS="none"
+fi
 if ! qemu-system-x86_64 -device help 2>/dev/null | grep -q 'virtio-gpu-gl-pci'; then
 	echo "warning: this qemu has no virgl (virtio-gpu-gl-pci); falling back to" >&2
 	echo "         software virtio-gpu. The image boots, but the sway session" >&2
@@ -55,6 +77,26 @@ if ! qemu-system-x86_64 -device help 2>/dev/null | grep -q 'virtio-gpu-gl-pci'; 
 	# to see what the machine is doing.
 	GPU="-device virtio-vga"
 	DISPLAY_OPTS="gtk,show-cursor=on"
+	[ -n "$HEADLESS" ] && DISPLAY_OPTS="none"
+fi
+
+# Serial console. By default it lands on this terminal with the QEMU monitor
+# multiplexed in (Ctrl-a c switches). QEMU_SERIAL_LOG moves it to a socket with
+# a logfile so a script gets both the boot log and an interactive console -
+# "-serial file:" would give the log alone, with nothing to type into.
+SERIAL="-serial mon:stdio"
+if [ -n "${QEMU_SERIAL_LOG:-}" ]; then
+	SERIAL_SOCK="${QEMU_SERIAL_SOCK:-$QEMU_SERIAL_LOG.sock}"
+	rm -f "$SERIAL_SOCK"
+	SERIAL="-chardev socket,id=ser0,path=$SERIAL_SOCK,server=on,wait=off,logfile=$QEMU_SERIAL_LOG -serial chardev:ser0"
+fi
+
+# With the serial console off stdio the monitor needs somewhere to live, and a
+# socket is what lets a caller ask for an orderly shutdown.
+MONITOR=""
+if [ -n "${QEMU_MONITOR_SOCK:-}" ]; then
+	rm -f "$QEMU_MONITOR_SOCK"
+	MONITOR="-monitor unix:$QEMU_MONITOR_SOCK,server,nowait"
 fi
 
 # -vga none is important: without it q35 adds a default VGA adapter, so the
@@ -65,8 +107,8 @@ exec qemu-system-x86_64 \
 	-M q35 \
 	-vga none \
 	$ACCEL \
-	-smp 4 \
-	-m 2G \
+	-smp "${QEMU_SMP:-4}" \
+	-m "${QEMU_MEM:-2G}" \
 	-drive if=pflash,format=raw,unit=0,readonly=on,file="$OVMF_CODE" \
 	-drive if=pflash,format=raw,unit=1,file="$OVMF_VARS" \
 	-drive file="$IMG",if=none,format=raw,id=hd0 \
@@ -79,4 +121,5 @@ exec qemu-system-x86_64 \
 	-audiodev none,id=snd0 \
 	-device virtio-sound-pci,audiodev=snd0 \
 	-display "$DISPLAY_OPTS" \
-	-serial mon:stdio
+	$SERIAL \
+	$MONITOR

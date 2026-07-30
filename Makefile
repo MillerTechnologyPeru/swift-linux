@@ -89,6 +89,17 @@ define make_defconfig
 	$(if $(filter 1,$(CCACHE)),@printf 'BR2_CCACHE=y\n' >> $(OUTPUT_BASE)/$(1).defconfig)
 endef
 
+# MAKEOVERRIDES= stops make from forwarding this Makefile's command-line
+# variables to Buildroot's. It has to: CCACHE is the accelerator knob here, but
+# in Buildroot it holds the path to the ccache binary (HOSTCC = $(CCACHE)
+# $(HOSTCC_NOCCACHE)), and a command-line variable beats the assignment there -
+# so "make <t>-build CCACHE=1" made HOSTCC "1 /usr/bin/gcc" and every host
+# package failed to configure with "C compiler cannot create executables".
+# Buildroot is handed everything it needs explicitly below, and the knobs this
+# Makefile owns are consumed here (CCACHE appends BR2_CCACHE=y to the defconfig
+# in make_defconfig), so nothing downstream wants them.
+BR_MAKE := make MAKEOVERRIDES=
+
 # br <target> <make-args...>  - run Buildroot for a target.
 #
 # The default is this host. CONTAINER=1 runs the identical invocation inside
@@ -138,13 +149,13 @@ define br
 		-v $(CCACHE_DIR):/tmp/.buildroot-ccache \
 		$(if $(DL_DIR),-v $(DL_DIR):$(DL_DIR)) \
 		-w /$(1) $(CONTAINER_IMAGE) \
-		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C $(BUILDROOT) O=/$(1) \
+		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 $(BR_MAKE) -C $(BUILDROOT) O=/$(1) \
 			BR2_EXTERNAL=$(EXTERNALS) $(DL_OPT) \
 			$(BR2_MAKE_OPTS) $(2)'
 endef
 else
 define br
-	FORCE_UNSAFE_CONFIGURE=1 make -C $(BUILDROOT) O=$(OUTPUT_BASE)/$(1) \
+	FORCE_UNSAFE_CONFIGURE=1 $(BR_MAKE) -C $(BUILDROOT) O=$(OUTPUT_BASE)/$(1) \
 		BR2_EXTERNAL=$(EXTERNALS) $(DL_OPT) BR2_CCACHE_DIR=$(CCACHE_DIR) \
 		$(BR2_MAKE_OPTS) $(2)
 endef

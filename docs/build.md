@@ -119,3 +119,38 @@ Each image build writes `disk.img`, a `swift-linux-<target>.img` symlink, and a
 `SHA256SUMS` manifest into the images directory. CI produces the same artifacts
 nightly (`.github/workflows/build-images.yml`); a full image build is too long
 to run per push.
+
+## Verifying a boot
+
+A build succeeding says nothing about whether the image boots, so
+`util/boot-verify.sh` does that part:
+
+```sh
+make x86_64-build FRONTEND=minimal      # the bring-up frontend, above
+util/boot-verify.sh                     # boots it headless and checks it
+```
+
+It prints one line per check and exits non-zero on the first failure, following
+the boot in order: the data partition mounting, the RNG-seed and clock scripts
+that depend on it, `agetty.tty1` bringing up a session with nobody touching a
+keyboard, that session belonging to the unprivileged user rather than root, the
+frontend resolving to a terminal, and GL being accelerated rather than quietly
+software. It finishes by writing a screenshot next to the image, and leaves
+`boot-verify-serial.log` there either way. `--arch arm64`, `--image`,
+`--timeout` and `--keep` are the knobs; `--help` lists them.
+
+Two things about it are worth knowing, because both are easy to get wrong:
+
+- **The guest keeps a GL-capable virtio-gpu even with no window.** wlroots needs
+  a render node, not a display, so "headless" and "no GL" are separate choices -
+  conflating them boots to a serial console with no session to inspect. The
+  launchers (`util/x86_64-qemu.sh`, `util/arm64-qemu.sh`) handle this, and gained
+  `QEMU_SERIAL_LOG`/`QEMU_SERIAL_SOCK`/`QEMU_MONITOR_SOCK` so a script can read
+  the boot log, drive the console, and shut the machine down cleanly.
+- **The screenshot comes from `grim` inside the guest**, not from QEMU. With a GL
+  scanout QEMU's own `screendump` answers `Error: no surface`, which is why
+  `grim` is in `tools-gui.config` in the first place.
+
+Guest interaction goes over the serial console (`util/qemu-console.py`), which
+needs no ssh key or password automation - the console is a getty, and the script
+logs in the way a person would.
