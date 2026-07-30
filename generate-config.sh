@@ -51,6 +51,7 @@ usage() {
 
 device=""
 frontend=""
+frontend_fragment=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --arch)     arch="$2";    shift 2 ;;
@@ -143,15 +144,23 @@ fi
 # editing the board: the fragment is emitted last, and the alternatives negate
 # the default's packages, so the last one wins (see frontend/README.md). Only
 # the image profile has a frontend at all.
+#
+# "none" is not a fragment but the absence of one: it drops the frontend the
+# image would otherwise include, leaving the frontend-independent part of the
+# image - every library and daemon an image has whatever its user-facing shell.
+# That set is what an app bundle can rely on being present on the device, so it
+# is the baseline util/make-app-bundle.sh subtracts (see its buildroot mode).
 if [ -n "$frontend" ]; then
     if [ "$profile" != "image" ]; then
         echo "Error: --frontend is only valid with --profile image" >&2
         exit 1
     fi
     frontend_fragment="$DEFCONFIG_DIR/frontend/$frontend.config"
-    if [ ! -f "$frontend_fragment" ]; then
+    if [ "$frontend" = none ]; then
+        frontend_fragment=""
+    elif [ ! -f "$frontend_fragment" ]; then
         echo "Error: unknown frontend '$frontend' (no $frontend_fragment)" >&2
-        echo "Available frontends: $(cd "$DEFCONFIG_DIR/frontend" && ls *.config | sed 's/\.config//' | tr '\n' ' ')" >&2
+        echo "Available frontends: $(cd "$DEFCONFIG_DIR/frontend" && ls *.config | sed 's/\.config//' | tr '\n' ' ')none" >&2
         exit 1
     fi
 fi
@@ -171,7 +180,7 @@ done
 if [ "$profile" = "image" ]; then
     files+=("$board_dir/board.config")
     # After the board, so --frontend beats the board's own choice too.
-    [ -n "$frontend" ] && files+=("$frontend_fragment")
+    [ -n "$frontend_fragment" ] && files+=("$frontend_fragment")
 fi
 
 
@@ -204,6 +213,16 @@ emit_fragment() {
     done < "$file"
 }
 
+# --frontend none: the image's own frontend arrives as an `include` inside
+# image.config, so it cannot be dropped by leaving a file out of the list.
+# Marking every frontend fragment as already-emitted makes the include a no-op,
+# reusing the seen-set that keeps a shared fragment from being emitted twice.
+if [ "$frontend" = none ]; then
+    for f in "$DEFCONFIG_DIR"/frontend/*.config; do
+        _seen_includes["$f"]=1
+    done
+fi
+
 # Concatenate fragments into the defconfig, separating each with a blank line.
 : > "$output"
 for f in "${files[@]}"; do
@@ -216,7 +235,10 @@ done
 #   @SWIFT_LINUX@ -> this repo (shared board files, overlays, users table)
 # @BOARD@ is substituted first since it expands to a @SWIFT_LINUX@-relative
 # path only conceptually; both are rewritten to absolute paths here.
-sed -i "s|@BOARD@|${board_dir:-$SCRIPT_DIR/sdk/board/$arch}|g" "$output"
-sed -i "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output"
+# Written through a temporary file rather than with "sed -i": BSD sed (macOS)
+# takes the backup suffix as -i's argument and swallows the expression.
+sed -e "s|@BOARD@|${board_dir:-$SCRIPT_DIR/sdk/board/$arch}|g" \
+    -e "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output" > "$output.tmp"
+mv "$output.tmp" "$output"
 
 echo "Generated $profile configuration for ${device:-$arch} at $output"

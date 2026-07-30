@@ -228,6 +228,7 @@ $(addsuffix -pkg,$(TARGETS)): %-pkg:
 $(addsuffix -bundle,$(BUNDLES)): %-bundle: submodules
 	@mkdir -p $(APPS_OUT)
 	$(BR_PORTS)/util/make-app-bundle.sh $* --out $(APPS_OUT) --sdk $(BUNDLE_SDK) \
+		--swift-linux $(REPO_DIR) --buildroot $(BUILDROOT) --br-output $(OUTPUT_BASE) \
 		$(if $(BUNDLE_ARCHES),--arch "$(BUNDLE_ARCHES)") \
 		$(if $(filter 1,$(PACK)),--pack)
 
