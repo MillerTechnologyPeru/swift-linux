@@ -82,7 +82,11 @@ mkdir -p "$OUTPUT_BASE"
 # packages so the build does not need the native Swift toolchain.
 make_defconfig() {
 	local profile="$1" arch="$2" out="$3"
-	"$GENERATE" --arch "$arch" --profile "$profile" -o "$out" >/dev/null || return 1
+	# FRONTEND=<name> swaps the frontend the image boots into (see
+	# sdk/defconfig/frontend/); "minimal" is the bring-up session.
+	local fe=()
+	[ -n "${FRONTEND:-}" ] && [ "$profile" = "image" ] && fe=(--frontend "$FRONTEND")
+	"$GENERATE" --arch "$arch" --profile "$profile" "${fe[@]}" -o "$out" >/dev/null || return 1
 	if [ "${SKIP_SWIFT:-0}" = "1" ]; then
 		sed -i -E '/^BR2_PACKAGE_(SWIFT|LIBSWIFTDISPATCH|SWIFT_FOUNDATION)=y/d' "$out"
 	fi

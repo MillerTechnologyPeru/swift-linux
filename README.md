@@ -75,10 +75,17 @@ The user-facing shell of an image is a swappable fragment
 (`sdk/defconfig/frontend/`): the image profile includes the default, and a
 board switches by including a different one from its `board.config` - board
 fragments are emitted last, so the alternative's negations unwind the default.
+A single build can override that choice without editing the board:
+
+```sh
+./generate-config.sh --arch x86_64 --profile image --frontend minimal
+FRONTEND=minimal ./build-images.sh x86_64
+```
 
 | Frontend | For | Status |
 |---|---|---|
 | EmulationStation + sway | GL(ES) gaming devices (default) | working: RetroArch backend, NES/Apps/Games/Tools groups, squashfs app bundles, WiFi/BT/power menus wired to NetworkManager/BlueZ/OpenRC |
+| sway + foot (`minimal`) | bring-up: proving a board boots, and short build cycles | working: 34 fewer packages, none of the emulator stack |
 | gmenu2x | armv5 / no-GPU handhelds, SDL 1.2 on the framebuffer | definition only |
 | XFCE + Chicago95 | desktop use on X.org, Windows 95 look by default | packaged + kconfig-validated, not yet booted |
 | GNOME | desktop Wayland (mutter/gnome-shell via elogind on OpenRC) | packaged + kconfig-validated, not yet compiled |

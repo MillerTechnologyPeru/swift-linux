@@ -8,11 +8,14 @@
 # Usage:
 #   ./generate-config.sh --arch <arch> [--profile <profile>] [--output <path>]
 #   ./generate-config.sh --device <device> --profile image [--output <path>]
+#   ./generate-config.sh --arch <arch> --profile image --frontend minimal
 #
 # Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64 i386
 # Profiles:                                  sdk (default), app-sdk, image, lib32
 # Devices  (sdk/board/<device>/):            self-contained boards (see Makefile
 #                                            `make list`)
+# Frontends (sdk/defconfig/frontend/*):      image profile only; overrides what
+#                                            the board would boot into
 #
 # Profiles compose the following fragments, in order:
 #   sdk       = arch + toolchain + libs + tools + supportdata + swift
@@ -47,10 +50,12 @@ usage() {
 }
 
 device=""
+frontend=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --arch)     arch="$2";    shift 2 ;;
         --device)   device="$2";  shift 2 ;;
+        --frontend) frontend="$2"; shift 2 ;;
         --profile|--configuration) profile="$2"; shift 2 ;;
         --output|-o) output="$2"; shift 2 ;;
         -h|--help)  usage 0 ;;
@@ -134,6 +139,23 @@ if [ -n "$device" ] && [ "$profile" != "image" ]; then
     exit 1
 fi
 
+# --frontend overrides the frontend the board would otherwise boot, without
+# editing the board: the fragment is emitted last, and the alternatives negate
+# the default's packages, so the last one wins (see frontend/README.md). Only
+# the image profile has a frontend at all.
+if [ -n "$frontend" ]; then
+    if [ "$profile" != "image" ]; then
+        echo "Error: --frontend is only valid with --profile image" >&2
+        exit 1
+    fi
+    frontend_fragment="$DEFCONFIG_DIR/frontend/$frontend.config"
+    if [ ! -f "$frontend_fragment" ]; then
+        echo "Error: unknown frontend '$frontend' (no $frontend_fragment)" >&2
+        echo "Available frontends: $(cd "$DEFCONFIG_DIR/frontend" && ls *.config | sed 's/\.config//' | tr '\n' ' ')" >&2
+        exit 1
+    fi
+fi
+
 # Build the ordered list of fragment files. With --device the board.config is
 # self-contained (it selects the architecture), so there is no arch fragment;
 # otherwise the arch fragment comes first.
@@ -148,6 +170,8 @@ done
 # generic image.config.
 if [ "$profile" = "image" ]; then
     files+=("$board_dir/board.config")
+    # After the board, so --frontend beats the board's own choice too.
+    [ -n "$frontend" ] && files+=("$frontend_fragment")
 fi
 
 
