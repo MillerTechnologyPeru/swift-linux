@@ -1,0 +1,124 @@
+name: Build Swift SDK
+
+# Builds the per-architecture Swift SDK artifactbundles and merges them into
+# one all-arch bundle. Split out of build-images.yml: the images and the SDKs
+# share nothing but the container, they fail for different reasons, and
+# keeping them apart means "the SDK is broken" and "the image is broken" are
+# separate red marks - and either can be re-run without paying for the other.
+#
+# The two jobs here stay together on purpose. combined-swift-sdk consumes the
+# per-arch bundles through download-artifact, which only sees artifacts from
+# its own workflow run; reaching into another workflow's run would need a run
+# id and a token for no benefit.
+#
+# Every architecture's SDK comes from the app-sdk profile (Swift plus the full
+# applibs graphics/app stack), so all four bundles carry the same libraries
+# and headers - libGL/EGL/GLES, SDL, wayland, X11, cairo, ALSA - rather than
+# arm64/x86_64 shipping only what the image profile happened to build. armv7
+# and i386 have no bootable image target and exist only here.
+
+# Four Buildroot trees, so hours per run: nightly, plus on demand from the
+# Actions tab ("gh workflow run build-swift-sdk.yml"). Scheduled two hours
+# before the image build so the two heavy workflows do not contend for
+# runners and both results are waiting in the morning.
+on:
+  schedule:
+    - cron: '0 5 * * *'
+  workflow_dispatch:
+
+jobs:
+  app-sdk:
+    name: App SDK (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: ubuntu-latest
+    container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    steps:
+      - name: Checkout swift-linux
+        uses: actions/checkout@v4
+
+      # Buildroot and the buildroot-swift external come from the container's
+      # cached copies (that is what the prebuilt output/<arch> was built
+      # against), so only the ports submodule has to be checked out here.
+      - name: Check out the ports external
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
+      # ccache: the same per-arch entries every workflow in this repo uses
+      # (br-ccache-<arch>-...), so a toolchain built by build-toolchain.yml
+      # warms the SDK build here and vice versa. compiler_check=content
+      # below is what makes hits survive the compiler living at different
+      # paths in different workflows.
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-${{ matrix.arch }}-
+
+      - name: Build app-sdk (Swift + applibs)
+        run: |
+          set -eu
+          BR_SWIFT=/workspaces/buildroot-swift
+          B="$BR_SWIFT/buildroot"
+          O="$BR_SWIFT/output/${{ matrix.arch }}"
+          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
+          "$GITHUB_WORKSPACE/generate-config.sh" \
+            --arch ${{ matrix.arch }} --profile app-sdk -o /tmp/appsdk.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
+
+      # Runs in the container deliberately: a container-built sysroot contains
+      # symlinks to absolute in-container paths (/workspaces/...) for gcc's
+      # crt*.o, libgcc.a and the libstdc++ headers, and those only resolve in
+      # here. make-swift-sdk.sh turns them into real files for the portable
+      # bundle (rsync --copy-unsafe-links); on the host they would just dangle.
+      - name: Generate Swift SDK
+        run: |
+          set -eu
+          export BR_SWIFT=/workspaces/buildroot-swift
+          bundle="/workspaces/buildroot-swift/output/swift-linux-${{ matrix.arch }}.artifactbundle"
+          bash "$GITHUB_WORKSPACE/util/make-swift-sdk.sh" \
+            --arch ${{ matrix.arch }} --portable --out "$bundle"
+          tar czf "$GITHUB_WORKSPACE/swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz" \
+            -C "$(dirname "$bundle")" "$(basename "$bundle")"
+
+      - name: Upload Swift SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-linux-${{ matrix.arch }}-swift-sdk
+          path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
+          if-no-files-found: error
+
+  # Merge the per-arch Swift SDKs into one artifactbundle that cross-compiles
+  # for every architecture (swift build --swift-sdk aarch64/x86_64-...-linux-gnu).
+  # Runs on a plain runner - it only rearranges files (jq + tar).
+  combined-swift-sdk:
+    name: Combined Swift SDK
+    needs: app-sdk
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download per-arch Swift SDKs
+        uses: actions/download-artifact@v4
+        with:
+          pattern: swift-linux-*-swift-sdk
+          path: sdk-parts
+      - name: Combine into an all-arch SDK
+        run: |
+          set -eu
+          mkdir -p parts
+          find sdk-parts -name '*-swift-sdk.tar.gz' -exec tar xzf {} -C parts \;
+          bash util/combine-swift-sdk.sh parts/*.artifactbundle --out swift-linux.artifactbundle
+          tar czf swift-linux-swift-sdk.tar.gz swift-linux.artifactbundle
+      - name: Show what the bundle supports
+        run: |
+          jq -r '.targetTriples | keys[]' swift-linux.artifactbundle/swift-linux/swift-sdk.json
+      - name: Upload combined Swift SDK
+        uses: actions/upload-artifact@v4
+        with:
+          name: swift-linux-swift-sdk
+          path: swift-linux-swift-sdk.tar.gz
+          if-no-files-found: error
