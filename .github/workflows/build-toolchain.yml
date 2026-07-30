@@ -40,6 +40,19 @@ jobs:
       matrix:
         arch: [x86_64, arm64, armv7, i386]
     runs-on: ubuntu-latest
+    # The plain base image: Debian with the Swift toolchain and the host
+    # dependencies both Buildroot and a from-source Swift build need. Not the
+    # per-arch swift_<arch>_defconfig tags the image and SDK workflows use -
+    # those carry a prebuilt output/<arch>, which is the very thing this
+    # workflow exists to rebuild from source. Only the build environment comes
+    # from the image; every artifact here is still built from scratch.
+    #
+    # /mnt is bind-mounted because that is where the heavy trees live: the
+    # runner's large scratch disk is not visible inside a container otherwise,
+    # and / alone does not have the room.
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
     timeout-minutes: 350          # job hard limit is 360; fail cleanly before it
     permissions:
       contents: write             # uploads assets to the toolchain-latest release
@@ -49,37 +62,46 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Fresh ubuntu-latest has ~20 GB free on /; a toolchain + Swift tree
-      # will blow past that. /mnt has far more room, so everything heavy
-      # lives there.
-      - name: Free disk space
-        uses: jlumbroso/free-disk-space@main
-        with:
-          tool-cache: true
-          android: true
-          dotnet: true
-          haskell: true
-          docker-images: true
-          large-packages: false
-          swap-storage: false
-
+      # No free-disk-space step: it prunes the runner's own filesystem, which a
+      # container job cannot see. The heavy trees live on the bind-mounted /mnt
+      # instead, which is where the room is.
       - name: Host prerequisites
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            build-essential bc bison flex libssl-dev libelf-dev \
-            rsync cpio unzip file wget python3 python-is-python3 \
-            gawk texinfo zstd cmake ninja-build libncurses-dev
-          sudo mkdir -p /mnt/br && sudo chown -R "$USER" /mnt/br
-          mkdir -p "$BR2_DL_DIR" "$CCACHE_DIR"
+          set -eu
+          # No sudo: the container runs as root, and the image has no sudo.
+          # The image already carries Buildroot's host dependencies; these are
+          # host-swift's own, which building the compiler from source needs and
+          # a toolchain-shipping image has no reason to include. Installed as a
+          # set rather than one package per failed run, because each discovery
+          # costs a four-hour build.
+          #
+          # uuid-dev is the one that bit us: swift's lib/Basic does
+          # find_package(UUID), and without it the swift component never
+          # configures - which surfaces hours later as "CMAKE_Swift_COMPILER
+          # ... is not a full path to an existing compiler tool" from the
+          # target swift package looking for a swiftc that was never produced.
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
+            libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
+            libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
+          mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
           df -h / /mnt
 
-      # No container here, so everything comes from this repo's submodules:
-      # the patched Buildroot fork, the buildroot-swift external and the
-      # ports external. Non-recursive on purpose - the swift submodule's own
-      # buildroot pointer is redundant with the top-level one.
+      # Everything the build compiles comes from this repo's submodules - the
+      # patched Buildroot fork, the buildroot-swift external and the ports
+      # external - not from the image, which supplies only the environment.
+      # Non-recursive on purpose: the swift submodule's own buildroot pointer
+      # is redundant with the top-level one.
+      #
+      # safe.directory first, as in the image and SDK workflows: the workspace
+      # is created by the runner on the host while git here runs as root in the
+      # container, and actions/checkout's own exemption lives in a throwaway
+      # HOME that is gone by now.
       - name: Check out Buildroot and the externals
-        run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
 
       # dl/: shared across every workflow in the repo (same key namespace).
       # Keyed loosely on purpose - a stale dl/ is still mostly useful, and
@@ -144,6 +166,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
+          # gh is preinstalled on a runner but not in the image, so this step
+          # has to supply it now that the job is containerized.
+          if ! command -v gh >/dev/null 2>&1; then
+            apt-get install -y --no-install-recommends gh 2>/dev/null || {
+              apt-get install -y --no-install-recommends curl ca-certificates
+              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                -o /usr/share/keyrings/githubcli.gpg
+              echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+                > /etc/apt/sources.list.d/github-cli.list
+              apt-get update
+              apt-get install -y --no-install-recommends gh
+            }
+          fi
           gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create toolchain-latest --repo "$GITHUB_REPOSITORY" \
               --title "Toolchain (rolling)" \
