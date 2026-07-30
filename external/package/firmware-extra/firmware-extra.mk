@@ -6,11 +6,14 @@
 # Buildroot's linux-firmware package has no options for: smart-amp speaker
 # firmware, Qualcomm Bluetooth, the Qualcomm SoC wifi parts, the MediaTek SCP
 # coprocessor and Intel's AVS audio DSP. The version and DL_SUBDIR match the
-# linux-firmware package so both share one downloaded tarball.
+# linux-firmware package so both share one downloaded tarball - keep this
+# version in step with package/linux-firmware/linux-firmware.mk when Buildroot
+# bumps it, or the build fetches a second ~600 MB tarball and the curated blobs
+# come from a different snapshot than the rest of /lib/firmware.
 #
 ################################################################################
 
-FIRMWARE_EXTRA_VERSION = 20260410
+FIRMWARE_EXTRA_VERSION = 20260519
 FIRMWARE_EXTRA_SOURCE = linux-firmware-$(FIRMWARE_EXTRA_VERSION).tar.xz
 FIRMWARE_EXTRA_SITE = $(BR2_KERNEL_MIRROR)/linux/kernel/firmware
 FIRMWARE_EXTRA_DL_SUBDIR = linux-firmware
