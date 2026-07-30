@@ -1,0 +1,181 @@
+name: Build Toolchain
+
+# Builds the cross toolchain and the expensive host tools (gcc/binutils/
+# glibc, host-swift, and whatever host tools the tree pulls - rust for
+# ruffle, a boot JDK for openjdk) from source, per architecture, and
+# publishes each output tree to the "toolchain-latest" GitHub Release.
+#
+# This is the from-source replacement for the colemancda/buildroot-swift
+# container images the other workflows currently start from: they can seed
+# output/<arch> from these release assets instead of from a docker layer.
+# Release assets rather than actions/cache because the trees are far past
+# the repo's 10 GB cache budget, assets are not evicted after 7 days, and
+# a Release gives the toolchain an inspectable, pinnable identity.
+#
+# EXPERIMENTAL, two known hazards, stated up front:
+#   - host-swift is a multi-hour build. With a cold ccache an arch may not
+#     fit the 6-hour job limit; the schedule is weekly and each run chains
+#     on the last run's ccache, so it converges - but the first runs can
+#     red-mark. timeout-minutes fails them cleanly.
+#   - GitHub release assets cap at 2 GiB each, and a compressed output
+#     tree is larger; the tree ships as split .tar.zst parts that the
+#     consumer concatenates.
+#
+# Weekly, not nightly: the toolchain changes when toolchain.config or
+# swift.config change, not when board overlays do.
+on:
+  schedule:
+    - cron: '0 3 * * 6'   # Saturday 03:00 UTC
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  toolchain:
+    name: Toolchain (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: ubuntu-latest
+    timeout-minutes: 350          # job hard limit is 360; fail cleanly before it
+    permissions:
+      contents: write             # uploads assets to the toolchain-latest release
+    env:
+      BR2_DL_DIR: /mnt/br/dl
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # Fresh ubuntu-latest has ~20 GB free on /; a toolchain + Swift tree
+      # will blow past that. /mnt has far more room, so everything heavy
+      # lives there.
+      - name: Free disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          docker-images: true
+          large-packages: false
+          swap-storage: false
+
+      - name: Host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential bc bison flex libssl-dev libelf-dev \
+            rsync cpio unzip file wget python3 python-is-python3 \
+            gawk texinfo zstd cmake ninja-build libncurses-dev
+          sudo mkdir -p /mnt/br && sudo chown -R "$USER" /mnt/br
+          mkdir -p "$BR2_DL_DIR" "$CCACHE_DIR"
+          df -h / /mnt
+
+      # No container here, so everything comes from this repo's submodules:
+      # the patched Buildroot fork, the buildroot-swift external and the
+      # ports external. Non-recursive on purpose - the swift submodule's own
+      # buildroot pointer is redundant with the top-level one.
+      - name: Check out Buildroot and the externals
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
+
+      # dl/: shared across every workflow in the repo (same key namespace).
+      # Keyed loosely on purpose - a stale dl/ is still mostly useful, and
+      # the per-package hashes protect correctness.
+      - name: Restore dl/
+        id: dl
+        uses: actions/cache/restore@v4
+        with:
+          path: /mnt/br/dl
+          key: br-dl-${{ hashFiles('sdk/defconfig/**', 'external/package/**/*.hash', 'ports/package/**/*.hash') }}
+          restore-keys: |
+            br-dl-
+
+      # ccache: per-arch, shared by name across ALL workflows (the cache is
+      # repo-scoped). Restore-only here; the save step writes a run_id-keyed
+      # entry so each run chains on the previous one.
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /mnt/br/ccache/${{ matrix.arch }}
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-${{ matrix.arch }}-
+
+      - name: Build toolchain + host tools (sdk profile)
+        run: |
+          set -eu
+          B="$GITHUB_WORKSPACE/buildroot"
+          O=/mnt/br/output/${{ matrix.arch }}
+          EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
+          ./generate-config.sh --arch ${{ matrix.arch }} --profile sdk -o /tmp/sdk.defconfig
+          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/sdk.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="$BR2_DL_DIR" \
+            BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG=/tmp/sdk.defconfig defconfig
+          # Budget the shared cache: 10 GB per repo across four arches + dl.
+          make -C "$B" O="$O" ccache-options \
+            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true" || true
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" \
+            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$(nproc)"
+
+      # Package the whole output tree minus the bulky per-package build
+      # dirs - but each build dir's stamp files must survive, because they
+      # are what tells a consuming Buildroot "already built, skip". The
+      # extracted sources themselves are only needed to REbuild.
+      - name: Package output tree
+        run: |
+          set -eu
+          O=/mnt/br/output/${{ matrix.arch }}
+          find "$O/build" -mindepth 2 -maxdepth 2 \
+            ! -name '.stamp_*' ! -name '.br2_*' ! -name '.applied_patches_list' \
+            -exec rm -rf {} + 2>/dev/null || true
+          tar -C /mnt/br/output --zstd -cf /mnt/br/toolchain-${{ matrix.arch }}.tar.zst ${{ matrix.arch }}
+          # Release assets cap at 2 GiB apiece: ship split parts, consumers
+          # `cat toolchain-<arch>.tar.zst.part* | tar --zstd -x`.
+          split -b 1900M -d /mnt/br/toolchain-${{ matrix.arch }}.tar.zst \
+            /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part
+          rm /mnt/br/toolchain-${{ matrix.arch }}.tar.zst
+          ls -lh /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part*
+
+      - name: Publish to the toolchain-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create toolchain-latest --repo "$GITHUB_REPOSITORY" \
+              --title "Toolchain (rolling)" \
+              --notes "Rolling from-source toolchains built by build-toolchain.yml. Assets are split tar.zst parts: cat toolchain-<arch>.tar.zst.part* | tar --zstd -x" \
+              --latest=false
+          # Replace this arch's parts atomically-ish: delete old, upload new.
+          for a in $(gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" \
+                      --json assets --jq '.assets[].name' | grep "^toolchain-${{ matrix.arch }}\." || true); do
+            gh release delete-asset toolchain-latest "$a" --repo "$GITHUB_REPOSITORY" -y
+          done
+          gh release upload toolchain-latest /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part* \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: ccache stats
+        if: always()
+        run: |
+          ccache -d "$CCACHE_DIR" -s 2>/dev/null || true
+          du -sh "$CCACHE_DIR" "$BR2_DL_DIR" || true
+          df -h / /mnt
+
+      # Only write caches from scheduled/dispatched runs on the default
+      # branch; PR-scoped caches are discarded on close and churn eviction.
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: /mnt/br/ccache/${{ matrix.arch }}
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+
+      - name: Save dl/
+        if: always() && github.event_name != 'pull_request' && steps.dl.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: /mnt/br/dl
+          key: br-dl-${{ hashFiles('sdk/defconfig/**', 'external/package/**/*.hash', 'ports/package/**/*.hash') }}

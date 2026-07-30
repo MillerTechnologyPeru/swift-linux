@@ -35,6 +35,8 @@ jobs:
         arch: [x86_64, arm64, armv7, i386]
     runs-on: ubuntu-latest
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    env:
+      CCACHE_DIR: /workspaces/br-ccache
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
@@ -67,8 +69,12 @@ jobs:
           EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
           "$GITHUB_WORKSPACE/generate-config.sh" \
             --arch ${{ matrix.arch }} --profile app-sdk -o /tmp/appsdk.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
+          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/appsdk.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR" \
+            BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
+          make -C "$B" O="$O" ccache-options \
+            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true --set-config=compiler_check=content" || true
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR"
 
       # Runs in the container deliberately: a container-built sysroot contains
       # symlinks to absolute in-container paths (/workspaces/...) for gcc's
@@ -91,6 +97,15 @@ jobs:
           name: swift-linux-${{ matrix.arch }}-swift-sdk
           path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
           if-no-files-found: error
+
+      # Caches are only written from scheduled/dispatched runs; PR-scoped
+      # entries die with the PR and just churn the 10 GB budget.
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
 
   # Merge the per-arch Swift SDKs into one artifactbundle that cross-compiles
   # for every architecture (swift build --swift-sdk aarch64/x86_64-...-linux-gnu).

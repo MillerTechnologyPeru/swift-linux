@@ -37,6 +37,8 @@ jobs:
     # Per-arch container with Buildroot + a prebuilt output/<arch> (toolchain
     # + host-swift + native Swift tools). Same images buildroot-swift uses.
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    env:
+      CCACHE_DIR: /workspaces/br-ccache
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
@@ -46,6 +48,16 @@ jobs:
       # against), so only the ports submodule has to be checked out here.
       - name: Check out the ports external
         run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
+      # Shared per-arch ccache (same br-ccache-<arch> namespace as the
+      # toolchain and SDK workflows; the cache is repo-scoped).
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-${{ matrix.arch }}-
 
       - name: Fetch the 32-bit companion
         uses: actions/download-artifact@v4
@@ -74,6 +86,7 @@ jobs:
           # The container's cached OpenSSL was built without engine support;
           # rebuild it so RAUC (which uses the OpenSSL ENGINE API) can compile.
           export REBUILD_PKGS=libopenssl
+          export CCACHE=1
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       - name: Dump build log on failure
@@ -93,6 +106,13 @@ jobs:
           path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+
 
   # The 32-bit companion userland that gets merged into each image as
   # /usr/lib32. It must be built in its own architecture's container (that is
@@ -106,12 +126,22 @@ jobs:
         arch: [i386, armv7]
     runs-on: ubuntu-latest
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    env:
+      CCACHE_DIR: /workspaces/br-ccache
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
       - name: Check out the ports external
         run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-${{ matrix.arch }}-
 
       - name: Build the 32-bit companion
         run: |
@@ -122,8 +152,12 @@ jobs:
           EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
           "$GITHUB_WORKSPACE/generate-config.sh" \
             --arch ${{ matrix.arch }} --profile lib32 -o /tmp/lib32.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
+          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/lib32.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR" \
+            BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
+          make -C "$B" O="$O" ccache-options \
+            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true --set-config=compiler_check=content" || true
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR"
           tar czf "$GITHUB_WORKSPACE/lib32-${{ matrix.arch }}.tar.gz" -C "$O" target
 
       - name: Upload companion target tree
@@ -132,6 +166,13 @@ jobs:
           name: lib32-${{ matrix.arch }}
           path: lib32-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
+
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
 
   # Fast machinery check without the Swift toolchain: proves the image config
   # resolves and generate-config/build-images plumbing is intact on a plain
