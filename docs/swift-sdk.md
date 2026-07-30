@@ -101,9 +101,23 @@ swift sdk install swift-linux.artifactbundle
 swift build --swift-sdk aarch64-unknown-linux-gnu   # or x86_64-unknown-linux-gnu
 ```
 
-CI builds this automatically: `build-swift-sdk.yml` builds a bundle per
-architecture (x86_64, arm64, armv7, i386) from the app-sdk profile and merges
-them into a `swift-linux-swift-sdk` artifact.
+#### Downloading it instead of building it
+
+CI builds this nightly, so there is usually no reason to build it yourself:
+`build-swift-sdk.yml` produces a bundle per architecture (x86_64, arm64, armv7,
+i386) from the app-sdk profile, merges them, and publishes the result to the
+rolling `swift-sdk-latest` release - the same way `build-toolchain.yml`
+publishes toolchains. Assets are split `.tar.gz` parts, because release assets
+cap at 2 GiB:
+
+```sh
+gh release download swift-sdk-latest --pattern 'swift-linux-swift-sdk.tar.gz.part*'
+cat swift-linux-swift-sdk.tar.gz.part* | tar xzf -
+swift sdk install swift-linux.artifactbundle
+```
+
+The per-architecture bundles stay Actions artifacts (`swift-linux-<arch>-swift-sdk`);
+the combined one is what `swift sdk install` wants, so it is the one published.
 
 ## Build a package
 
