@@ -7,6 +7,10 @@ CONFIG_DRM=y
 CONFIG_DRM_MEDIATEK=y
 CONFIG_DRM_PANFROST=y
 CONFIG_DRM_PANEL_BOE_TV101WUM_NL6=y
+# Audio: the machine driver for the MT6358 codec with the TS3A227E jack
+# detector and MAX98357A speaker amp - the card the UCM profile in this
+# family's rootfs-overlay configures (hw:mt8183mt6358ts3).
+CONFIG_SND_SOC_MT8183_MT6358_TS3A227E_MAX98357A=y
 CONFIG_MMC=y
 CONFIG_MMC_MTK=y
 CONFIG_MTK_SCP=y

@@ -1,0 +1,14 @@
+# HP Chromebook 11a (kappa), and the jacuzzi sub-baseboard generally.
+#
+# The kukui tablets drive a DSI panel directly (DRM_PANEL_BOE_TV101WUM_NL6 in
+# the family fragment); jacuzzi puts an Analogix ANX7625 DSI-to-eDP bridge in
+# front of a generic eDP panel instead, so without these the display never
+# lights up. Compatible strings are in mainline's mt8183-kukui-jacuzzi.dtsi.
+CONFIG_DRM_ANALOGIX_ANX7625=y
+CONFIG_DRM_PANEL_EDP=y
+
+# Elan touchscreen (elan,ekth3500) and I2C trackpad (elan,ekth3000).
+CONFIG_INPUT_TOUCHSCREEN=y
+CONFIG_TOUCHSCREEN_ELAN=y
+CONFIG_MOUSE_ELAN_I2C=y
+CONFIG_MOUSE_ELAN_I2C_I2C=y
