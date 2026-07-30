@@ -33,8 +33,173 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The host Swift toolchain is the same artifact for every architecture, so it
+  # is built once here instead of four times in the matrix - which is where the
+  # hours went: one run spent 3h13m on it per arch and still had only reached
+  # LLVM and clang.
+  #
+  # It is genuinely shareable, not just similar. host-swift declares no
+  # dependency on the cross toolchain (nothing sets HOST_SWIFT_DEPENDENCIES),
+  # its configure only clones the Swift sources, it builds with the host
+  # compiler, and the buildbot_linux preset targets --host-target linux-x86_64
+  # whatever Buildroot is aiming at. The dependency runs the other way: the
+  # target swift runtime needs host-swift, the cross toolchain and the sysroot.
+  #
+  # Built at a fixed path (/mnt/br/shared) rather than in a per-arch output
+  # tree, because the build bakes absolute paths into its CMake caches and into
+  # the build/llvm symlink. The consuming jobs unpack to that same path and
+  # symlink it into their own tree, so every one of those references still
+  # resolves.
+  host-swift:
+    name: Host Swift
+    runs-on: ubuntu-latest
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 350
+    permissions:
+      contents: write             # uploads assets to the host-swift-latest release
+    outputs:
+      version: ${{ steps.ver.outputs.version }}
+    env:
+      BR2_DL_DIR: /mnt/br/dl
+      CCACHE_DIR: /mnt/br/ccache/host-swift
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Host prerequisites
+        run: |
+          set -eu
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
+            libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
+            libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
+          if ! command -v gh >/dev/null 2>&1; then
+            apt-get install -y --no-install-recommends gh 2>/dev/null || {
+              apt-get install -y --no-install-recommends curl ca-certificates
+              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                -o /usr/share/keyrings/githubcli.gpg
+              echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+                > /etc/apt/sources.list.d/github-cli.list
+              apt-get update
+              apt-get install -y --no-install-recommends gh
+            }
+          fi
+          mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
+          df -h / /mnt
+
+      - name: Check out Buildroot and the externals
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
+
+      # The asset is keyed on this, so a Swift bump republishes rather than
+      # silently reusing the previous toolchain.
+      - name: Read the Swift version
+        id: ver
+        run: |
+          set -eu
+          v=$(sed -n 's/^SWIFT_VERSION *= *//p' swift/package/swift/swift.mk | head -1)
+          [ -n "$v" ] || { echo "no SWIFT_VERSION in swift/package/swift/swift.mk" >&2; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "swift $v"
+
+      - name: Restore dl/
+        uses: actions/cache/restore@v4
+        with:
+          path: /mnt/br/dl
+          key: br-dl-${{ hashFiles('sdk/defconfig/**', 'external/package/**/*.hash', 'ports/package/**/*.hash') }}
+          restore-keys: |
+            br-dl-
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /mnt/br/ccache/host-swift
+          key: br-ccache-host-swift-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-host-swift-
+
+      # Only the host-swift package: with no dependencies declared it pulls in
+      # neither the cross toolchain nor anything else from the profile. The
+      # architecture of the defconfig is irrelevant to what gets built - it just
+      # has to be a configured tree.
+      - name: Build host-swift
+        run: |
+          set -eu
+          B="$GITHUB_WORKSPACE/buildroot"
+          O=/mnt/br/shared
+          EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
+          "$GITHUB_WORKSPACE/generate-config.sh" --arch x86_64 --profile sdk -o /tmp/hs.defconfig
+          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/hs.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="$BR2_DL_DIR" \
+            BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG=/tmp/hs.defconfig defconfig
+          make -C "$B" O="$O" ccache-options \
+            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true --set-config=compiler_check=content" || true
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" \
+            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$(nproc)" host-swift
+
+      # What the consumers actually need, and how big it is. The sizes are
+      # reported because the split threshold and the wisdom of shipping the
+      # whole build tree depend on them.
+      - name: Measure
+        run: |
+          set -eu
+          D=/mnt/br/shared/build/host-swift-${{ steps.ver.outputs.version }}
+          du -sh "$D" || true
+          du -sh "$D/build/usr" "$D/swift-source" 2>/dev/null || true
+          du -sh "$D"/swift-source/build/buildbot_linux/* 2>/dev/null || true
+          df -h /mnt
+
+      - name: Package host-swift
+        run: |
+          set -eu
+          VER=${{ steps.ver.outputs.version }}
+          D=/mnt/br/shared/build/host-swift-$VER
+          test -x "$D/build/usr/bin/swiftc" || { echo "no swiftc at $D/build/usr/bin" >&2; exit 1; }
+          # Ship the stamps up to and including the build, so a consumer skips
+          # download/extract/patch/configure/build outright. The install stamp
+          # is deliberately dropped: HOST_SWIFT_INSTALL_CMDS writes the SwiftPM
+          # destination file with target-specific flags, so it has to run per
+          # architecture.
+          rm -f "$D"/.stamp_host_installed "$D"/.stamp_installed*
+          tar -C /mnt/br/shared/build --zstd -cf /mnt/br/host-swift-$VER.tar.zst \
+            host-swift-$VER
+          # Release assets cap at 2 GiB, as with the toolchain trees.
+          split -b 1900M -d /mnt/br/host-swift-$VER.tar.zst \
+            /mnt/br/host-swift-$VER.tar.zst.part
+          rm /mnt/br/host-swift-$VER.tar.zst
+          ls -lh /mnt/br/host-swift-$VER.tar.zst.part*
+
+      - name: Publish to the host-swift-latest release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          VER=${{ steps.ver.outputs.version }}
+          gh release view host-swift-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create host-swift-latest --repo "$GITHUB_REPOSITORY" \
+              --title "Host Swift (rolling)" \
+              --notes "Host Swift toolchain built from source by build-toolchain.yml and shared across the architecture matrix. Assets are split tar.zst parts: cat host-swift-<ver>.tar.zst.part* | tar --zstd -x" \
+              --latest=false
+          for a in $(gh release view host-swift-latest --repo "$GITHUB_REPOSITORY" \
+                      --json assets --jq '.assets[].name' | grep "^host-swift-$VER\." || true); do
+            gh release delete-asset host-swift-latest "$a" --repo "$GITHUB_REPOSITORY" -y
+          done
+          gh release upload host-swift-latest /mnt/br/host-swift-$VER.tar.zst.part* \
+            --repo "$GITHUB_REPOSITORY"
+
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: /mnt/br/ccache/host-swift
+          key: br-ccache-host-swift-${{ github.run_id }}
+
   toolchain:
     name: Toolchain (${{ matrix.arch }})
+    needs: host-swift
     strategy:
       fail-fast: false
       matrix:
@@ -85,6 +250,19 @@ jobs:
             uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
             libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
             libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
+          # gh is preinstalled on a runner but not in the image, and both the
+          # shared host-swift download and the release upload need it.
+          if ! command -v gh >/dev/null 2>&1; then
+            apt-get install -y --no-install-recommends gh 2>/dev/null || {
+              apt-get install -y --no-install-recommends curl ca-certificates
+              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                -o /usr/share/keyrings/githubcli.gpg
+              echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+                > /etc/apt/sources.list.d/github-cli.list
+              apt-get update
+              apt-get install -y --no-install-recommends gh
+            }
+          fi
           mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
           df -h / /mnt
 
@@ -126,6 +304,35 @@ jobs:
           restore-keys: |
             br-ccache-${{ matrix.arch }}-
 
+      # Unpack the shared host-swift to the same absolute path the producer
+      # built it at, then point this architecture's tree at it with a symlink.
+      # swift.mk guards both expensive steps on directories existing
+      # (swift-source for configure, build/llvm for the build), so a populated
+      # tree makes them no-ops and only the per-arch install runs.
+      - name: Fetch the shared host-swift
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          VER=${{ needs['host-swift'].outputs.version }}
+          D=/mnt/br/shared/build/host-swift-$VER
+          if [ ! -d "$D" ]; then
+            mkdir -p /mnt/br/shared/build
+            cd /mnt/br
+            gh release download host-swift-latest --repo "$GITHUB_REPOSITORY" \
+              --pattern "host-swift-$VER.tar.zst.part*"
+            cat host-swift-$VER.tar.zst.part* | tar --zstd -x -C /mnt/br/shared/build
+            rm -f host-swift-$VER.tar.zst.part*
+          fi
+          # Fail here rather than four hours later: an incomplete tree would
+          # simply re-trigger the build, and a dangling build/llvm symlink
+          # would do so silently.
+          test -x "$D/build/usr/bin/swiftc" || { echo "shared host-swift has no swiftc" >&2; exit 1; }
+          test -e "$D/build/llvm/lib/cmake/llvm" || { echo "shared host-swift has no usable build/llvm" >&2; exit 1; }
+          mkdir -p /mnt/br/output/${{ matrix.arch }}/build
+          ln -sfn "$D" /mnt/br/output/${{ matrix.arch }}/build/host-swift-$VER
+          "$D/build/usr/bin/swiftc" --version
+
       - name: Build toolchain + host tools (sdk profile)
         run: |
           set -eu
@@ -150,6 +357,18 @@ jobs:
         run: |
           set -eu
           O=/mnt/br/output/${{ matrix.arch }}
+          # host-swift is a symlink into the shared tree here, and tar would
+          # archive it as one - dangling for anyone who unpacks this asset via
+          # "make <t>-seed". Put a real directory back, carrying just the
+          # stamps, which is the shape the published tree had when every job
+          # built host-swift in place.
+          L="$O/build/host-swift-${{ needs['host-swift'].outputs.version }}"
+          if [ -L "$L" ]; then
+            t=$(readlink "$L")
+            rm -f "$L"
+            mkdir -p "$L"
+            cp -a "$t"/.stamp_* "$L"/ 2>/dev/null || true
+          fi
           find "$O/build" -mindepth 2 -maxdepth 2 \
             ! -name '.stamp_*' ! -name '.br2_*' ! -name '.applied_patches_list' \
             -exec rm -rf {} + 2>/dev/null || true
@@ -166,19 +385,6 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
-          # gh is preinstalled on a runner but not in the image, so this step
-          # has to supply it now that the job is containerized.
-          if ! command -v gh >/dev/null 2>&1; then
-            apt-get install -y --no-install-recommends gh 2>/dev/null || {
-              apt-get install -y --no-install-recommends curl ca-certificates
-              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-                -o /usr/share/keyrings/githubcli.gpg
-              echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
-                > /etc/apt/sources.list.d/github-cli.list
-              apt-get update
-              apt-get install -y --no-install-recommends gh
-            }
-          fi
           gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
             gh release create toolchain-latest --repo "$GITHUB_REPOSITORY" \
               --title "Toolchain (rolling)" \
