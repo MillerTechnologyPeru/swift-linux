@@ -32,14 +32,16 @@ make list                    # what can be built
 make x86_64-build            # build the x86_64 image
 make arm64-build             # build the arm64 image
 make x86_64-pkg PKG=mesa3d   # rebuild a single package
-make x86_64-shell            # a shell in the build environment
+make x86_64-seed             # fetch a prebuilt toolchain into a fresh tree
 
 util/x86_64-qemu.sh          # boot the result in QEMU with a GTK window
 ```
 
-`CONTAINER=1` runs the build in a per-architecture toolchain container as your
-own user; `PARALLEL_BUILD=1` and `CCACHE=1` speed it up. See
-[docs/build.md](docs/build.md).
+Builds run on your host. A fresh checkout has no toolchain, and building gcc,
+glibc and host-swift from source takes hours, so seed the output tree once per
+architecture from the `toolchain-latest` release (`make <t>-seed`, which needs
+`gh` and `zstd`) and keep it. `PARALLEL_BUILD=1` and `CCACHE=1` speed the rest
+up. See [docs/build.md](docs/build.md).
 
 ## Configuration model
 
