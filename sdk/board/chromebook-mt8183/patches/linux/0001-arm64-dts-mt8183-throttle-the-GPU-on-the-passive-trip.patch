@@ -1,0 +1,44 @@
+arm64: dts: mt8183: throttle the GPU on the passive trip point
+
+The gpu-thermal zone declares a passive trip at 85C but nothing is bound to
+it: the zone has no cooling-maps and the GPU node has no #cooling-cells, so
+the passive trip does nothing and the zone heats on to the 100C critical
+trip, where the thermal core kills the machine. Panfrost registers a devfreq
+cooling device, so binding it to the passive trip is all that is needed to
+get the GPU downclocked instead. This matters on the fanless Chromebooks.
+
+Not upstream: MT8183 has carried this gap since its thermal zones were
+added. postmarketOS patches the same node (pmaports
+device/community/linux-postmarketos-mediatek-mt8183,
+arm64-dts-mediatek-mt8183-Add-missing-GPU-clocks.patch) and also rewrites
+the GPU clocks; that half is deliberately left out. It belongs to an older
+binding - the mediatek,mt8183b-mali node used here takes exactly one clock
+plus three power domains, and panfrost understands only core and bus clocks.
+
+--- a/arch/arm64/boot/dts/mediatek/mt8183.dtsi
++++ b/arch/arm64/boot/dts/mediatek/mt8183.dtsi
+@@ -1656,6 +1656,8 @@
+ 				<&spm MT8183_POWER_DOMAIN_MFG_2D>;
+ 			power-domain-names = "core0", "core1", "core2";
+ 
++			#cooling-cells = <2>;
++
+ 			operating-points-v2 = <&gpu_opp_table>;
+ 		};
+ 
+@@ -2422,6 +2424,15 @@
+ 					type = "critical";
+ 				};
+ 			};
++
++			cooling-maps {
++				map0 {
++					trip = <&gpu_alert>;
++					cooling-device = <&gpu
++						THERMAL_NO_LIMIT
++						THERMAL_NO_LIMIT>;
++				};
++			};
+ 		};
+ 
+ 		tzts3: md1-thermal {
