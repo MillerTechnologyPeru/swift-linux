@@ -59,10 +59,23 @@ DISPLAY_OPTS="gtk,gl=on,show-cursor=on"
 # Headless keeps the GL device on purpose: the compositor needs a render node,
 # not a window, so "no display" and "no GL" are separate choices - dropping GL
 # here would boot to a serial console with no session to verify.
+#
+# That means egl-headless rather than "none": virtio-gpu-gl needs a display
+# backend with GL enabled, and "-display none" makes qemu refuse the device
+# outright ("The display backend does not have OpenGL support enabled").
+# egl-headless renders through the host GPU with no window, which is what
+# sdk/defconfig/gpu/virgl.config already documents. Hosts whose qemu lacks it
+# fall back to no display, and lose the session with it.
 HEADLESS=""
 if [ -n "${QEMU_NOGRAPHIC:-}" ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
 	HEADLESS=1
-	DISPLAY_OPTS="none"
+	if qemu-system-x86_64 -display help 2>/dev/null | grep -qw egl-headless; then
+		DISPLAY_OPTS="egl-headless"
+	else
+		echo "warning: this qemu has no egl-headless display; running without a" >&2
+		echo "         GPU, so the compositor will not start." >&2
+		DISPLAY_OPTS="none"
+	fi
 fi
 if ! qemu-system-x86_64 -device help 2>/dev/null | grep -q 'virtio-gpu-gl-pci'; then
 	echo "warning: this qemu has no virgl (virtio-gpu-gl-pci); falling back to" >&2
@@ -77,6 +90,7 @@ if ! qemu-system-x86_64 -device help 2>/dev/null | grep -q 'virtio-gpu-gl-pci'; 
 	# to see what the machine is doing.
 	GPU="-device virtio-vga"
 	DISPLAY_OPTS="gtk,show-cursor=on"
+	# No GL device, so no reason to ask for a GL display backend either.
 	[ -n "$HEADLESS" ] && DISPLAY_OPTS="none"
 fi
 
