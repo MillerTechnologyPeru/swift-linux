@@ -60,11 +60,30 @@ FRONTEND ?=
 TOOLCHAIN_REPO ?= MillerTechnologyPeru/swift-linux
 TOOLCHAIN_RELEASE ?= toolchain-latest
 
+# ---- app bundles ---------------------------------------------------------
+# Bundles are built by the ports tree's util/make-app-bundle.sh, but the output
+# belongs to this repo: APPS_OUT keeps it under our own output/ (which is
+# gitignored here) rather than dirtying the submodule.
+#
+# BUNDLE_SDK is a Swift SDK bundle name in ~/.swiftpm/swift-sdks or a path to an
+# .artifactbundle; its sysroots are what the ports cross-compile against, so a
+# multi-arch bundle needs the combined all-arch SDK (see docs/swift-sdk.md).
+# BUNDLE_ARCHES empty means the script's own default (every arch the SDK has).
+APPS_OUT ?= $(OUTPUT_BASE)/apps
+BUNDLE_SDK ?= swift-linux
+BUNDLE_ARCHES ?=
+PACK ?=
+
 # ---- target discovery ----------------------------------------------------
 IMAGE_ARCHES := x86_64 arm64
 ALL_BOARD_DIRS := $(notdir $(patsubst %/board.config,%,$(wildcard $(REPO_DIR)/sdk/board/*/board.config)))
 DEVICES := $(filter-out $(IMAGE_ARCHES) common,$(ALL_BOARD_DIRS))
 TARGETS := $(IMAGE_ARCHES) $(DEVICES)
+
+# App bundles: a port that ships as an AppRuntime bundle keeps its recipe with
+# its package in the ports tree (package/<category>/<pkg>/<pkg>.bundle.sh), so
+# discovery is the same trick as boards - whatever is there is a target.
+BUNDLES := $(notdir $(patsubst %.bundle.sh,%,$(wildcard $(BR_PORTS)/package/*/*/*.bundle.sh)))
 
 # generate-config flag: arches select by --arch, devices by --device.
 gen_flag = $(if $(filter $(1),$(IMAGE_ARCHES)),--arch $(1),--device $(1))
@@ -168,11 +187,13 @@ define br
 endef
 endif
 
-.PHONY: list help submodules
+.PHONY: list help submodules bundles-clean
 help list:
 	@echo "Targets: $(TARGETS)"
 	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-clean <t>-refresh <t>-seed"
 	@echo "Builds run on this host (CONTAINER=1 for the container backend); seed a fresh output tree first (<t>-seed). PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
+	@echo "Bundles: $(BUNDLES)"
+	@echo "Verbs:   <a>-bundle [PACK=1] [BUNDLE_ARCHES=\"arm64 x86_64\"] [BUNDLE_SDK=name], bundles-clean"
 
 # submodules: check out buildroot/, swift/ and ports/ if the clone skipped them.
 # Every build depends on this, so a plain "git clone" still just works.
@@ -199,6 +220,20 @@ $(addsuffix -build,$(TARGETS)): %-build: %-config
 $(addsuffix -pkg,$(TARGETS)): %-pkg:
 	@[ -n "$(PKG)" ] || { echo "usage: make $*-pkg PKG=<package>"; exit 1; }
 	$(call br,$*,$(PKG)-dirclean $(PKG)-rebuild)
+
+# %-bundle: build a port as a multi-architecture AppRuntime bundle. No Buildroot
+# and no image involved - one clang cross-compiles each architecture against the
+# Swift SDK sysroots, so this needs an installed SDK ($(BUNDLE_SDK)) rather than
+# an output tree. PACK=1 also packs the .squashfs.
+$(addsuffix -bundle,$(BUNDLES)): %-bundle: submodules
+	@mkdir -p $(APPS_OUT)
+	$(BR_PORTS)/util/make-app-bundle.sh $* --out $(APPS_OUT) --sdk $(BUNDLE_SDK) \
+		$(if $(BUNDLE_ARCHES),--arch "$(BUNDLE_ARCHES)") \
+		$(if $(filter 1,$(PACK)),--pack)
+
+# bundles-clean: drop every built bundle.
+bundles-clean:
+	rm -rf $(APPS_OUT)
 
 # %-seed: pre-populate a fresh output dir with a prebuilt toolchain, skipping
 # the multi-hour from-source build of gcc/glibc/host-swift that an empty tree
