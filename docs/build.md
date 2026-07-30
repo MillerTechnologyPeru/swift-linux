@@ -83,10 +83,20 @@ Adding a board is dropping a `board.config`; no Makefile edits.
 
 ### Where builds run
 
-On this host, always - there is no container backend. Buildroot needs the usual
-build prerequisites plus a host compiler new enough for the tree's host tools
-(mesa's Intel shader compiler wants GCC 13+, for example), and a seeded or
-already-built `output/<arch>`.
+On this host by default. Buildroot needs the usual build prerequisites plus a
+host compiler new enough for the tree's host tools (mesa's Intel shader
+compiler wants GCC 13+, for example), and a seeded or already-built
+`output/<arch>`.
+
+If the host cannot satisfy the prerequisites, `CONTAINER=1` runs the identical
+build inside `colemancda/buildroot-swift:latest` - the plain base image
+(Debian 13 with the Swift toolchain and every Buildroot host dependency, no
+Buildroot tree or prebuilt output baked in; not the retired per-arch images,
+whose GCC 12 could no longer build the host tools). Everything mutable stays
+on host mounts: the repo and `output/` at their own paths, the ccache over
+Buildroot's default cache location, and the per-target output *also* at the
+container root (`O=/<target>`), so the absolute paths Buildroot embeds - and
+ccache hashes - do not depend on where the repo is checked out.
 
 CI is the exception, and only historically: `build-images.yml` and
 `build-swift-sdk.yml` still start from the published
