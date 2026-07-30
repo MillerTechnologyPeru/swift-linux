@@ -114,6 +114,8 @@ jobs:
     name: Combined Swift SDK
     needs: app-sdk
     runs-on: ubuntu-latest
+    permissions:
+      contents: write             # uploads assets to the swift-sdk-latest release
     steps:
       - uses: actions/checkout@v4
       - name: Download per-arch Swift SDKs
@@ -137,3 +139,38 @@ jobs:
           name: swift-linux-swift-sdk
           path: swift-linux-swift-sdk.tar.gz
           if-no-files-found: error
+
+      # An artifact expires and needs a logged-in download, which is no way to
+      # ship an SDK. Publish the same tarball to a rolling release instead, the
+      # way build-toolchain.yml publishes its trees, so
+      # "gh release download swift-sdk-latest" works for anyone.
+      #
+      # Release assets cap at 2 GiB. The toolchain trees are far past that and
+      # always ship split; this bundle compresses well below it, so it is split
+      # only if it has grown - consumers concatenate either way, and the
+      # single-part case leaves one .part00 file rather than two spellings of
+      # the same asset.
+      - name: Publish to the swift-sdk-latest release
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          ls -lh swift-linux-swift-sdk.tar.gz
+          split -b 1900M -d swift-linux-swift-sdk.tar.gz swift-linux-swift-sdk.tar.gz.part
+          rm swift-linux-swift-sdk.tar.gz
+          gh release view swift-sdk-latest --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 || \
+            gh release create swift-sdk-latest --repo "$GITHUB_REPOSITORY" \
+              --title "Swift SDK (rolling)" \
+              --notes "Rolling all-architecture Swift SDK built by build-swift-sdk.yml, covering aarch64, x86_64, armv7 and i686. Assets are split tar.gz parts:
+
+              cat swift-linux-swift-sdk.tar.gz.part* | tar xzf -
+              swift sdk install swift-linux.artifactbundle" \
+              --latest=false
+          # Replace the previous parts: delete what is there, then upload.
+          for a in $(gh release view swift-sdk-latest --repo "$GITHUB_REPOSITORY" \
+                      --json assets --jq '.assets[].name' | grep '^swift-linux-swift-sdk\.' || true); do
+            gh release delete-asset swift-sdk-latest "$a" --repo "$GITHUB_REPOSITORY" -y
+          done
+          gh release upload swift-sdk-latest swift-linux-swift-sdk.tar.gz.part* \
+            --repo "$GITHUB_REPOSITORY"
