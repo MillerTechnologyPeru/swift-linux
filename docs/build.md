@@ -42,7 +42,11 @@ instead of duplicating it. Examples:
 - `sdk/defconfig/frontend/*.config` — the image's **frontend** (session +
   launcher); the image profile includes the EmulationStation default and a
   board overrides it by including another (emitted later, so its negations
-  win). See `sdk/defconfig/frontend/README.md`.
+  win). `--frontend <name>` (or `FRONTEND=<name>` for `build-images.sh`)
+  overrides it for one build without editing the board, which is how the
+  `minimal` frontend — sway and foot, none of the emulator stack — is used to
+  check that a board boots before spending the time on a full image. See
+  `sdk/defconfig/frontend/README.md`.
 
 ## The Makefile (per-target verbs)
 
