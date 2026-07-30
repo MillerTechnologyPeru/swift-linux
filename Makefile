@@ -74,9 +74,16 @@ BR2_MAKE_OPTS += -j$(shell nproc) -l$(shell nproc)
 endif
 
 # make_defconfig <target>  - write $(OUTPUT_BASE)/<target>.defconfig
+# The accelerator knobs append the same options build-images.sh injects
+# (PARALLEL_BUILD's -j alone would not help: Buildroot serializes packages
+# unless BR2_PER_PACKAGE_DIRECTORIES lets independent ones build at once).
+# Note a tree built without per-package directories rebuilds almost fully
+# when they are switched on - flip it on fresh trees, not mid-life.
 define make_defconfig
 	@mkdir -p $(OUTPUT_BASE)
 	$(GENERATE) $(call gen_flag,$(1)) --profile $(PROFILE) -o $(OUTPUT_BASE)/$(1).defconfig
+	$(if $(filter 1,$(PARALLEL_BUILD)),@printf 'BR2_PER_PACKAGE_DIRECTORIES=y\n' >> $(OUTPUT_BASE)/$(1).defconfig)
+	$(if $(filter 1,$(CCACHE)),@printf 'BR2_CCACHE=y\n' >> $(OUTPUT_BASE)/$(1).defconfig)
 endef
 
 # br <target> <make-args...>  - run Buildroot for a target.
