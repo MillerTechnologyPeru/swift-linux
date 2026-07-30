@@ -9,10 +9,15 @@ name: Build Images
 # GRUB, RAUC, steam, ... - compile. Modeled on MillerTechnologyPeru/
 # buildroot-swift's own Buildroot workflow.
 
-# A full run builds four Buildroot trees and takes hours, so it is not worth
-# spending on every push: it runs once a night, and on demand from the
-# Actions tab (or "gh workflow run build-images.yml") when a change needs
-# checking before then.
+# The Swift SDKs are built by a separate workflow (build-swift-sdk.yml): they
+# share nothing with the images but the container, and splitting them means a
+# broken SDK and a broken image are separate red marks, each re-runnable
+# without paying for the other.
+#
+# A full run builds four Buildroot trees (two images, two 32-bit companions)
+# and takes hours, so it is not worth spending on every push: it runs once a
+# night, and on demand from the Actions tab (or "gh workflow run
+# build-images.yml") when a change needs checking before then.
 on:
   schedule:
     # 07:00 UTC - after the working day in the Americas, so the nightly
@@ -32,6 +37,8 @@ jobs:
     # Per-arch container with Buildroot + a prebuilt output/<arch> (toolchain
     # + host-swift + native Swift tools). Same images buildroot-swift uses.
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    env:
+      CCACHE_DIR: /workspaces/br-ccache
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
@@ -41,6 +48,16 @@ jobs:
       # against), so only the ports submodule has to be checked out here.
       - name: Check out the ports external
         run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
+      # Shared per-arch ccache (same br-ccache-<arch> namespace as the
+      # toolchain and SDK workflows; the cache is repo-scoped).
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-${{ matrix.arch }}-
 
       - name: Fetch the 32-bit companion
         uses: actions/download-artifact@v4
@@ -69,6 +86,7 @@ jobs:
           # The container's cached OpenSSL was built without engine support;
           # rebuild it so RAUC (which uses the OpenSSL ENGINE API) can compile.
           export REBUILD_PKGS=libopenssl
+          export CCACHE=1
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       - name: Dump build log on failure
@@ -88,6 +106,13 @@ jobs:
           path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+
 
   # The 32-bit companion userland that gets merged into each image as
   # /usr/lib32. It must be built in its own architecture's container (that is
@@ -101,12 +126,22 @@ jobs:
         arch: [i386, armv7]
     runs-on: ubuntu-latest
     container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    env:
+      CCACHE_DIR: /workspaces/br-ccache
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
       - name: Check out the ports external
         run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+          restore-keys: |
+            br-ccache-${{ matrix.arch }}-
 
       - name: Build the 32-bit companion
         run: |
@@ -117,8 +152,12 @@ jobs:
           EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
           "$GITHUB_WORKSPACE/generate-config.sh" \
             --arch ${{ matrix.arch }} --profile lib32 -o /tmp/lib32.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
+          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/lib32.defconfig
+          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR" \
+            BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
+          make -C "$B" O="$O" ccache-options \
+            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true --set-config=compiler_check=content" || true
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR"
           tar czf "$GITHUB_WORKSPACE/lib32-${{ matrix.arch }}.tar.gz" -C "$O" target
 
       - name: Upload companion target tree
@@ -128,54 +167,12 @@ jobs:
           path: lib32-${{ matrix.arch }}.tar.gz
           if-no-files-found: error
 
-  # Every architecture's Swift SDK comes from the app-sdk profile (Swift plus
-  # the full applibs graphics/app stack), so all four bundles carry the same
-  # libraries and headers - libGL/EGL/GLES, SDL, wayland, X11, cairo, ALSA -
-  # rather than arm64/x86_64 shipping only what the image profile happened to
-  # build. armv7 and i386 have no bootable image target and exist only here.
-  app-sdk:
-    name: App SDK (${{ matrix.arch }})
-    strategy:
-      fail-fast: false
-      matrix:
-        arch: [x86_64, arm64, armv7, i386]
-    runs-on: ubuntu-latest
-    container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
-    steps:
-      - name: Checkout swift-linux
-        uses: actions/checkout@v4
-
-      - name: Check out the ports external
-        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
-
-      - name: Build app-sdk (Swift + applibs)
-        run: |
-          set -eu
-          BR_SWIFT=/workspaces/buildroot-swift
-          B="$BR_SWIFT/buildroot"
-          O="$BR_SWIFT/output/${{ matrix.arch }}"
-          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
-          "$GITHUB_WORKSPACE/generate-config.sh" \
-            --arch ${{ matrix.arch }} --profile app-sdk -o /tmp/appsdk.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT"
-
-      - name: Generate Swift SDK
-        run: |
-          set -eu
-          export BR_SWIFT=/workspaces/buildroot-swift
-          bundle="/workspaces/buildroot-swift/output/swift-linux-${{ matrix.arch }}.artifactbundle"
-          bash "$GITHUB_WORKSPACE/util/make-swift-sdk.sh" \
-            --arch ${{ matrix.arch }} --portable --out "$bundle"
-          tar czf "$GITHUB_WORKSPACE/swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz" \
-            -C "$(dirname "$bundle")" "$(basename "$bundle")"
-
-      - name: Upload Swift SDK
-        uses: actions/upload-artifact@v4
+      - name: Save ccache
+        if: always() && github.event_name != 'pull_request'
+        uses: actions/cache/save@v4
         with:
-          name: swift-linux-${{ matrix.arch }}-swift-sdk
-          path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
-          if-no-files-found: error
+          path: /workspaces/br-ccache
+          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
 
   # Fast machinery check without the Swift toolchain: proves the image config
   # resolves and generate-config/build-images plumbing is intact on a plain
@@ -193,31 +190,3 @@ jobs:
           ./generate-config.sh --arch ${{ matrix.arch }} --profile image -o /tmp/image.defconfig
           echo "----- generated defconfig -----"
           grep -E '^BR2_(aarch64|x86_64|PACKAGE_(SWAYWM|STEAM|BOX64|MESA3D_GALLIUM_DRIVER_VIRGL)|TARGET_GRUB2_.*_EFI|INIT_BUSYBOX)' /tmp/image.defconfig || true
-
-  # Merge the per-arch Swift SDKs into one artifactbundle that cross-compiles
-  # for every architecture (swift build --swift-sdk aarch64/x86_64-...-linux-gnu).
-  # Runs on a plain runner - it only rearranges files (jq + tar).
-  combined-swift-sdk:
-    name: Combined Swift SDK
-    needs: app-sdk
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download per-arch Swift SDKs
-        uses: actions/download-artifact@v4
-        with:
-          pattern: swift-linux-*-swift-sdk
-          path: sdk-parts
-      - name: Combine into an all-arch SDK
-        run: |
-          set -eu
-          mkdir -p parts
-          find sdk-parts -name '*-swift-sdk.tar.gz' -exec tar xzf {} -C parts \;
-          bash util/combine-swift-sdk.sh parts/*.artifactbundle --out swift-linux.artifactbundle
-          tar czf swift-linux-swift-sdk.tar.gz swift-linux.artifactbundle
-      - name: Upload combined Swift SDK
-        uses: actions/upload-artifact@v4
-        with:
-          name: swift-linux-swift-sdk
-          path: swift-linux-swift-sdk.tar.gz
-          if-no-files-found: error
