@@ -7,20 +7,18 @@
 #   make x86_64-build               # build the image for x86_64
 #   make arm64-config               # just (re)configure Buildroot
 #   make x86_64-pkg PKG=mesa3d      # rebuild one package
-#   make arm64-shell                # interactive shell in the build env
 #   make retroid-pocket-5-defconfig # generate a defconfig only
 #   make x86_64-clean               # remove that target's output dir
 #   make x86_64-refresh             # dirclean recently-changed local packages
-#   make arm64-seed                 # pre-populate output from the container's
-#                                   # baked toolchain build (fresh trees only)
+#   make arm64-seed                 # pre-populate output/<arch> from the
+#                                   # published toolchain (fresh trees only)
 #
-# Backends:
-#   (default)     build on the host toolchain (needs a prebuilt output/<arch>).
-#   CONTAINER=1   build in the matching per-arch Swift toolchain container, as
-#                 your own UID/GID and with the local tree bind-mounted at the
-#                 container's /workspaces path - so nothing is left root-owned
-#                 and the container's baked paths still resolve. Uses docker or
-#                 podman, whichever is on PATH (CONTAINER_RUNTIME= to pick).
+# Builds run on this host - there is no container backend. An empty output tree
+# means Buildroot builds the cross toolchain and host-swift from source, which
+# is hours; "make <t>-seed" downloads a prebuilt output/<arch> from the
+# toolchain-latest release (built from source by .github/workflows/
+# build-toolchain.yml) so only this repo's own packages compile. Seed once per
+# architecture, then keep that output tree.
 #
 # Accelerators (see build-images.sh): PARALLEL_BUILD=1, CCACHE=1. Buildroot's
 # default download dir (buildroot/dl) is shared across arches already; set
@@ -50,38 +48,11 @@ CCACHE_DIR ?= $(OUTPUT_BASE)/ccache
 EXTERNALS := $(BR_SWIFT):$(BR_PORTS):$(REPO_DIR)/external
 GENERATE := $(REPO_DIR)/generate-config.sh
 PROFILE ?= image
-CONTAINER_IMAGE ?= docker.io/colemancda/buildroot-swift
-# docker or podman, whichever is on PATH; override with CONTAINER_RUNTIME=.
-CONTAINER_RUNTIME ?= $(shell command -v docker || command -v podman)
-# Rootless podman maps your UID into a subuid range, so the bind-mounted tree
-# would come back owned by a subuid rather than by you; keep-id maps it 1:1.
-# Relabelling a Buildroot tree for SELinux (:z) is far too expensive, so opt the
-# container out of confinement instead.
-# Sniff the version rather than the binary name: podman-docker (and hand-rolled
-# shims) put podman behind a /usr/bin/docker, which the name check would miss.
-CONTAINER_IS_PODMAN := $(shell $(CONTAINER_RUNTIME) --version 2>/dev/null | grep -qi podman && echo 1)
-ifeq ($(CONTAINER_IS_PODMAN),1)
-CONTAINER_OPTS ?= --userns=keep-id --security-opt label=disable
-else
-CONTAINER_OPTS ?=
-endif
-
-# The paths the container's prebuilt toolchain was baked against. Buildroot
-# stamps absolute paths into an output tree, so a seeded output/ (see %-seed)
-# only keeps resolving if Buildroot and the output dir appear at these paths -
-# hence the submodule and $(OUTPUT_BASE) are mounted over them rather than
-# built from their host locations.
-CONTAINER_BR := /workspaces/buildroot-swift
-CONTAINER_REPO := /workspaces/swift-linux
-ifeq ($(CONTAINER),1)
-BUILD_BUILDROOT := $(CONTAINER_BR)/buildroot
-BUILD_OUTPUT_BASE := $(CONTAINER_BR)/output
-BUILD_EXTERNALS := $(CONTAINER_REPO)/swift:$(CONTAINER_REPO)/ports:$(CONTAINER_REPO)/external
-else
-BUILD_BUILDROOT := $(BUILDROOT)
-BUILD_OUTPUT_BASE := $(OUTPUT_BASE)
-BUILD_EXTERNALS := $(EXTERNALS)
-endif
+# Where %-seed fetches prebuilt output trees from: the rolling release that
+# build-toolchain.yml publishes, as split .tar.zst parts (release assets cap at
+# 2 GiB each, an output tree does not).
+TOOLCHAIN_REPO ?= MillerTechnologyPeru/swift-linux
+TOOLCHAIN_RELEASE ?= toolchain-latest
 
 # ---- target discovery ----------------------------------------------------
 IMAGE_ARCHES := x86_64 arm64
@@ -91,8 +62,8 @@ TARGETS := $(IMAGE_ARCHES) $(DEVICES)
 
 # generate-config flag: arches select by --arch, devices by --device.
 gen_flag = $(if $(filter $(1),$(IMAGE_ARCHES)),--arch $(1),--device $(1))
-# container arch for a target (devices are aarch64 today).
-cont_arch = $(if $(filter $(1),x86_64),x86_64,arm64)
+# The toolchain a target seeds from (every device board is aarch64 today).
+seed_arch = $(if $(filter $(1),x86_64),x86_64,arm64)
 
 BR2_MAKE_OPTS :=
 ifeq ($(PARALLEL_BUILD),1)
@@ -105,44 +76,18 @@ define make_defconfig
 	$(GENERATE) $(call gen_flag,$(1)) --profile $(PROFILE) -o $(OUTPUT_BASE)/$(1).defconfig
 endef
 
-# br <target> <make-args...>  - run Buildroot for a target, host or container.
-# The repo is mounted twice: at the container's baked $(CONTAINER_REPO) AND at
-# its host path, because generate-config.sh writes host-absolute paths into the
-# defconfig (rootfs overlays, kernel config fragments, users tables, post-build
-# scripts) which Buildroot then reads at build time. The buildroot submodule and
-# the output dir are mounted over the container's baked $(CONTAINER_BR) copies,
-# so the prebuilt toolchain still resolves while the sources come from here.
-ifeq ($(CONTAINER),1)
-ifeq ($(CONTAINER_RUNTIME),)
-$(error CONTAINER=1 needs docker or podman on PATH, or an explicit CONTAINER_RUNTIME=)
-endif
-define br
-	@mkdir -p $(OUTPUT_BASE)
-	$(CONTAINER_RUNTIME) run --rm $(CONTAINER_OPTS) \
-		--user $(shell id -u):$(shell id -g) -e HOME=/tmp \
-		-v $(REPO_DIR):$(CONTAINER_REPO) \
-		-v $(REPO_DIR):$(REPO_DIR) \
-		-v $(BUILDROOT):$(CONTAINER_BR)/buildroot \
-		-v $(OUTPUT_BASE):$(CONTAINER_BR)/output \
-		-w $(CONTAINER_REPO) $(CONTAINER_IMAGE):swift_$(call cont_arch,$(1))_defconfig \
-		bash -lc 'FORCE_UNSAFE_CONFIGURE=1 make -C $(BUILD_BUILDROOT) \
-			O=$(BUILD_OUTPUT_BASE)/$(1) \
-			BR2_EXTERNAL=$(BUILD_EXTERNALS) \
-			$(BR2_MAKE_OPTS) $(2)'
-endef
-else
+# br <target> <make-args...>  - run Buildroot for a target on this host.
 define br
 	FORCE_UNSAFE_CONFIGURE=1 make -C $(BUILDROOT) O=$(OUTPUT_BASE)/$(1) \
 		BR2_EXTERNAL=$(EXTERNALS) $(DL_OPT) BR2_CCACHE_DIR=$(CCACHE_DIR) \
 		$(BR2_MAKE_OPTS) $(2)
 endef
-endif
 
 .PHONY: list help submodules
 help list:
 	@echo "Targets: $(TARGETS)"
-	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-shell <t>-clean <t>-refresh <t>-seed"
-	@echo "Backend: CONTAINER=1 for a containerized build ($(if $(CONTAINER_RUNTIME),$(CONTAINER_RUNTIME),no docker/podman found)); PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
+	@echo "Verbs:   <t>-defconfig <t>-config <t>-build <t>-pkg PKG=x <t>-clean <t>-refresh <t>-seed"
+	@echo "Builds run on this host; seed a fresh output tree first (<t>-seed). PARALLEL_BUILD=1 / CCACHE=1 to accelerate"
 
 # submodules: check out buildroot/, swift/ and ports/ if the clone skipped them.
 # Every build depends on this, so a plain "git clone" still just works.
@@ -159,7 +104,7 @@ $(addsuffix -defconfig,$(TARGETS)): %-defconfig:
 
 # %-config: configure Buildroot from the generated defconfig.
 $(addsuffix -config,$(TARGETS)): %-config: submodules %-defconfig
-	$(call br,$*,BR2_DEFCONFIG=$(BUILD_OUTPUT_BASE)/$*.defconfig defconfig)
+	$(call br,$*,BR2_DEFCONFIG=$(OUTPUT_BASE)/$*.defconfig defconfig)
 
 # %-build: build the image (or override with CMD=...).
 $(addsuffix -build,$(TARGETS)): %-build: %-config
@@ -170,26 +115,31 @@ $(addsuffix -pkg,$(TARGETS)): %-pkg:
 	@[ -n "$(PKG)" ] || { echo "usage: make $*-pkg PKG=<package>"; exit 1; }
 	$(call br,$*,$(PKG)-dirclean $(PKG)-rebuild)
 
-# %-shell: interactive shell in the build environment.
-$(addsuffix -shell,$(TARGETS)): %-shell:
-	$(call br,$*,BR2_DEFCONFIG=$(BUILD_OUTPUT_BASE)/$*.defconfig defconfig)
-	@echo "(shell target is most useful with CONTAINER=1)"
-
-# %-seed: pre-populate a fresh target output dir from the toolchain
-# container's baked output, the way CI reuses it - skipping the multi-hour
-# from-scratch toolchain and Swift build that an empty tree otherwise
-# implies (the CONTAINER=1 bind mount shadows the baked copy, so it has to
-# be copied out once). The baked output was built with the container's own
-# swift_<arch>_defconfig; the next %-config applies this repo's defconfig
-# on top and Buildroot rebuilds only the difference. Refuses to touch an
-# existing output dir.
+# %-seed: pre-populate a fresh output dir with a prebuilt toolchain, skipping
+# the multi-hour from-source build of gcc/glibc/host-swift that an empty tree
+# implies. The tree comes from the $(TOOLCHAIN_RELEASE) release, built from
+# source by .github/workflows/build-toolchain.yml with the sdk profile; the
+# next %-config applies this repo's defconfig on top and Buildroot rebuilds
+# only the difference.
+#
+# The asset is split into parts because release assets cap at 2 GiB, so the
+# parts are concatenated on the way into tar. Refuses to touch an existing
+# output dir: Buildroot stamps absolute paths into a tree, and unpacking over
+# a live one would mix two configurations.
 $(addsuffix -seed,$(TARGETS)): %-seed:
-	@[ -n "$(CONTAINER_RUNTIME)" ] || { echo "seed needs docker or podman on PATH"; exit 1; }
+	@command -v gh >/dev/null || { echo "seed needs the gh CLI"; exit 1; }
+	@command -v zstd >/dev/null || { echo "seed needs zstd"; exit 1; }
 	@[ ! -e $(OUTPUT_BASE)/$* ] || { echo "$(OUTPUT_BASE)/$* already exists; refusing to overwrite"; exit 1; }
 	@mkdir -p $(OUTPUT_BASE)
-	cid=$$($(CONTAINER_RUNTIME) create $(CONTAINER_IMAGE):swift_$(call cont_arch,$*)_defconfig) && \
-	{ $(CONTAINER_RUNTIME) cp $$cid:/workspaces/buildroot-swift/output/$(call cont_arch,$*) $(OUTPUT_BASE)/$*; \
-	  rc=$$?; $(CONTAINER_RUNTIME) rm -f $$cid >/dev/null; exit $$rc; }
+	@a=$(call seed_arch,$*); tmp=$$(mktemp -d); \
+	echo "seeding $* from $(TOOLCHAIN_RELEASE) ($$a toolchain)"; \
+	gh release download $(TOOLCHAIN_RELEASE) --repo $(TOOLCHAIN_REPO) \
+		--pattern "toolchain-$$a.tar.zst.part*" --dir $$tmp || \
+		{ rm -rf $$tmp; echo "no toolchain asset for $$a in $(TOOLCHAIN_RELEASE)"; exit 1; }; \
+	cat $$tmp/toolchain-$$a.tar.zst.part* | tar --zstd -x -C $(OUTPUT_BASE) || \
+		{ rm -rf $$tmp; exit 1; }; \
+	rm -rf $$tmp; \
+	[ "$$a" = "$*" ] || mv $(OUTPUT_BASE)/$$a $(OUTPUT_BASE)/$*
 
 # %-clean: remove the target's output dir (keeps shared dl/ccache).
 $(addsuffix -clean,$(TARGETS)): %-clean:

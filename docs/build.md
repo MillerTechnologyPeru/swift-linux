@@ -58,35 +58,40 @@ make list                        # available targets
 make x86_64-build                # build the image
 make arm64-config                # (re)configure Buildroot only
 make x86_64-pkg PKG=mesa3d       # rebuild one package
-make arm64-shell                 # shell in the build env
 make retroid-pocket-5-defconfig  # generate a defconfig only
 make x86_64-clean                # remove that target's output
 make x86_64-refresh DAYS=7       # dirclean local packages changed recently
-make arm64-seed                  # pre-populate a fresh output from the
-                                 # container's baked toolchain build
+make arm64-seed                  # pre-populate a fresh output with a
+                                 # prebuilt toolchain
 ```
 
-`<t>-seed` copies the toolchain container's prebuilt Buildroot output into
-the host tree, the way CI reuses it: a fresh tree then skips the multi-hour
-toolchain/Swift build, and the next `<t>-config` applies this repo's
-defconfig incrementally on top. The `CONTAINER=1` bind mount shadows the
-baked copy, which is why it must be copied out once. Refuses to touch an
-existing output directory.
+`<t>-seed` fetches a prebuilt Buildroot `output/<arch>` from the
+`toolchain-latest` release, which `build-toolchain.yml` builds from source per
+architecture. Without it an empty tree makes Buildroot build gcc, glibc and
+host-swift itself - hours before any package of this repo's own compiles. With
+it, the next `<t>-config` applies this repo's defconfig on top and only the
+difference builds.
+
+The asset ships as split `.tar.zst` parts (release assets cap at 2 GiB, an
+output tree does not); `make <t>-seed` concatenates them for you, and needs the
+`gh` CLI and `zstd`. It refuses to unpack over an existing output directory:
+Buildroot stamps absolute paths into a tree, so mixing two configurations there
+is worse than starting over. Seed once per architecture and keep the tree -
+`<t>-clean` throws that toolchain away with it.
 
 Adding a board is dropping a `board.config`; no Makefile edits.
 
-### Backends
+### Where builds run
 
-- **default** — build on the host toolchain (needs a prebuilt `output/<arch>`).
-- **`CONTAINER=1`** — build in the matching per-arch toolchain container, as
-  your own UID/GID, with the tree bind-mounted at both the container's
-  `/workspaces` path (for the baked toolchain paths) and its host path (for
-  the host-absolute paths generated defconfigs carry). The `buildroot/`
-  submodule and `output/` are mounted over the container's baked copies, so
-  the sources come from this checkout while the prebuilt toolchain's absolute
-  paths keep resolving. Uses docker or podman, whichever is on `PATH` -
-  rootless podman gets `--userns=keep-id` so nothing comes back owned by a
-  subuid; override with `CONTAINER_RUNTIME=`.
+On this host, always - there is no container backend. Buildroot needs the usual
+build prerequisites plus a host compiler new enough for the tree's host tools
+(mesa's Intel shader compiler wants GCC 13+, for example), and a seeded or
+already-built `output/<arch>`.
+
+CI is the exception, and only historically: `build-images.yml` and
+`build-swift-sdk.yml` still start from the published
+`colemancda/buildroot-swift` per-arch images, while `build-toolchain.yml` is the
+from-source replacement whose release assets `<t>-seed` consumes.
 
 ### Accelerators
 
