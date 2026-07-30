@@ -33,6 +33,16 @@
 # --fs overrides either way. The root slot itself is EROFS, written as a
 # whole image; only the data partition is formatted here.
 #
+# That the slot is copied rather than rebuilt is load-bearing on the UEFI
+# boards, not just convenient: GRUB has to read the rootfs to load
+# /boot/bzImage from it, and GRUB 2.14 rejects any EROFS carrying an
+# incompatible feature other than CHUNKED_FILE - which mkfs.erofs sets as
+# soon as compression is on. The build already leaves these images
+# uncompressed for that reason (sdk/defconfig/boot/uefi-ab.config), and
+# dd'ing the slot preserves it. Do not "improve" this into a mkfs.erofs
+# that recompresses: the install would stop booting with "unknown
+# filesystem" while the medium it was copied from still worked.
+#
 # DESTRUCTIVE: everything on the internal disk is erased.
 
 set -e

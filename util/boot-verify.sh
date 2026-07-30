@@ -121,7 +121,11 @@ wait_for 'Welcome to Swift Linux' 'userspace reached a login prompt'
 sleep 20
 
 echo "session:"
-PS_OUT="$(guest "ps -o user,comm | grep -E 'sway|foot' | grep -v grep | sort -u")"
+# ps -e, not bare ps: tools.config installs procps-ng, whose ps shows only
+# the current terminal's processes by default - so the session on tty1 is
+# invisible from this serial console and every check below would fail on a
+# perfectly good image. (busybox ps ignores -e and lists everything anyway.)
+PS_OUT="$(guest "ps -eo user,comm | grep -E 'sway|foot' | grep -v grep | sort -u")"
 # sway owned by the session user is the real assertion: a root-owned sway would
 # mean it came from somewhere other than the tty1 autologin chain.
 echo "$PS_OUT" | grep -qE '(^|[[:space:]])swift[[:space:]]+.*sway' || {
