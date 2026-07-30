@@ -51,6 +51,9 @@ CCACHE_DIR ?= $(OUTPUT_BASE)/ccache
 EXTERNALS := $(BR_SWIFT):$(BR_PORTS):$(REPO_DIR)/external
 GENERATE := $(REPO_DIR)/generate-config.sh
 PROFILE ?= image
+# Image-profile frontend override (sdk/defconfig/frontend/*): FRONTEND=minimal
+# boots a bare sway session instead of the board's default frontend.
+FRONTEND ?=
 # Where %-seed fetches prebuilt output trees from: the rolling release that
 # build-toolchain.yml publishes, as split .tar.zst parts (release assets cap at
 # 2 GiB each, an output tree does not).
@@ -81,7 +84,7 @@ endif
 # when they are switched on - flip it on fresh trees, not mid-life.
 define make_defconfig
 	@mkdir -p $(OUTPUT_BASE)
-	$(GENERATE) $(call gen_flag,$(1)) --profile $(PROFILE) -o $(OUTPUT_BASE)/$(1).defconfig
+	$(GENERATE) $(call gen_flag,$(1)) --profile $(PROFILE) $(if $(FRONTEND),--frontend $(FRONTEND)) -o $(OUTPUT_BASE)/$(1).defconfig
 	$(if $(filter 1,$(PARALLEL_BUILD)),@printf 'BR2_PER_PACKAGE_DIRECTORIES=y\n' >> $(OUTPUT_BASE)/$(1).defconfig)
 	$(if $(filter 1,$(CCACHE)),@printf 'BR2_CCACHE=y\n' >> $(OUTPUT_BASE)/$(1).defconfig)
 endef
