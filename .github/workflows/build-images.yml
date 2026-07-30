@@ -46,8 +46,16 @@ jobs:
       # Buildroot and the buildroot-swift external come from the container's
       # cached copies (that is what the prebuilt output/<arch> was built
       # against), so only the ports submodule has to be checked out here.
+      #
+      # safe.directory first: the workspace directory is created by the runner
+      # on the host, while git in a container job runs as root, and git rejects
+      # that ownership mismatch as "dubious ownership". actions/checkout marks
+      # the directory safe in a throwaway HOME of its own, so the exemption is
+      # gone by the time this step runs.
       - name: Check out the ports external
-        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" submodule update --init ports
 
       # Shared per-arch ccache (same br-ccache-<arch> namespace as the
       # toolchain and SDK workflows; the cache is repo-scoped).
@@ -132,8 +140,11 @@ jobs:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
+      # safe.directory: see the image job above.
       - name: Check out the ports external
-        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git -C "$GITHUB_WORKSPACE" submodule update --init ports
 
       - name: Restore ccache
         uses: actions/cache/restore@v4
