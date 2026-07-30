@@ -97,4 +97,6 @@ These carry over to `build-images.sh`, which builds x86_64 + arm64 (with their
 ## Artifacts
 
 Each image build writes `disk.img`, a `swift-linux-<target>.img` symlink, and a
-`SHA256SUMS` manifest into the images directory.
+`SHA256SUMS` manifest into the images directory. CI produces the same artifacts
+nightly (`.github/workflows/build-images.yml`); a full image build is too long
+to run per push.
