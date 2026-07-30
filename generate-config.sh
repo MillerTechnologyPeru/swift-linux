@@ -241,4 +241,15 @@ sed -e "s|@BOARD@|${board_dir:-$SCRIPT_DIR/sdk/board/$arch}|g" \
     -e "s|@SWIFT_LINUX@|$SCRIPT_DIR|g" "$output" > "$output.tmp"
 mv "$output.tmp" "$output"
 
+# Drop the board's own post-build script from the list when it does not have
+# one. Buildroot runs every entry of BR2_ROOTFS_POST_BUILD_SCRIPT and fails the
+# build if one is missing, but a board only needs a script when it has work of
+# its own to do - three of them do, and the rest would otherwise stop at
+# target-finalize with "No such file or directory".
+board_post_build="${board_dir:-$SCRIPT_DIR/sdk/board/$arch}/post-build.sh"
+if [ ! -f "$board_post_build" ]; then
+    sed -e "s| *${board_post_build}||" "$output" > "$output.tmp"
+    mv "$output.tmp" "$output"
+fi
+
 echo "Generated $profile configuration for ${device:-$arch} at $output"
