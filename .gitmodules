@@ -1,0 +1,9 @@
+[submodule "buildroot"]
+	path = buildroot
+	url = https://github.com/MillerTechnologyPeru/buildroot.git
+[submodule "swift"]
+	path = swift
+	url = https://github.com/MillerTechnologyPeru/buildroot-swift.git
+[submodule "ports"]
+	path = ports
+	url = https://github.com/MillerTechnologyPeru/buildroot-ports.git

@@ -102,3 +102,6 @@ swift_linux_defconfig
 
 # stray build stdout redirect
 .log
+
+# Buildroot build trees (Makefile / build-images.sh OUTPUT_BASE)
+/output/

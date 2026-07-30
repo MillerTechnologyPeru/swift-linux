@@ -31,7 +31,7 @@ rm -rf "${TARGET_DIR}/usr/lib/weston" "${TARGET_DIR}/usr/share/weston"
 rm -rf "${TARGET_DIR}"/usr/lib/libweston*
 
 # Buildroot's luajit package symlinks /usr/bin/lua to itself; luajit-embed
-# (which replaced it, see external/package/luajit-embed) does not, because
+# (which replaced it, see ports/package/libs/luajit-embed) does not, because
 # lua 5.4 owns that name. An incremental target/ keeps the old symlink,
 # where it shadows the real interpreter - so drop it and let lua reinstall
 # its own binary.

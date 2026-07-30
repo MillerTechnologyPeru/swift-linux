@@ -1,5 +1,26 @@
 # Building images
 
+## Sources
+
+Buildroot and the two `BR2_EXTERNAL` trees the build consumes are submodules,
+so a checkout pins the revisions it was tested against:
+
+| Path | Repository | Provides |
+|---|---|---|
+| `buildroot/` | [MillerTechnologyPeru/buildroot](https://github.com/MillerTechnologyPeru/buildroot) | the Buildroot fork |
+| `swift/` | [buildroot-swift](https://github.com/MillerTechnologyPeru/buildroot-swift) | the Swift toolchain and runtime packages |
+| `ports/` | [buildroot-ports](https://github.com/MillerTechnologyPeru/buildroot-ports) | apps, games and the GUI libraries they need |
+
+```sh
+git clone --recurse-submodules https://github.com/MillerTechnologyPeru/swift-linux.git
+# or, in an existing clone:
+make submodules
+```
+
+`external/` stays in this repo for what is specific to Swift Linux itself:
+the initramfs, board firmware, and the storage/automount daemons. Anything
+reusable belongs in `ports/` - add it there rather than here.
+
 ## Configuration model
 
 Images are described by **text defconfig fragments** under `sdk/defconfig/`,
@@ -56,9 +77,12 @@ Adding a board is dropping a `board.config`; no Makefile edits.
 - **`CONTAINER=1`** — build in the matching per-arch toolchain container, as
   your own UID/GID, with the tree bind-mounted at both the container's
   `/workspaces` path (for the baked toolchain paths) and its host path (for
-  the host-absolute paths generated defconfigs carry). Uses docker or podman,
-  whichever is on `PATH` - rootless podman gets `--userns=keep-id` so nothing
-  comes back owned by a subuid; override with `CONTAINER_RUNTIME=`.
+  the host-absolute paths generated defconfigs carry). The `buildroot/`
+  submodule and `output/` are mounted over the container's baked copies, so
+  the sources come from this checkout while the prebuilt toolchain's absolute
+  paths keep resolving. Uses docker or podman, whichever is on `PATH` -
+  rootless podman gets `--userns=keep-id` so nothing comes back owned by a
+  subuid; override with `CONTAINER_RUNTIME=`.
 
 ### Accelerators
 

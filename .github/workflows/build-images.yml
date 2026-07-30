@@ -36,6 +36,12 @@ jobs:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
+      # Buildroot and the buildroot-swift external come from the container's
+      # cached copies (that is what the prebuilt output/<arch> was built
+      # against), so only the ports submodule has to be checked out here.
+      - name: Check out the ports external
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
       - name: Fetch the 32-bit companion
         uses: actions/download-artifact@v4
         with:
@@ -51,6 +57,7 @@ jobs:
           BR_SWIFT=/workspaces/buildroot-swift
           export BUILDROOT="$BR_SWIFT/buildroot"
           export BR2_EXTERNAL_SWIFT="$BR_SWIFT"
+          export BR2_EXTERNAL_PORTS="$GITHUB_WORKSPACE/ports"
           export OUTPUT_BASE="$BR_SWIFT/output"
           # Reuse the cached output/<arch> so the toolchain and swift are not
           # rebuilt.
@@ -98,13 +105,16 @@ jobs:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
+      - name: Check out the ports external
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
       - name: Build the 32-bit companion
         run: |
           set -eu
           BR_SWIFT=/workspaces/buildroot-swift
           B="$BR_SWIFT/buildroot"
           O="$BR_SWIFT/output/${{ matrix.arch }}"
-          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/external"
+          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
           "$GITHUB_WORKSPACE/generate-config.sh" \
             --arch ${{ matrix.arch }} --profile lib32 -o /tmp/lib32.defconfig
           make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
@@ -135,13 +145,16 @@ jobs:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
+      - name: Check out the ports external
+        run: git -C "$GITHUB_WORKSPACE" submodule update --init ports
+
       - name: Build app-sdk (Swift + applibs)
         run: |
           set -eu
           BR_SWIFT=/workspaces/buildroot-swift
           B="$BR_SWIFT/buildroot"
           O="$BR_SWIFT/output/${{ matrix.arch }}"
-          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/external"
+          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
           "$GITHUB_WORKSPACE/generate-config.sh" \
             --arch ${{ matrix.arch }} --profile app-sdk -o /tmp/appsdk.defconfig
           make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig

@@ -17,6 +17,12 @@ RetroArch and libretro cores behind it; boards can pick another - see
 
 ## Quick start
 
+Buildroot and the package trees are submodules, so clone with them:
+
+```sh
+git clone --recurse-submodules https://github.com/MillerTechnologyPeru/swift-linux.git
+```
+
 Every board and architecture is a make target:
 
 ```sh
@@ -87,7 +93,10 @@ Details and per-fragment status: [sdk/defconfig/frontend/README.md](sdk/defconfi
 | `sdk/defconfig/gpu/` | GPU capabilities: `virgl`, `freedreno`, `panfrost`, `radeonsi`, `x86-desktop`. |
 | `sdk/board/<target>/` | One directory per board: `board.config`, kernel fragment, overlays, patches. |
 | `sdk/board/common/` | Overlay, users and post-build scripts shared by every board. |
-| `external/` | `BR2_EXTERNAL` packages: sway, EmulationStation + RetroArch + cores, gmenu2x, the XFCE and GNOME stacks, gtk4/libadwaita, elogind, SDL3, box64/box86, steam, … |
+| `buildroot/` | Submodule: the [Buildroot](https://github.com/MillerTechnologyPeru/buildroot) fork the images are built from. |
+| `swift/` | Submodule: [buildroot-swift](https://github.com/MillerTechnologyPeru/buildroot-swift), the Swift toolchain and runtime packages. |
+| `ports/` | Submodule: [buildroot-ports](https://github.com/MillerTechnologyPeru/buildroot-ports) - sway, EmulationStation + RetroArch + cores, gmenu2x, the XFCE and GNOME stacks, gtk4/libadwaita, elogind, SDL3, box64/box86, steam, … |
+| `external/` | This distribution's own `BR2_EXTERNAL` packages: the initramfs, board firmware, storage and automount daemons. |
 | `util/` | QEMU launchers, Swift SDK and CMake toolchain generators. |
 | `docs/` | [Building](docs/build.md) and [the Swift SDK](docs/swift-sdk.md). |
 | `Makefile`, `build-images.sh` | Per-target builds; both images plus companions in parallel. |
