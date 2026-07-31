@@ -136,10 +136,29 @@ is still there this week, so a rebuild is incremental.
 ### What the machine must provide
 
 - **Docker, or podman shimmed as `docker`.** Every heavy job runs in a
-  `colemancda/buildroot-swift` container. The images are written fully qualified
-  (`docker.io/colemancda/...`) on purpose: podman has no implicit Docker Hub
-  fallback, so an unqualified name resolves to `localhost/colemancda/...` and
-  the pull fails with *connection refused* before any step runs.
+  `colemancda/buildroot-swift` container. Two things in the workflows exist
+  only because the runner uses podman on an SELinux host, and both fail before
+  a single step runs if removed:
+  - Images are written **fully qualified** (`docker.io/colemancda/...`). Podman
+    has no implicit Docker Hub fallback, so an unqualified name resolves to
+    `localhost/colemancda/...` and the pull dies with *connection refused*.
+  - Every container carries **`--security-opt label=disable`**. The runner
+    bind-mounts `_work`, `_temp` and `_actions` into the container without
+    SELinux relabelling (`:z`), so a confined `container_t` process cannot read
+    them - the job fails with `sh: 0: cannot open /__w/_temp/….sh: Permission
+    denied` on its very first step. It costs container/host SELinux isolation,
+    which on a single-purpose build box is the usual trade.
+  - Podman also needs `/var/run/docker.sock` to *exist*, because the runner
+    injects `-v /var/run/docker.sock:/var/run/docker.sock` unconditionally and
+    podman refuses a bind mount whose source is missing (`statfs …: no such
+    file or directory`). Point it at the podman socket:
+
+    ```sh
+    systemctl --user enable --now podman.socket
+    sudo ln -sf "/run/user/$(id -u)/podman/podman.sock" /var/run/docker.sock
+    ```
+
+    `/run` is tmpfs, so make it persistent with a `tmpfiles.d` entry.
 - **A `/mnt` writable by the runner user**, with room to spare, on a large
   filesystem. All the state below lives there, and the jobs bind-mount it with
   `--volume /mnt:/mnt`. Under rootless podman, container root maps to the runner

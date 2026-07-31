@@ -55,7 +55,7 @@ jobs:
     # /mnt is bind-mounted so the ccache outlives the container.
     container:
       image: docker.io/colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
-      options: --volume /mnt:/mnt
+      options: --volume /mnt:/mnt --security-opt label=disable
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
