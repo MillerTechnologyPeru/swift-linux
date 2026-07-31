@@ -52,12 +52,26 @@ name: Build Toolchain
 #                 target triple. Needed by ruffle.
 #     host-go     host-go -> host-go-src plus a five-stage bootstrap, built
 #                 with GOARCH set from the target arch (go.mk: GO_GOARCH).
+#     host-llvm   host-llvm + host-clang. Per-target because llvm.mk configures
+#                 the HOST llvm with -DLLVM_DEFAULT_TARGET_TRIPLE and
+#                 -DLLVM_TARGET_ARCH taken from the target.
+#     host-spirv  host-spirv-headers, host-spirv-tools and the LLVM<->SPIR-V
+#                 translator, which links the host-llvm above.
+#     host-libclc the OpenCL builtins as LLVM bitcode.
+#     host-mesa3d the per-driver precompiled-shader compilers. The terminus of
+#                 that branch: target mesa3d depends on it whenever
+#                 BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER is set, which every
+#                 panfrost, iris and radeonsi board sets.
 #
-# Not built here, deliberately: host-llvm (LLVM_DEFAULT_TARGET_TRIPLE makes it
-# per-target too), host-clang and host-mesa3d. They belong to the image
-# profile's graphics stack, cost hours per architecture, and nothing in the
-# sdk profile this workflow publishes consumes them. Adding them is three more
-# jobs in the per-arch chain if that changes.
+# The last four exist because mesa needs LLVM - not for the sdk profile, which
+# consumes none of them, but so that a device image build seeded from these
+# trees does not have to compile an entire LLVM before it can build its GPU
+# driver. Nine arm64 boards use panfrost, and gpu/panfrost.config spells out
+# why getting this wrong is worse than not doing it: an unmet dependency does
+# not fail, it silently leaves a board with llvmpipe-only GL.
+#
+# Still not built: TARGET llvm, clang and libclc, which BR2_PACKAGE_MESA3D_OPENCL
+# selects. A panfrost image build still compiles those itself.
 # ---------------------------------------------------------------------------
 #
 # Runs on the self-hosted x86 runner (see docs/build.md). That is what makes
@@ -597,11 +611,173 @@ jobs:
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
 
+  # SPIR-V: headers, the tools, and the LLVM<->SPIR-V translator. Per-arch
+  # because the translator links the host-llvm built one stage back, not
+  # because anything here reads the target arch - spirv-llvm-translator.mk:11
+  # fixes its HOST_ dependencies and CONF_OPTS unconditionally.
+  #
+  # host-spirv-tools is wanted by host-mesa3d directly; the translator is what
+  # host-libclc needs to emit SPIR-V.
+  host-spirv:
+    name: Host SPIR-V (${{ matrix.arch }})
+    needs: host-llvm
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt --security-opt label=disable
+    timeout-minutes: 240
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      - name: Build the host SPIR-V stack
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-spirv-headers host-spirv-tools host-spirv-llvm-translator
+          "$BR_O/host/bin/spirv-as" --version
+          # The translator is the piece libclc needs, and the one that would
+          # fail on an RTTI mismatch with host-llvm rather than at link time.
+          test -x "$BR_O/host/bin/llvm-spirv" || {
+            echo "host-spirv-llvm-translator installed no llvm-spirv" >&2; exit 1; }
+          "$BR_O/host/bin/llvm-spirv" --version
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  # libclc: the OpenCL builtins, compiled to LLVM bitcode by the host clang.
+  # No extra-config - libclc.mk:44 sets HOST_LIBCLC_CONF_OPTS with no ifeq
+  # guards, so the host build does not vary with the profile.
+  host-libclc:
+    name: Host libclc (${{ matrix.arch }})
+    needs: host-spirv
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt --security-opt label=disable
+    timeout-minutes: 240
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      - name: Build host-libclc
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-libclc
+          # The deliverable is bitcode, not a binary: assert some landed.
+          find "$BR_O/host" -name '*.bc' -path '*clc*' -print -quit | grep -q . || {
+            echo "host-libclc installed no .bc builtins under $BR_O/host" >&2; exit 1; }
+          find "$BR_O/host" -name '*.bc' -path '*clc*' | head -5
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  # host-mesa3d: the precompiled-shader compilers a driver needs at BUILD time.
+  # This is the terminus of the whole LLVM branch - target mesa3d depends on it
+  # whenever BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER is set, which every
+  # panfrost, iris and radeonsi board sets (mesa3d.mk:181,
+  # -Dmesa-clc=system -Dprecomp-compiler=system).
+  #
+  # It is the one job here where a naive "make host-mesa3d" would silently
+  # build the wrong thing. HOST_MESA3D_CONF_OPTS is assembled from the
+  # SELECTED drivers:
+  #
+  #   HOST_MESA3D_GALLIUM_DRIVERS-$(..._GALLIUM_DRIVER_IRIS)     += iris
+  #   HOST_MESA3D_GALLIUM_DRIVERS-$(..._GALLIUM_DRIVER_PANFROST) += panfrost
+  #   HOST_MESA3D_TOOLS += panfrost      # if either panfrost driver is on
+  #
+  # In an sdk tree none are selected, so it would configure
+  # "-Dgallium-drivers= -Dtools=" and produce no per-driver compiler at all -
+  # and the stamps would still say "built", so a device build reusing the
+  # seeded tree would skip it and end up with llvmpipe-only GL. Exactly what
+  # sdk/defconfig/gpu/panfrost.config warns about.
+  #
+  # So configure the union of what any board here uses. Only iris and panfrost
+  # reach the host side; neither has an arch constraint (both only "depends on
+  # BR2_PACKAGE_MESA3D_LLVM"), so one superset serves all four architectures.
+  # br-setup asserts each line survived kconfig.
+  host-mesa3d:
+    name: Host mesa3d (${{ matrix.arch }})
+    needs: host-libclc
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt --security-opt label=disable
+    timeout-minutes: 300
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+          extra-config: |
+            BR2_PACKAGE_MESA3D=y
+            BR2_PACKAGE_MESA3D_LLVM=y
+            BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_IRIS=y
+            BR2_PACKAGE_MESA3D_GALLIUM_DRIVER_PANFROST=y
+            BR2_PACKAGE_MESA3D_VULKAN_DRIVER_PANFROST=y
+      - name: Build host-mesa3d
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-mesa3d
+          # Assert the artifacts, not the exit code. A host-mesa3d configured
+          # with no drivers builds and installs happily; it just produces
+          # nothing a board can use, and the stamp then hides that forever.
+          test -x "$BR_O/host/bin/mesa-clc" || {
+            echo "host-mesa3d installed no mesa-clc (-Dinstall-mesa-clc=true did not take)" >&2
+            exit 1; }
+          ls "$BR_O"/host/bin/*panfrost* >/dev/null 2>&1 || {
+            echo "host-mesa3d built no panfrost precomp compiler - it was configured" >&2
+            echo "with an empty driver list, which is the silent failure this job exists" >&2
+            echo "to catch. Check that the extra-config symbols survived kconfig." >&2
+            ls "$BR_O/host/bin" >&2
+            exit 1; }
+          ls -la "$BR_O"/host/bin/mesa-clc "$BR_O"/host/bin/*panfrost*
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
   # Everything the sdk profile still wants on top of the host tools above -
   # the target libraries and the Swift runtime - then package and publish.
   toolchain:
     name: Toolchain (${{ matrix.arch }})
-    needs: [host-swift, host-llvm]
+    needs: [host-swift, host-mesa3d]
     strategy:
       fail-fast: false
       matrix:

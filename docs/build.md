@@ -180,19 +180,26 @@ out of `make show-info` on a configured tree — split by one question: *does th
 tool depend on the target architecture?*
 
 ```
-  shared tree /mnt/br/shared            per-arch tree /mnt/br/output/<arch>
-  (built once, all arches use it)       (four of each, one per architecture)
+  shared tree /mnt/br/shared        built once, every architecture uses it
+  ─────────────────────────────────────────────────────────────────────────
+  host-base ──> host-jdk ──> host-dotnet ──> host-swift
+   cmake         openjdk-bin   mono           (no deps at all)
+   ninja                       monolite
+   meson                                             │
+   python3                                           │
+   pkgconf                                           ▼
+  ─────────────────────────────────────────────────────────────────────────
+  per-arch tree /mnt/br/output/<arch>            four of each, one per arch
 
-  host-base ─┐                          host-gcc ──> host-rust ──> host-go ─┐
-   cmake     │                           binutils     rustc         go-src  │
-   ninja     │                           gcc-initial  rust-bin      +5-stage│
-   meson     │                           glibc        (target std)  bootstrap
-   python3   │                           gcc-final                          │
-   pkgconf   │                                                              │
-             ▼                                                              ▼
-          host-jdk ──> host-dotnet ──> host-swift ────────────────────> toolchain
-           openjdk-bin   mono           (no deps at all)                  publish
-                         monolite
+  host-gcc ──> host-rust ──> host-go ──> host-llvm ──> host-spirv ─┐
+   binutils     rustc         go-src      llvm         headers     │
+   gcc-initial  rust-bin      +5-stage    clang        tools       │
+   glibc        (target std)  bootstrap                translator  │
+   gcc-final                                                       ▼
+                        toolchain <── host-mesa3d <── host-libclc
+                         publish       mesa-clc +      OpenCL builtins
+                                       per-driver      as LLVM bitcode
+                                       compilers
 ```
 
 **Architecture-independent**, so built once and shared:
@@ -212,6 +219,39 @@ each of these looks shareable until you read its `.mk`:
 | `host-gcc` | `make toolchain`: binutils, gcc-initial, glibc, gcc-final | this *is* the cross compiler — `gcc.mk` configures `--target=$(GNU_TARGET_NAME)` |
 | `host-rust` | `host-rustc` → `host-rust-bin` | `rust-bin.mk` adds `rust-std-$(RUSTC_TARGET_NAME)` to `EXTRA_DOWNLOADS` — the standard library for the target triple. Consumed by ruffle |
 | `host-go` | `host-go` → `host-go-src` + a five-stage bootstrap | `go.mk` sets `GO_GOARCH` from the target arch |
+| `host-llvm` | `host-llvm`, `host-clang` | `llvm.mk:193` configures the **host** llvm with `-DLLVM_DEFAULT_TARGET_TRIPLE=$(GNU_TARGET_NAME)` and `-DLLVM_TARGET_ARCH` |
+| `host-spirv` | `host-spirv-headers`, `host-spirv-tools`, `host-spirv-llvm-translator` | not target-derived itself; it links the per-arch `host-llvm` above |
+| `host-libclc` | `host-libclc` | same — `libclc.mk:44` has no config guards, but it compiles against that llvm/clang |
+| `host-mesa3d` | `mesa-clc` + the per-driver precompiled-shader compilers | `HOST_MESA3D_CONF_OPTS` is assembled from the **selected drivers** (see below) |
+
+### Why mesa drags four jobs behind it
+
+Mesa needs LLVM — for llvmpipe, radeonsi, and since it grew a precompiled-shader
+compiler, for **panfrost** too. Nine arm64 boards use panfrost, so this is not an
+x86 concern. Target `mesa3d` depends on `host-mesa3d` whenever
+`BR2_PACKAGE_MESA3D_NEEDS_PRECOMP_COMPILER` is set, and `host-mesa3d` in turn
+needs `host-libclc` and `host-spirv-tools`. That is the whole chain, and stopping
+short of `host-mesa3d` delivers nothing a board can use.
+
+Two of these jobs pass `extra-config` to `br-setup`, because the `sdk` profile
+selects neither package and the defaults would build something subtly useless:
+
+| job | extra-config | why |
+|---|---|---|
+| `host-llvm` | `BR2_PACKAGE_LLVM`, `_AMDGPU`, `_RTTI` | `AMDGPU` joins `LLVM_TARGETS_TO_BUILD`, which feeds host and target alike (llvm.mk:67). `RTTI` sets `-DLLVM_ENABLE_RTTI=ON` for the **host** build (llvm.mk:230) and **changes the C++ ABI** — without it host-clang, libclc and the translator cannot link against it |
+| `host-mesa3d` | `MESA3D`, `_LLVM`, `GALLIUM_DRIVER_IRIS`, `GALLIUM_DRIVER_PANFROST`, `VULKAN_DRIVER_PANFROST` | `HOST_MESA3D_GALLIUM_DRIVERS-y` and `HOST_MESA3D_TOOLS` are populated by the selected drivers. With none selected it configures `-Dgallium-drivers= -Dtools=` and builds no per-driver compiler at all. Only iris and panfrost reach the host side, and neither has an arch constraint, so one superset serves all four architectures |
+
+Only the *config* is widened — no job runs a bare `make` while those are set, so
+the target packages are never built, and the next job's `defconfig` drops them
+again.
+
+**This is the failure mode worth internalising.** An unmet dependency does not
+fail Buildroot; kconfig silently drops the symbol, the build succeeds, and the
+stamp says "built" forever after. `sdk/defconfig/gpu/panfrost.config` documents
+exactly this outcome: a Mali board that quietly lost hardware acceleration. So
+`br-setup` asserts every `extra-config` line survived into `.config`, and each
+job asserts the *artifact* rather than the exit code — `host-mesa3d` fails unless
+`mesa-clc` and a panfrost compiler are actually in `host/bin`.
 
 Two consequences worth knowing:
 
@@ -227,14 +267,13 @@ Two consequences worth knowing:
   Rust. That is what lets these jobs build the full host-tool set without
   widening the profile the workflow publishes.
 
-Not built: `host-llvm`, `host-clang` and `host-mesa3d`. `host-llvm` is per-target
-too (`LLVM_DEFAULT_TARGET_TRIPLE`), they cost hours per architecture, and they
-belong to the image profile's graphics stack — nothing in the `sdk` profile this
-workflow publishes consumes them. They would be three more jobs in the per-arch
-chain.
+Still **not** built: **target** `llvm`, `clang` and `libclc`, which
+`BR2_PACKAGE_MESA3D_OPENCL` selects. A panfrost image build still compiles those
+itself. Adding them would mean the published tree stops being an `sdk`-profile
+tree, which is a separate decision.
 
-The prelude every one of these twenty jobs shares — apt prerequisites, the disk
-guard, the submodule checkout, `defconfig`, and the memory-bounded `-j` — lives
+The prelude every one of these thirty-six jobs shares — apt prerequisites, the
+disk guard, the submodule checkout, `defconfig`, and the memory-bounded `-j` — lives
 once in the `.github/actions/br-setup` composite action, which exports `BR_B`,
 `BR_O`, `BR_EXT` and `BR_JOBS` for the `make` step that follows.
 
@@ -285,13 +324,15 @@ cannot `git clean` them, so every container job ends with a `chown -R` back to
 the workspace's owner. Removing that step makes the *second* run fail, not the
 first.
 
-Since there is one runner, jobs queue rather than run side by side — thirty
-across the three workflows, twenty of them the per-host-tool jobs above. Each
-job pays its own container start and apt prerequisites, roughly twenty minutes
-of overhead across a full toolchain run; that is the price of an attributable
-failure per tool rather than one four-hour log. Each workflow has a
-`concurrency` group so a nightly still running when the next fires is superseded
-rather than stacked.
+Since there is one runner, jobs queue rather than run side by side — forty-six
+across the three workflows, thirty-six of them the per-host-tool jobs above.
+Each pays its own container start and apt prerequisites, half an hour or so of
+overhead across a full toolchain run; that is the price of an attributable
+failure per tool rather than one multi-hour log. The first run is long in
+absolute terms — two full LLVM builds per architecture, counting the one
+`host-swift` brings with it — but the trees persist, so later runs replay the
+stamps in seconds. Each workflow has a `concurrency` group so a nightly still
+running when the next fires is superseded rather than stacked.
 
 ## Artifacts
 
