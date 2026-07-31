@@ -44,6 +44,23 @@ architecture from the `toolchain-latest` release (`make <t>-seed`, which needs
 up - pass them in the environment, since `CCACHE` on the make command line would
 override Buildroot's own variable of that name. See [docs/build.md](docs/build.md).
 
+### Logging in
+
+The images auto-log the default user into the frontend on tty1, so a device
+boots straight into its session and nobody types anything. When you do need
+credentials - a serial console, ssh, or `sudo` - they are:
+
+| Account | Password |
+|---|---|
+| `user` (uid 1000, the session account) | `1234` |
+| `root` | `root` |
+
+Both are defaults meant for development images: change them before a device
+leaves your desk. The user account is in `video`, `input`, `audio`, `tty`,
+`dialout` and `wheel`, which is what lets the compositor reach DRM through
+seatd and games read gamepads directly from evdev. Under QEMU the launchers
+forward ssh to `localhost:2222`.
+
 ## Configuration model
 
 Configuration is plain text. Each `*.config` file is a set of Buildroot `BR2_…`
