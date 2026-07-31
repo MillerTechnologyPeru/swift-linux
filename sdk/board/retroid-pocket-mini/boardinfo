@@ -5,4 +5,4 @@ FAMILY=qualcomm-sm8250
 SOC=sm8250
 ARCH=arm64
 BOOTFW=abl
-DTS=sm8250-retroidpocket-rpmini
+DTS=qcom/sm8250-retroidpocket-rpmini
