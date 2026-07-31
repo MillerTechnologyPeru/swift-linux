@@ -157,4 +157,5 @@ Two things about it are worth knowing, because both are easy to get wrong:
 
 Guest interaction goes over the serial console (`util/qemu-console.py`), which
 needs no ssh key or password automation - the console is a getty, and the script
-logs in the way a person would.
+logs in the way a person would (`root`/`root`; the session account is
+`user`/`1234`, see the README).
