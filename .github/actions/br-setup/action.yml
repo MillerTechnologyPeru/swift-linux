@@ -93,10 +93,16 @@ runs:
           }
         fi
 
-    # Fail in five seconds rather than five hours. /mnt is the runner's own
-    # disk and it accumulates: four output trees, the shared host-tool tree,
-    # dl/ and the ccaches all live there, and ENOSPC deep into an LLVM build
-    # costs the whole run.
+    # Fail in five seconds rather than five hours. The runner's own disk
+    # accumulates: four output trees, the shared host-tool tree, dl/ and the
+    # ccaches all live there, and ENOSPC deep into an LLVM build costs the
+    # whole run.
+    #
+    # The guard measures the output tree, not /mnt. Those are not always the
+    # same filesystem: /mnt/br is a bind mount of a directory on a larger
+    # second disk on this runner, so a df of /mnt reports the system disk the
+    # build never writes to - which would pass a job that has no room and
+    # abort one that has a terabyte.
     - name: Runner facts and disk guard
       shell: bash
       run: |
@@ -116,9 +122,10 @@ runs:
           exit 1
         fi
         mkdir -p "${{ inputs.dl-dir }}" "${{ inputs.ccache-dir }}" "${{ inputs.output-dir }}"
-        avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
+        df -h "${{ inputs.output-dir }}"
+        avail=$(df -BG --output=avail "${{ inputs.output-dir }}" | tail -1 | tr -dc '0-9')
         if [ "${avail:-0}" -lt "${{ inputs.min-free-gb }}" ]; then
-          echo "only ${avail}G free on /mnt, need ${{ inputs.min-free-gb }}G." >&2
+          echo "only ${avail}G free on ${{ inputs.output-dir }}, need ${{ inputs.min-free-gb }}G." >&2
           echo "prune with: rm -rf /mnt/br/output/<arch>   (see docs/build.md)" >&2
           exit 1
         fi
