@@ -34,6 +34,15 @@ inputs:
     description: ccache size limit.
     required: false
     default: 20G
+  configure:
+    description: >
+      Set to 'false' to stop after the prerequisites, disk guard and submodule
+      checkout, leaving the tree unconfigured and BR_B/BR_O/BR_EXT/BR_JOBS
+      unset. For jobs where another script owns defconfig - build-images.sh
+      merges lib32 and FRONTEND fragments into its own config, and a second,
+      slightly different defconfig here would fight it.
+    required: false
+    default: 'true'
   extra-config:
     description: >
       Extra defconfig lines appended before "make defconfig", for a job that
@@ -138,6 +147,7 @@ runs:
     # multi-gigabyte apiece, and nproc of them in flight on a desktop OOMs
     # hours in.
     - name: Configure the tree
+      if: ${{ inputs.configure == 'true' }}
       shell: bash
       run: |
         set -eu

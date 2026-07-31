@@ -4,9 +4,11 @@ name: Build Toolchain
 # toolchains, from source - and publishes each output tree to the
 # "toolchain-latest" GitHub Release.
 #
-# This is the from-source replacement for the colemancda/buildroot-swift
-# container images the other workflows currently start from: they can seed
-# output/<arch> from these release assets instead of from a docker layer.
+# This is what the other workflows start from: build-swift-sdk.yml and
+# build-images.yml seed their output trees from these release assets
+# (.github/actions/br-seed) instead of from a docker layer, and local
+# checkouts seed with "make <t>-seed". The per-arch container images the
+# consumers used to start from are retired.
 # Release assets rather than actions/cache because the trees are far past
 # the repo's 10 GB cache budget, assets are not evicted after 7 days, and
 # a Release gives the toolchain an inspectable, pinnable identity.
@@ -416,10 +418,9 @@ jobs:
         arch: [x86_64, arm64, armv7, i386]
     runs-on: [self-hosted, Linux, X64]
     # The plain base image: Debian with the Swift toolchain and the host
-    # dependencies both Buildroot and a from-source Swift build need. Not the
-    # per-arch swift_<arch>_defconfig tags the image and SDK workflows use -
-    # those carry a prebuilt output/<arch>, which is the very thing this
-    # workflow exists to rebuild from source.
+    # dependencies both Buildroot and a from-source Swift build need. The
+    # same image the SDK and image workflows use - they seed from this
+    # workflow's release assets rather than carrying a prebuilt tree.
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable

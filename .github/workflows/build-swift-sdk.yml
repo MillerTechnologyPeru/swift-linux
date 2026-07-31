@@ -17,6 +17,13 @@ name: Build Swift SDK
 # arm64/x86_64 shipping only what the image profile happened to build. armv7
 # and i386 have no bootable image target and exist only here.
 #
+# Each arch starts by seeding its output tree from the toolchain-latest
+# release that build-toolchain.yml publishes (br-seed), so only the app-sdk
+# profile's delta over the sdk profile compiles here. The trees persist on the
+# runner at /mnt/br/profiles/app-sdk/<arch>, bind-mounted to
+# /mnt/br/output/<arch> in the container because that is the prefix Buildroot
+# baked into the packaged toolchain - see docs/build.md.
+#
 # Runs on the self-hosted x86 runner (see docs/build.md), which is a single
 # machine: the four app-sdk jobs execute one after another rather than in
 # parallel. The ccache lives on that machine's own disk at
@@ -52,75 +59,64 @@ jobs:
         arch: [x86_64, arm64, armv7, i386]
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 480
-    # /mnt is bind-mounted so the ccache outlives the container.
+    # Plain base image; the toolchain comes from br-seed, not a per-arch tag.
+    # /mnt is bind-mounted so the tree and ccache outlive the container, and
+    # the per-profile host dir is mounted at the exact path the packaged
+    # toolchain was built at, because Buildroot bakes that prefix into
+    # .config, the host/ cmake caches and the gcc specs.
     container:
-      image: docker.io/colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
-      options: --volume /mnt:/mnt --security-opt label=disable
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: >-
+        --volume /mnt:/mnt
+        --volume /mnt/br/profiles/app-sdk/${{ matrix.arch }}:/mnt/br/output/${{ matrix.arch }}
+        --security-opt label=disable
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
-      - name: Runner facts and disk guard
-        run: |
-          set -eu
-          echo "runner:      $RUNNER_NAME"
-          echo "cpus:        $(nproc)"
-          free -h || true
-          df -h / /mnt
-          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
-          if [ "${avail:-0}" -lt 50 ]; then
-            echo "only ${avail}G free on /mnt; see docs/build.md for how to prune." >&2
-            exit 1
-          fi
-          mkdir -p "$CCACHE_DIR"
+      # Seed before br-setup: defconfig has to configure the seeded tree, not
+      # be buried under the unpack. Steady state this only compares the
+      # release's asset timestamps against the tree's stamp and moves on.
+      - name: Seed from the toolchain release
+        uses: ./.github/actions/br-seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          arch: ${{ matrix.arch }}
+          dest-dir: /mnt/br/output/${{ matrix.arch }}
 
-      # Buildroot and the buildroot-swift external come from the container's
-      # cached copies (that is what the prebuilt output/<arch> was built
-      # against), so only the ports submodule has to be checked out here.
-      #
-      # safe.directory first: the workspace directory is created by the runner
-      # on the host, while git in a container job runs as root, and git rejects
-      # that ownership mismatch as "dubious ownership". actions/checkout marks
-      # the directory safe in a throwaway HOME of its own, so the exemption is
-      # gone by the time this step runs.
-      - name: Check out the ports external
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" submodule update --init ports
+      - name: Prepare and configure the tree
+        uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          profile: app-sdk
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
 
-      # ccache: the same per-arch directory every workflow in this repo uses
-      # on the runner's disk, so a toolchain built by build-toolchain.yml warms
-      # the SDK build here and vice versa. compiler_check=content below is what
-      # makes hits survive the compiler living at different paths in different
-      # workflows.
+      # The seeded tree carries the sdk profile's stamps, so this replays them
+      # and compiles only the app-sdk delta. ccache is the same per-arch
+      # directory every workflow uses; compiler_check=content (set by
+      # br-setup) is what lets hits survive path differences between them.
       - name: Build app-sdk (Swift + applibs)
         run: |
           set -eu
-          BR_SWIFT=/workspaces/buildroot-swift
-          B="$BR_SWIFT/buildroot"
-          O="$BR_SWIFT/output/${{ matrix.arch }}"
-          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
-          "$GITHUB_WORKSPACE/generate-config.sh" \
-            --arch ${{ matrix.arch }} --profile app-sdk -o /tmp/appsdk.defconfig
-          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/appsdk.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR" \
-            BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
-          make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR"
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS"
 
-      # Runs in the container deliberately: a container-built sysroot contains
-      # symlinks to absolute in-container paths (/workspaces/...) for gcc's
-      # crt*.o, libgcc.a and the libstdc++ headers, and those only resolve in
-      # here. make-swift-sdk.sh turns them into real files for the portable
-      # bundle (rsync --copy-unsafe-links); on the host they would just dangle.
+      # Runs in the container deliberately: the sysroot contains symlinks to
+      # absolute paths (/mnt/br/..., $GITHUB_WORKSPACE/...) for gcc's crt*.o,
+      # libgcc.a and the libstdc++ headers, and those only resolve where the
+      # same mounts exist. make-swift-sdk.sh turns them into real files for
+      # the portable bundle (rsync --copy-unsafe-links); on the host they
+      # would just dangle.
       - name: Generate Swift SDK
         run: |
           set -eu
-          export BR_SWIFT=/workspaces/buildroot-swift
-          bundle="/workspaces/buildroot-swift/output/swift-linux-${{ matrix.arch }}.artifactbundle"
+          export OUTPUT_BASE=/mnt/br/output
+          bundle="/tmp/swift-linux-${{ matrix.arch }}.artifactbundle"
           bash "$GITHUB_WORKSPACE/util/make-swift-sdk.sh" \
             --arch ${{ matrix.arch }} --portable --out "$bundle"
           tar czf "$GITHUB_WORKSPACE/swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz" \

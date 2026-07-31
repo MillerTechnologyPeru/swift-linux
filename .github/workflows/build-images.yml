@@ -1,13 +1,13 @@
 name: Build Images
 
-# Builds the Swift Linux A/B UEFI images in the buildroot-swift container,
-# which already ships the Swift native toolchain and, in its per-arch
-# swift_<arch>_defconfig tags, a prebuilt Buildroot output/<arch> with the
-# cross-toolchain and Swift runtime. We reconfigure that cached output dir
-# with our image defconfig (our toolchain.config matches theirs, so the
-# toolchain and swift are reused) and only the extra packages - sway, mesa,
-# GRUB, RAUC, steam, ... - compile. Modeled on MillerTechnologyPeru/
-# buildroot-swift's own Buildroot workflow.
+# Builds the Swift Linux A/B UEFI images in the plain buildroot-swift:latest
+# container. Each job seeds its Buildroot output tree from the rolling
+# toolchain-latest release that build-toolchain.yml publishes (br-seed), so
+# the cross-toolchain, Swift and the mesa host tools are reused and only the
+# image profile's extra packages - sway, GRUB, RAUC, steam, ... - compile.
+# The trees persist on the runner at /mnt/br/profiles/<profile>/<arch>,
+# bind-mounted to /mnt/br/output/<arch> in the container because that is the
+# prefix Buildroot baked into the packaged toolchain - see docs/build.md.
 
 # The Swift SDKs are built by a separate workflow (build-swift-sdk.yml): they
 # share nothing with the images but the container, and splitting them means a
@@ -52,48 +52,43 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     needs: lib32
     timeout-minutes: 480
-    # Per-arch container with Buildroot + a prebuilt output/<arch> (toolchain
-    # + host-swift + native Swift tools). Same images buildroot-swift uses.
-    # /mnt is bind-mounted so the ccache outlives the container.
+    # Plain base image; the toolchain comes from br-seed. /mnt is
+    # bind-mounted so the tree and ccache outlive the container, and the
+    # per-profile host dir is mounted at the path the packaged toolchain was
+    # built at.
     container:
-      image: docker.io/colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
-      options: --volume /mnt:/mnt --security-opt label=disable
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: >-
+        --volume /mnt:/mnt
+        --volume /mnt/br/profiles/image/${{ matrix.arch }}:/mnt/br/output/${{ matrix.arch }}
+        --security-opt label=disable
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
-      # Fail now rather than hours in, and record what machine this ran on.
-      - name: Runner facts and disk guard
-        run: |
-          set -eu
-          echo "runner:      $RUNNER_NAME"
-          echo "cpus:        $(nproc)"
-          free -h || true
-          df -h / /mnt
-          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
-          if [ "${avail:-0}" -lt 50 ]; then
-            echo "only ${avail}G free on /mnt; see docs/build.md for how to prune." >&2
-            exit 1
-          fi
-          mkdir -p "$CCACHE_DIR"
-          ccache -d "$CCACHE_DIR" --max-size="$CCACHE_MAX_SIZE" \
-            --set-config=compression=true --set-config=compiler_check=content || true
+      # Seed before br-setup: any defconfig has to land on the seeded tree,
+      # not be buried under the unpack.
+      - name: Seed from the toolchain release
+        uses: ./.github/actions/br-seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          arch: ${{ matrix.arch }}
+          dest-dir: /mnt/br/output/${{ matrix.arch }}
 
-      # Buildroot and the buildroot-swift external come from the container's
-      # cached copies (that is what the prebuilt output/<arch> was built
-      # against), so only the ports submodule has to be checked out here.
-      #
-      # safe.directory first: the workspace directory is created by the runner
-      # on the host, while git in a container job runs as root, and git rejects
-      # that ownership mismatch as "dubious ownership". actions/checkout marks
-      # the directory safe in a throwaway HOME of its own, so the exemption is
-      # gone by the time this step runs.
-      - name: Check out the ports external
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" submodule update --init ports
+      # configure: 'false' - build-images.sh owns this tree's defconfig (it
+      # merges the lib32 and FRONTEND fragments), so br-setup only does the
+      # prerequisites, disk guard and submodule checkout here.
+      - name: Prepare the tree
+        uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          configure: 'false'
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
 
       - name: Fetch the 32-bit companion
         uses: actions/download-artifact@v4
@@ -105,41 +100,41 @@ jobs:
       - name: Build image
         run: |
           set -eu
-          # In the container the buildroot-swift external + Buildroot + the
-          # cached per-arch output all live under /workspaces/buildroot-swift.
-          BR_SWIFT=/workspaces/buildroot-swift
-          export BUILDROOT="$BR_SWIFT/buildroot"
-          export BR2_EXTERNAL_SWIFT="$BR_SWIFT"
+          ccache -d "$CCACHE_DIR" --max-size="$CCACHE_MAX_SIZE" \
+            --set-config=compression=true --set-config=compiler_check=content || true
+          # Everything comes from the repo's submodules; the seeded tree at
+          # /mnt/br/output/<arch> supplies the toolchain and swift so only the
+          # image profile's delta compiles.
+          export BUILDROOT="$GITHUB_WORKSPACE/buildroot"
+          export BR2_EXTERNAL_SWIFT="$GITHUB_WORKSPACE/swift"
           export BR2_EXTERNAL_PORTS="$GITHUB_WORKSPACE/ports"
-          export OUTPUT_BASE="$BR_SWIFT/output"
-          # Reuse the cached output/<arch> so the toolchain and swift are not
-          # rebuilt.
-          export IMAGE_OUTPUT_DIR="$BR_SWIFT/output/${{ matrix.arch }}"
+          export OUTPUT_BASE=/mnt/br/output
+          export IMAGE_OUTPUT_DIR="/mnt/br/output/${{ matrix.arch }}"
+          # Must match the seeded tree's BR2_DL_DIR, or its download stamps
+          # point at files that are not there.
+          export DL_DIR=/mnt/br/dl
           # Merge the companion built by the lib32 job into /usr/lib32 rather
-          # than building one here (its toolchain is not cached in this image).
+          # than building one here (its toolchain lives in another tree).
           mkdir -p /tmp/lib32 && tar xzf lib32/lib32-*.tar.gz -C /tmp/lib32
           export LIB32_ROOT=/tmp/lib32/target
-          # The container's cached OpenSSL was built without engine support;
-          # rebuild it so RAUC (which uses the OpenSSL ENGINE API) can compile.
-          export REBUILD_PKGS=libopenssl
           export CCACHE=1
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       - name: Dump build log on failure
         if: failure()
         run: |
-          log="/workspaces/buildroot-swift/output/${{ matrix.arch }}-image.log"
+          log="/mnt/br/output/${{ matrix.arch }}-image.log"
           echo "===== tail of $log ====="
           tail -n 200 "$log" || echo "(no log found)"
 
       - name: Show image
-        run: ls -la /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/ || true
+        run: ls -la /mnt/br/output/${{ matrix.arch }}/images/ || true
 
       - name: Upload disk image
         uses: actions/upload-artifact@v4
         with:
           name: swift-linux-${{ matrix.arch }}-disk
-          path: /workspaces/buildroot-swift/output/${{ matrix.arch }}/images/disk.img
+          path: /mnt/br/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
       - name: ccache stats
@@ -157,9 +152,9 @@ jobs:
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
 
   # The 32-bit companion userland that gets merged into each image as
-  # /usr/lib32. It must be built in its own architecture's container (that is
-  # where the cross-toolchain is cached); the image job then merges the target
-  # tree. i386 pairs with the x86_64 image, armv7 with arm64.
+  # /usr/lib32. It is built from its own architecture's seeded toolchain in
+  # its own tree; the image job then merges the target tree. i386 pairs with
+  # the x86_64 image, armv7 with arm64.
   lib32:
     name: lib32 (${{ matrix.arch }})
     strategy:
@@ -168,51 +163,42 @@ jobs:
         arch: [i386, armv7]
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 480
+    # Same mount arrangement as the image job, one profile over.
     container:
-      image: docker.io/colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
-      options: --volume /mnt:/mnt --security-opt label=disable
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: >-
+        --volume /mnt:/mnt
+        --volume /mnt/br/profiles/lib32/${{ matrix.arch }}:/mnt/br/output/${{ matrix.arch }}
+        --security-opt label=disable
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
 
-      - name: Runner facts and disk guard
-        run: |
-          set -eu
-          echo "runner:      $RUNNER_NAME"
-          echo "cpus:        $(nproc)"
-          free -h || true
-          df -h / /mnt
-          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
-          if [ "${avail:-0}" -lt 50 ]; then
-            echo "only ${avail}G free on /mnt; see docs/build.md for how to prune." >&2
-            exit 1
-          fi
-          mkdir -p "$CCACHE_DIR"
+      - name: Seed from the toolchain release
+        uses: ./.github/actions/br-seed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          arch: ${{ matrix.arch }}
+          dest-dir: /mnt/br/output/${{ matrix.arch }}
 
-      # safe.directory: see the image job above.
-      - name: Check out the ports external
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" submodule update --init ports
+      - name: Prepare and configure the tree
+        uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          profile: lib32
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
 
       - name: Build the 32-bit companion
         run: |
           set -eu
-          BR_SWIFT=/workspaces/buildroot-swift
-          B="$BR_SWIFT/buildroot"
-          O="$BR_SWIFT/output/${{ matrix.arch }}"
-          EXT="$BR_SWIFT:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
-          "$GITHUB_WORKSPACE/generate-config.sh" \
-            --arch ${{ matrix.arch }} --profile lib32 -o /tmp/lib32.defconfig
-          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/lib32.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR" \
-            BR2_DEFCONFIG=/tmp/lib32.defconfig defconfig
-          make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR"
-          tar czf "$GITHUB_WORKSPACE/lib32-${{ matrix.arch }}.tar.gz" -C "$O" target
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS"
+          tar czf "$GITHUB_WORKSPACE/lib32-${{ matrix.arch }}.tar.gz" -C "$BR_O" target
 
       - name: Upload companion target tree
         uses: actions/upload-artifact@v4

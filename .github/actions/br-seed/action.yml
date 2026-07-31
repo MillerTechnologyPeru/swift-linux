@@ -1,0 +1,106 @@
+name: Buildroot seed
+description: >
+  Populate a Buildroot output tree from the rolling toolchain-latest release
+  published by build-toolchain.yml, so a consumer job starts from the packaged
+  toolchain instead of building one. No-op when the tree already matches the
+  release's current assets.
+
+# The packaged tree bakes the absolute prefix /mnt/br/output/<arch> into
+# .config, the host/ cmake caches, libtool/pkg-config files and the gcc specs,
+# so dest-dir must be exactly that path as seen inside the container. The
+# workflows arrange it by bind-mounting a per-profile host directory
+# (/mnt/br/profiles/<profile>/<arch>) onto /mnt/br/output/<arch> - see
+# docs/build.md. Runs before br-setup on purpose: br-setup's defconfig has to
+# configure the seeded tree, not be buried by the unpack.
+
+inputs:
+  arch:
+    description: Which toolchain-<arch> assets to seed from.
+    required: true
+  dest-dir:
+    description: >
+      Where the tree unpacks, as seen in this container. Must equal the path
+      the toolchain was built at (/mnt/br/output/<arch>) or Buildroot rebuilds
+      most of it.
+    required: true
+  release:
+    description: Release tag holding the toolchain assets.
+    required: false
+    default: toolchain-latest
+
+runs:
+  using: composite
+  steps:
+    # gh and zstd before anything else: this action runs first in the job, so
+    # it cannot lean on br-setup's prerequisite step. Same fallback dance as
+    # br-setup - the base image has neither gh nor a gh apt source.
+    - name: Seed prerequisites
+      shell: bash
+      run: |
+        set -eu
+        if ! command -v gh >/dev/null 2>&1 || ! command -v zstd >/dev/null 2>&1; then
+          apt-get update
+          apt-get install -y --no-install-recommends zstd
+          apt-get install -y --no-install-recommends gh 2>/dev/null || {
+            apt-get install -y --no-install-recommends curl ca-certificates
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              -o /usr/share/keyrings/githubcli.gpg
+            echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+              > /etc/apt/sources.list.d/github-cli.list
+            apt-get update
+            apt-get install -y --no-install-recommends gh
+          }
+        fi
+
+    # Freshness is keyed on the release assets' updatedAt, stamped into the
+    # tree after a successful unpack. Stamp removed first and written last, so
+    # a seed interrupted anywhere re-seeds rather than passing off a
+    # half-unpacked tree as current.
+    - name: Seed the output tree
+      shell: bash
+      run: |
+        set -eu
+        arch="${{ inputs.arch }}"
+        dest="${{ inputs.dest-dir }}"
+        release="${{ inputs.release }}"
+        mkdir -p "$dest"
+
+        key=$(gh release view "$release" --repo "$GITHUB_REPOSITORY" \
+                --json assets \
+                --jq "[.assets[] | select(.name | startswith(\"toolchain-$arch.tar.zst.part\")) | .updatedAt] | max // empty") || {
+          echo "cannot read release '$release' in $GITHUB_REPOSITORY." >&2
+          echo "Run build-toolchain.yml first: gh workflow run build-toolchain.yml" >&2
+          exit 1
+        }
+        if [ -z "$key" ]; then
+          echo "no toolchain-$arch assets on '$release'." >&2
+          echo "Run build-toolchain.yml first: gh workflow run build-toolchain.yml" >&2
+          exit 1
+        fi
+
+        if [ -d "$dest/host/bin" ] && [ "$(cat "$dest/.seed-stamp" 2>/dev/null)" = "$key" ]; then
+          echo "seed up to date ($key), skipping"
+          exit 0
+        fi
+
+        echo "seeding $dest from $release toolchain-$arch ($key)"
+        rm -f "$dest/.seed-stamp"
+        # Wipe contents, not the directory: it is a bind mountpoint.
+        find "$dest" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+
+        tmp=$(mktemp -d /mnt/br/seed.XXXXXX)
+        trap 'rm -rf "$tmp"' EXIT
+        gh release download "$release" --repo "$GITHUB_REPOSITORY" \
+          --pattern "toolchain-$arch.tar.zst.part*" --dir "$tmp"
+        # The tarball's single top-level entry is <arch>/; strip it so the
+        # tree lands in dest itself.
+        cat "$tmp"/toolchain-"$arch".tar.zst.part* | \
+          tar --zstd -x --strip-components=1 -C "$dest"
+
+        [ -f "$dest/.config" ] || { echo "seeded tree has no .config" >&2; exit 1; }
+        ls "$dest"/host/bin/*-gcc >/dev/null 2>&1 || {
+          echo "seeded tree has no cross-gcc in host/bin" >&2
+          exit 1
+        }
+        printf '%s\n' "$key" > "$dest/.seed-stamp"
+        du -sh "$dest" || true
