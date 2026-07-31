@@ -135,11 +135,18 @@ is still there this week, so a rebuild is incremental.
 
 ### What the machine must provide
 
-- **Docker.** Every heavy job runs in a `colemancda/buildroot-swift` container.
-- **A writable `/mnt` with room to spare**, on a large filesystem. All the state
-  below lives there, and the jobs bind-mount it with `--volume /mnt:/mnt`. Each
-  job checks free space up front and fails in seconds rather than at hour six -
-  100 GB for the toolchain jobs, 50 GB for the rest.
+- **Docker, or podman shimmed as `docker`.** Every heavy job runs in a
+  `colemancda/buildroot-swift` container. The images are written fully qualified
+  (`docker.io/colemancda/...`) on purpose: podman has no implicit Docker Hub
+  fallback, so an unqualified name resolves to `localhost/colemancda/...` and
+  the pull fails with *connection refused* before any step runs.
+- **A `/mnt` writable by the runner user**, with room to spare, on a large
+  filesystem. All the state below lives there, and the jobs bind-mount it with
+  `--volume /mnt:/mnt`. Under rootless podman, container root maps to the runner
+  user on the host, so a root-owned `/mnt` is not writable from inside the
+  job - `sudo install -d -o "$(id -un)" /mnt/br` once, and everything below it
+  follows. Each job checks free space up front and fails in seconds rather than
+  at hour six: 100 GB for the toolchain jobs, 50 GB for the rest.
 - **`jq`, `gh` and `tar` installed on the host**, for the two jobs that run
   outside a container (`combined-swift-sdk`, `config-check`). Those used to come
   free with `ubuntu-latest`. `combined-swift-sdk` checks and names what is

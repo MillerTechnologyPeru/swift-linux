@@ -56,7 +56,7 @@ jobs:
     # + host-swift + native Swift tools). Same images buildroot-swift uses.
     # /mnt is bind-mounted so the ccache outlives the container.
     container:
-      image: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+      image: docker.io/colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
       options: --volume /mnt:/mnt
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
@@ -169,7 +169,7 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 480
     container:
-      image: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+      image: docker.io/colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
       options: --volume /mnt:/mnt
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}

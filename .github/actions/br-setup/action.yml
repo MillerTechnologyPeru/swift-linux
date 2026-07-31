@@ -86,7 +86,17 @@ runs:
         echo "cpus:    $(nproc)"
         free -h || true
         df -h / /mnt
-        mkdir -p /mnt/br "${{ inputs.dl-dir }}" "${{ inputs.ccache-dir }}" "${{ inputs.output-dir }}"
+        # Under rootless podman, container root maps to the runner user on the
+        # host, so a root-owned /mnt makes this EPERM rather than the "we are
+        # root, we can write anywhere" a docker job would get. Say which it is.
+        if ! mkdir -p /mnt/br 2>/dev/null; then
+          echo "cannot create /mnt/br (uid $(id -u) in this container)." >&2
+          echo "The bind-mounted /mnt must be writable by the runner user;" >&2
+          echo "see the self-hosted runner section of docs/build.md." >&2
+          ls -ld /mnt >&2
+          exit 1
+        fi
+        mkdir -p "${{ inputs.dl-dir }}" "${{ inputs.ccache-dir }}" "${{ inputs.output-dir }}"
         avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
         if [ "${avail:-0}" -lt "${{ inputs.min-free-gb }}" ]; then
           echo "only ${avail}G free on /mnt, need ${{ inputs.min-free-gb }}G." >&2
