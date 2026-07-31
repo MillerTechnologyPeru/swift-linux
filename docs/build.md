@@ -145,14 +145,83 @@ is still there this week, so a rebuild is incremental.
   free with `ubuntu-latest`. `combined-swift-sdk` checks and names what is
   missing.
 
+### The host-tool dependency graph
+
+`build-toolchain.yml` runs **one job per host tool** rather than one opaque
+multi-hour build, so each gets its own log, its own red mark, and can be re-run
+without paying for the others. The order comes from Buildroot's own graph — read
+out of `make show-info` on a configured tree — split by one question: *does the
+tool depend on the target architecture?*
+
+```
+  shared tree /mnt/br/shared            per-arch tree /mnt/br/output/<arch>
+  (built once, all arches use it)       (four of each, one per architecture)
+
+  host-base ─┐                          host-gcc ──> host-rust ──> host-go ─┐
+   cmake     │                           binutils     rustc         go-src  │
+   ninja     │                           gcc-initial  rust-bin      +5-stage│
+   meson     │                           glibc        (target std)  bootstrap
+   python3   │                           gcc-final                          │
+   pkgconf   │                                                              │
+             ▼                                                              ▼
+          host-jdk ──> host-dotnet ──> host-swift ────────────────────> toolchain
+           openjdk-bin   mono           (no deps at all)                  publish
+                         monolite
+```
+
+**Architecture-independent**, so built once and shared:
+
+| job | builds | why it is shareable |
+|---|---|---|
+| `host-base` | cmake, ninja, meson, python3, pkgconf — and the 21-package closure under them (m4/autoconf/automake/libtool, expat, libffi, zlib, python's build backends) | plain host tools; nothing in their config mentions the target |
+| `host-jdk` | `host-openjdk-bin` | a prebuilt download; the boot JDK the target `openjdk` bootstraps from, never installed on target |
+| `host-dotnet` | `host-mono` (pulls `host-monolite`, `host-gettext`) | the bootstrap C#/CLR compiler for the target `mono` that Unity and XNA/FNA ports need. Buildroot only offers mono when `BR2_HOSTARCH` is x86 — which this runner is, and an arm builder would not be |
+| `host-swift` | `host-swift` | declares **no dependencies at all** — it clones and builds its own LLVM through `build-script`, and the preset targets `--host-target linux-x86_64` whatever Buildroot is aiming at |
+
+**Target-dependent**, so built per architecture — with the evidence, because
+each of these looks shareable until you read its `.mk`:
+
+| job | builds | what makes it per-arch |
+|---|---|---|
+| `host-gcc` | `make toolchain`: binutils, gcc-initial, glibc, gcc-final | this *is* the cross compiler — `gcc.mk` configures `--target=$(GNU_TARGET_NAME)` |
+| `host-rust` | `host-rustc` → `host-rust-bin` | `rust-bin.mk` adds `rust-std-$(RUSTC_TARGET_NAME)` to `EXTRA_DOWNLOADS` — the standard library for the target triple. Consumed by ruffle |
+| `host-go` | `host-go` → `host-go-src` + a five-stage bootstrap | `go.mk` sets `GO_GOARCH` from the target arch |
+
+Two consequences worth knowing:
+
+- **The stages are barriers, and that is deliberate.** The four shared jobs write
+  to one tree, so they are a linear chain; two of them at once would race on its
+  stamps. The per-arch stages fan out over four *different* trees, so their jobs
+  are safe to run concurrently — the ordering between stages is what `needs:`
+  buys. On a single runner everything serializes anyway; the graph makes that a
+  guarantee rather than an accident of runner count.
+- **A host package does not have to be selected to be buildable.** Buildroot
+  registers make targets for every package it parses, so `make host-rustc` works
+  in an `sdk`-configured tree even though the `sdk` profile does not select
+  Rust. That is what lets these jobs build the full host-tool set without
+  widening the profile the workflow publishes.
+
+Not built: `host-llvm`, `host-clang` and `host-mesa3d`. `host-llvm` is per-target
+too (`LLVM_DEFAULT_TARGET_TRIPLE`), they cost hours per architecture, and they
+belong to the image profile's graphics stack — nothing in the `sdk` profile this
+workflow publishes consumes them. They would be three more jobs in the per-arch
+chain.
+
+The prelude every one of these twenty jobs shares — apt prerequisites, the disk
+guard, the submodule checkout, `defconfig`, and the memory-bounded `-j` — lives
+once in the `.github/actions/br-setup` composite action, which exports `BR_B`,
+`BR_O`, `BR_EXT` and `BR_JOBS` for the `make` step that follows.
+
 ### What lives on the runner's disk
 
 ```
-/mnt/br/dl/              Buildroot downloads, shared by every workflow
-/mnt/br/ccache/<arch>/   per-arch ccache, shared by every workflow
-/mnt/br/shared/          the once-built host-swift tree (build-toolchain.yml)
-/mnt/br/output/<arch>/   the per-arch Buildroot output trees
-/mnt/br/pkg/<arch>/      scratch staging for the release tarball; removed after
+/mnt/br/dl/                  Buildroot downloads, shared by every workflow
+/mnt/br/ccache/<arch>/       per-arch ccache, shared by every workflow
+/mnt/br/ccache/host-shared/  ccache for the shared host-tool tree
+/mnt/br/shared/              the once-built arch-independent host tools
+                             (base, JDK, .NET, Swift)
+/mnt/br/output/<arch>/       the per-arch Buildroot output trees
+/mnt/br/pkg/<arch>/          scratch staging for the release tarball; removed after
 ```
 
 This replaces the `actions/cache` restore/save steps the workflows used to
@@ -164,10 +233,13 @@ now set `CCACHE_MAX_SIZE: 20G` (one `env:` at the top of each file).
 To force something to rebuild from scratch:
 
 ```sh
-rm -rf /mnt/br/output/<arch>          # one architecture's toolchain tree
-rm -rf /mnt/br/shared                 # host-swift; costs ~8 hours to replace
+rm -rf /mnt/br/output/<arch>          # one architecture's gcc/rust/go + toolchain
+rm -rf /mnt/br/shared                 # every shared host tool; ~8 hours to replace
 ccache -d /mnt/br/ccache/<arch> -C    # clear one architecture's ccache
 ```
+
+To rebuild a single tool, delete its build directory rather than the tree:
+`rm -rf /mnt/br/shared/build/host-mono-*` and re-run that job.
 
 `host-swift` is built once and only republished when `SWIFT_VERSION` changes;
 `gh workflow run build-toolchain.yml -f force_republish=true` overrides that.
@@ -187,8 +259,11 @@ cannot `git clean` them, so every container job ends with a `chown -R` back to
 the workspace's owner. Removing that step makes the *second* run fail, not the
 first.
 
-Since there is one runner, jobs queue rather than run side by side: eight jobs
-across the three workflows execute one at a time. Each workflow has a
+Since there is one runner, jobs queue rather than run side by side — thirty
+across the three workflows, twenty of them the per-host-tool jobs above. Each
+job pays its own container start and apt prerequisites, roughly twenty minutes
+of overhead across a full toolchain run; that is the price of an attributable
+failure per tool rather than one four-hour log. Each workflow has a
 `concurrency` group so a nightly still running when the next fires is superseded
 rather than stacked.
 

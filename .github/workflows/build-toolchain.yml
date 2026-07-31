@@ -1,9 +1,8 @@
 name: Build Toolchain
 
-# Builds the cross toolchain and the expensive host tools (gcc/binutils/
-# glibc, host-swift, and whatever host tools the tree pulls - rust for
-# ruffle, a boot JDK for openjdk) from source, per architecture, and
-# publishes each output tree to the "toolchain-latest" GitHub Release.
+# Builds every host tool this repo uses, and the per-architecture cross
+# toolchains, from source - and publishes each output tree to the
+# "toolchain-latest" GitHub Release.
 #
 # This is the from-source replacement for the colemancda/buildroot-swift
 # container images the other workflows currently start from: they can seed
@@ -12,12 +11,62 @@ name: Build Toolchain
 # the repo's 10 GB cache budget, assets are not evicted after 7 days, and
 # a Release gives the toolchain an inspectable, pinnable identity.
 #
+# ---------------------------------------------------------------------------
+# The host-tool dependency graph, and why the jobs are shaped this way
+# ---------------------------------------------------------------------------
+# One job per host tool, rather than one opaque multi-hour build: each gets its
+# own log, its own red mark, and can be re-run without paying for the others.
+# The order below is Buildroot's own dependency graph (read out of "make
+# show-info" on a configured tree), split by one question - does the tool
+# depend on the TARGET architecture?
+#
+#   ARCHITECTURE-INDEPENDENT, so built ONCE in a shared tree (/mnt/br/shared)
+#   and consumed by every arch:
+#
+#     host-base   host-cmake, host-ninja, host-meson, host-python3,
+#                 host-pkgconf - and the 21-package closure underneath them
+#                 (m4/autoconf/automake/libtool, expat, libffi, zlib, and the
+#                 python build backends: flit-core, installer, setuptools,
+#                 wheel, pypa-build, packaging, pyproject-hooks).
+#                 Everything else here needs this layer.
+#     host-jdk    host-openjdk-bin - the prebuilt boot JDK that the target
+#                 openjdk (BR2_PACKAGE_OPENJDK, runtimes.config) bootstraps
+#                 from. A download and an unpack; never installed on target.
+#     host-dotnet host-mono, which pulls host-monolite and host-gettext. The
+#                 bootstrap compiler for the target mono (BR2_PACKAGE_MONO)
+#                 that Unity and XNA/FNA ports need. Note Buildroot only
+#                 offers mono when the HOST is x86 (BR2_HOSTARCH), which this
+#                 runner is.
+#     host-swift  the native Swift toolchain. Declares no dependencies at all
+#                 (nothing sets HOST_SWIFT_DEPENDENCIES) - it clones and
+#                 builds its own LLVM through build-script - so it is last
+#                 here only to keep the shared tree serialized.
+#
+#   TARGET-DEPENDENT, so built per architecture, in that arch's own tree:
+#
+#     host-gcc    host-binutils + host-gcc-initial + glibc + host-gcc-final,
+#                 i.e. "make toolchain". This IS the cross compiler; gcc.mk
+#                 configures it --target=$(GNU_TARGET_NAME).
+#     host-rust   host-rustc -> host-rust-bin, whose EXTRA_DOWNLOADS include
+#                 rust-std-$(RUSTC_TARGET_NAME): the standard library for the
+#                 target triple. Needed by ruffle.
+#     host-go     host-go -> host-go-src plus a five-stage bootstrap, built
+#                 with GOARCH set from the target arch (go.mk: GO_GOARCH).
+#
+# Not built here, deliberately: host-llvm (LLVM_DEFAULT_TARGET_TRIPLE makes it
+# per-target too), host-clang and host-mesa3d. They belong to the image
+# profile's graphics stack, cost hours per architecture, and nothing in the
+# sdk profile this workflow publishes consumes them. Adding them is three more
+# jobs in the per-arch chain if that changes.
+# ---------------------------------------------------------------------------
+#
 # Runs on the self-hosted x86 runner (see docs/build.md). That is what makes
 # this workflow tractable at all: no 6-hour job cap, more cores, and - the
 # thing that actually matters - a disk that survives between runs. /mnt/br
-# holds dl/, the per-arch ccaches, the shared host-swift tree and the per-arch
-# output trees, so a second run is incremental instead of starting cold. There
-# are no actions/cache steps for that reason; the state is already on the box.
+# holds dl/, the per-arch ccaches, the shared host-tool tree and the per-arch
+# output trees, so each job in the chain picks the tree up where the last one
+# left it and a second run is incremental instead of starting cold. There are
+# no actions/cache steps for that reason; the state is already on the box.
 #
 # Two properties of a persistent runner the steps below are written around:
 #   - The output trees must NOT be pruned in place to build the release
@@ -50,11 +99,124 @@ concurrency:
 env:
   # The old 1.5G cap existed to fit four architectures plus dl/ inside the
   # 10 GB repo-wide actions/cache budget. The caches live on the runner's own
-  # disk now, so they can be sized for hit rate instead. One knob for every
-  # ccache-options call in this file.
+  # disk now, so they can be sized for hit rate instead.
   CCACHE_MAX_SIZE: 20G
+  # Where the architecture-independent host tools are built, once. A fixed
+  # path, not a per-arch output tree, because these builds bake absolute paths
+  # into their CMake caches and symlinks; the consuming jobs reference this
+  # same path, so every one of those references still resolves.
+  SHARED_DIR: /mnt/br/shared
 
 jobs:
+  # ==========================================================================
+  # Architecture-independent host tools, built once in $SHARED_DIR.
+  #
+  # These four are a linear chain rather than a fan-out: they all write to the
+  # same Buildroot tree, and two of them running at once would race on its
+  # stamps. On a single runner they serialize anyway; "needs" makes that a
+  # guarantee rather than an accident of runner count.
+  # ==========================================================================
+  host-base:
+    name: Host base (cmake, ninja, meson, python3)
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 180
+    env:
+      CCACHE_DIR: /mnt/br/ccache/host-shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/shared
+          ccache-dir: /mnt/br/ccache/host-shared
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      # The build tools every other host package is compiled with. Buildroot
+      # pulls the closure (autotools, m4, libtool, expat, libffi, zlib, and
+      # python's build backends) in behind these five.
+      - name: Build the base host tools
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-cmake host-ninja host-meson host-python3 host-pkgconf
+          "$BR_O/host/bin/cmake" --version
+          "$BR_O/host/bin/python3" --version
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  host-jdk:
+    name: Host JDK (openjdk-bin)
+    needs: host-base
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 60
+    env:
+      CCACHE_DIR: /mnt/br/ccache/host-shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/shared
+          ccache-dir: /mnt/br/ccache/host-shared
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      # The boot JDK the target openjdk bootstraps from. A prebuilt download,
+      # so this job is minutes - it is separate because a broken JDK download
+      # should not read as "the Swift build failed".
+      - name: Build the host JDK
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-openjdk-bin
+          # openjdk-bin.mk installs the whole JDK under $(HOST_DIR)/lib/jvm,
+          # not into host/bin.
+          "$BR_O/host/lib/jvm/bin/java" -version
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  host-dotnet:
+    name: Host .NET (mono)
+    needs: host-jdk
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 240
+    env:
+      CCACHE_DIR: /mnt/br/ccache/host-shared
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/shared
+          ccache-dir: /mnt/br/ccache/host-shared
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      # host-mono is the bootstrap C#/CLR compiler the target mono is built
+      # with; it pulls host-monolite (the prebuilt mcs bootstrap) and
+      # host-gettext. Buildroot only offers mono at all when BR2_HOSTARCH is
+      # x86/x86_64, which is why this runs here and not on an arm builder.
+      - name: Build host-mono
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-mono
+          m=$(find "$BR_O/host" -maxdepth 3 -type f -name mono -perm -u+x | head -1)
+          [ -n "$m" ] || { echo "host-mono installed no mono binary under $BR_O/host" >&2; exit 1; }
+          "$m" --version | head -1
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
   # The host Swift toolchain is the same artifact for every architecture, so it
   # is built once here instead of four times in the matrix - which is where the
   # hours went: one run spent 3h13m on it per arch and still had only reached
@@ -67,14 +229,11 @@ jobs:
   # whatever Buildroot is aiming at. The dependency runs the other way: the
   # target swift runtime needs host-swift, the cross toolchain and the sysroot.
   #
-  # Built at a fixed path (/mnt/br/shared) rather than in a per-arch output
-  # tree, because the build bakes absolute paths into its CMake caches and into
-  # the build/llvm symlink. The consuming jobs unpack to that same path and
-  # symlink it into their own tree, so every one of those references still
-  # resolves. On the self-hosted runner that path persists, so after the first
+  # On the self-hosted runner $SHARED_DIR persists, so after the first
   # successful run this job is a stamp-guarded no-op.
   host-swift:
     name: Host Swift
+    needs: host-dotnet
     runs-on: [self-hosted, Linux, X64]
     container:
       image: colemancda/buildroot-swift:latest
@@ -88,54 +247,15 @@ jobs:
     outputs:
       version: ${{ steps.ver.outputs.version }}
     env:
-      BR2_DL_DIR: /mnt/br/dl
-      CCACHE_DIR: /mnt/br/ccache/host-swift
+      CCACHE_DIR: /mnt/br/ccache/host-shared
     steps:
       - uses: actions/checkout@v4
-
-      - name: Host prerequisites
-        run: |
-          set -eu
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
-            libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
-            libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
-          if ! command -v gh >/dev/null 2>&1; then
-            apt-get install -y --no-install-recommends gh 2>/dev/null || {
-              apt-get install -y --no-install-recommends curl ca-certificates
-              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-                -o /usr/share/keyrings/githubcli.gpg
-              echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
-                > /etc/apt/sources.list.d/github-cli.list
-              apt-get update
-              apt-get install -y --no-install-recommends gh
-            }
-          fi
-          mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
-
-      # Fail in five seconds rather than five hours. /mnt is the runner's own
-      # disk and it accumulates: four output trees, the shared host-swift tree,
-      # dl/ and the ccaches all live there, and ENOSPC deep into an LLVM build
-      # costs the whole run.
-      - name: Runner facts and disk guard
-        run: |
-          set -eu
-          echo "runner:      $RUNNER_NAME"
-          echo "cpus:        $(nproc)"
-          free -h || true
-          df -h / /mnt
-          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
-          if [ "${avail:-0}" -lt 100 ]; then
-            echo "only ${avail}G free on /mnt; host-swift needs ~100G of headroom." >&2
-            echo "prune with: rm -rf /mnt/br/output/<arch>   (see docs/build.md)" >&2
-            exit 1
-          fi
-
-      - name: Check out Buildroot and the externals
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/shared
+          ccache-dir: /mnt/br/ccache/host-shared
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '100'
 
       # The asset is keyed on this, so a Swift bump republishes rather than
       # silently reusing the previous toolchain.
@@ -180,29 +300,11 @@ jobs:
       # neither the cross toolchain nor anything else from the profile. The
       # architecture of the defconfig is irrelevant to what gets built - it just
       # has to be a configured tree.
-      #
-      # -j is bounded by memory as well as cores: Swift and LLVM link steps are
-      # multi-gigabyte apiece, and nproc of them in flight on a desktop OOMs
-      # hours in.
       - name: Build host-swift
         run: |
           set -eu
-          B="$GITHUB_WORKSPACE/buildroot"
-          O=/mnt/br/shared
-          EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
-          J=$(nproc)
-          M=$(awk '/MemAvailable/{print int($2/1024/1024)}' /proc/meminfo)
-          if [ "$((M / 2))" -lt "$J" ]; then J=$((M / 2)); fi
-          if [ "$J" -lt 1 ]; then J=1; fi
-          echo "building with -j$J (nproc=$(nproc), MemAvailable=${M}G)"
-          "$GITHUB_WORKSPACE/generate-config.sh" --arch x86_64 --profile sdk -o /tmp/hs.defconfig
-          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/hs.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="$BR2_DL_DIR" \
-            BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG=/tmp/hs.defconfig defconfig
-          make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" \
-            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$J" host-swift
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" host-swift
 
       # What the consumers actually need, and how big it is. The sizes are
       # reported because the split threshold and the wisdom of shipping the
@@ -215,7 +317,7 @@ jobs:
       - name: Measure
         run: |
           set -eu
-          D=/mnt/br/shared/build/host-swift-${{ steps.ver.outputs.version }}
+          D=$SHARED_DIR/build/host-swift-${{ steps.ver.outputs.version }}
           test -x "$D/build/usr/bin/swiftc" || { echo "no swiftc at $D/build/usr/bin" >&2; exit 1; }
           test -e "$D/build/llvm/lib/cmake/llvm" || { echo "no usable build/llvm at $D" >&2; exit 1; }
           "$D/build/usr/bin/swiftc" --version
@@ -229,15 +331,14 @@ jobs:
         run: |
           set -eu
           VER=${{ steps.ver.outputs.version }}
-          D=/mnt/br/shared/build/host-swift-$VER
-          test -x "$D/build/usr/bin/swiftc" || { echo "no swiftc at $D/build/usr/bin" >&2; exit 1; }
+          D=$SHARED_DIR/build/host-swift-$VER
           # Ship the stamps up to and including the build, so a consumer skips
           # download/extract/patch/configure/build outright. The install stamp
           # is deliberately dropped: HOST_SWIFT_INSTALL_CMDS writes the SwiftPM
           # destination file with target-specific flags, so it has to run per
           # architecture.
           rm -f "$D"/.stamp_host_installed "$D"/.stamp_installed*
-          tar -C /mnt/br/shared/build --zstd -cf /mnt/br/host-swift-$VER.tar.zst \
+          tar -C "$SHARED_DIR/build" --zstd -cf /mnt/br/host-swift-$VER.tar.zst \
             host-swift-$VER
           # Release assets cap at 2 GiB, as with the toolchain trees.
           split -b 1900M -d /mnt/br/host-swift-$VER.tar.zst \
@@ -264,14 +365,14 @@ jobs:
           gh release upload host-swift-latest /mnt/br/host-swift-$VER.tar.zst.part* \
             --repo "$GITHUB_REPOSITORY"
           # The runner's disk is not thrown away after the job; the parts are
-          # reproducible from /mnt/br/shared, so do not leave ~10 GB behind.
+          # reproducible from the shared tree, so do not leave ~10 GB behind.
           rm -f /mnt/br/host-swift-$VER.tar.zst.part*
 
       - name: ccache stats
         if: always()
         run: |
           ccache -d "$CCACHE_DIR" -s 2>/dev/null || true
-          du -sh "$CCACHE_DIR" "$BR2_DL_DIR" || true
+          du -sh "$CCACHE_DIR" /mnt/br/dl || true
           df -h /mnt
 
       # The container runs as root; the workspace belongs to the runner user on
@@ -282,8 +383,16 @@ jobs:
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
 
-  toolchain:
-    name: Toolchain (${{ matrix.arch }})
+  # ==========================================================================
+  # Target-dependent host tools, one chain per architecture.
+  #
+  # Each stage is a matrix over arch, so its four jobs touch four DIFFERENT
+  # trees and are safe to run concurrently; the stages themselves are ordered
+  # because within one arch they share a tree. "needs" between matrix jobs is a
+  # barrier across the whole matrix, which is what gives that ordering.
+  # ==========================================================================
+  host-gcc:
+    name: Host GCC (${{ matrix.arch }})
     needs: host-swift
     strategy:
       fail-fast: false
@@ -294,11 +403,128 @@ jobs:
     # dependencies both Buildroot and a from-source Swift build need. Not the
     # per-arch swift_<arch>_defconfig tags the image and SDK workflows use -
     # those carry a prebuilt output/<arch>, which is the very thing this
-    # workflow exists to rebuild from source. Only the build environment comes
-    # from the image; every artifact here is still built from scratch.
-    #
-    # /mnt is bind-mounted because that is where the heavy trees live, and on
-    # the self-hosted runner it is also where they persist between runs.
+    # workflow exists to rebuild from source.
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 300
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '100'
+      # "toolchain" is Buildroot's own name for the cross compiler and its
+      # sysroot: host-binutils, host-gcc-initial, the target glibc and
+      # linux-headers, then host-gcc-final. This is the genuinely per-arch
+      # part - gcc.mk configures --target=$(GNU_TARGET_NAME) - and it is why
+      # this cannot be shared the way the tools above are.
+      - name: Build the cross toolchain
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" toolchain
+          # One name per configuration, and the glob can match both the
+          # triple-prefixed binary and the <arch>-linux alias gcc.mk symlinks
+          # next to it - take the first rather than passing several to --version.
+          cc=$(find "$BR_O/host/bin" -maxdepth 1 -name '*-linux*-gcc' | head -1)
+          [ -n "$cc" ] || { echo "no cross gcc in $BR_O/host/bin" >&2; exit 1; }
+          "$cc" --version | head -1
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  host-rust:
+    name: Host Rust (${{ matrix.arch }})
+    needs: host-gcc
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 120
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      # host-rustc resolves to host-rust-bin: the prebuilt host rustc plus
+      # rust-std for THIS target's triple (rust-bin.mk pulls
+      # rust-std-$(RUSTC_TARGET_NAME) as an extra download), which is what
+      # makes it per-arch rather than shared. ruffle is the consumer.
+      - name: Build host Rust
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" host-rustc
+          "$BR_O"/host/bin/rustc --version
+          "$BR_O"/host/bin/rustc --print target-list >/dev/null
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  host-go:
+    name: Host Go (${{ matrix.arch }})
+    needs: host-rust
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt
+    timeout-minutes: 180
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      # host-go is built from source (host-go-src) through a five-stage
+      # bootstrap seeded by the prebuilt host-go-bin, with GOARCH taken from
+      # the target (go.mk: GO_GOARCH), so each architecture gets its own.
+      - name: Build host Go
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" host-go
+          # go.mk installs to $(HOST_DIR)/lib/go; the binary infers GOROOT
+          # from its own path.
+          "$BR_O/host/lib/go/bin/go" version
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
+  # Everything the sdk profile still wants on top of the host tools above -
+  # the target libraries and the Swift runtime - then package and publish.
+  toolchain:
+    name: Toolchain (${{ matrix.arch }})
+    needs: [host-swift, host-go]
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
     container:
       image: colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt
@@ -306,99 +532,37 @@ jobs:
     permissions:
       contents: write             # uploads assets to the toolchain-latest release
     env:
-      BR2_DL_DIR: /mnt/br/dl
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
       - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '100'
 
-      # No free-disk-space step: it prunes the runner's own filesystem, which a
-      # container job cannot see. The heavy trees live on the bind-mounted /mnt
-      # instead, which is where the room is.
-      - name: Host prerequisites
-        run: |
-          set -eu
-          # No sudo: the container runs as root, and the image has no sudo.
-          # The image already carries Buildroot's host dependencies; these are
-          # host-swift's own, which building the compiler from source needs and
-          # a toolchain-shipping image has no reason to include. Installed as a
-          # set rather than one package per failed run, because each discovery
-          # costs a four-hour build.
-          #
-          # uuid-dev is the one that bit us: swift's lib/Basic does
-          # find_package(UUID), and without it the swift component never
-          # configures - which surfaces hours later as "CMAKE_Swift_COMPILER
-          # ... is not a full path to an existing compiler tool" from the
-          # target swift package looking for a swiftc that was never produced.
-          apt-get update
-          apt-get install -y --no-install-recommends \
-            uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
-            libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
-            libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
-          # gh is preinstalled on a runner but not in the image, and both the
-          # shared host-swift download and the release upload need it.
-          if ! command -v gh >/dev/null 2>&1; then
-            apt-get install -y --no-install-recommends gh 2>/dev/null || {
-              apt-get install -y --no-install-recommends curl ca-certificates
-              curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-                -o /usr/share/keyrings/githubcli.gpg
-              echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
-                > /etc/apt/sources.list.d/github-cli.list
-              apt-get update
-              apt-get install -y --no-install-recommends gh
-            }
-          fi
-          mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
-
-      - name: Runner facts and disk guard
-        run: |
-          set -eu
-          echo "runner:      $RUNNER_NAME"
-          echo "cpus:        $(nproc)"
-          free -h || true
-          df -h / /mnt
-          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
-          if [ "${avail:-0}" -lt 100 ]; then
-            echo "only ${avail}G free on /mnt; a toolchain tree plus its tarball needs ~100G." >&2
-            echo "prune with: rm -rf /mnt/br/output/<arch>   (see docs/build.md)" >&2
-            exit 1
-          fi
-
-      # Everything the build compiles comes from this repo's submodules - the
-      # patched Buildroot fork, the buildroot-swift external and the ports
-      # external - not from the image, which supplies only the environment.
-      # Non-recursive on purpose: the swift submodule's own buildroot pointer
-      # is redundant with the top-level one.
-      #
-      # safe.directory first, as in the image and SDK workflows: the workspace
-      # is created by the runner on the host while git here runs as root in the
-      # container, and actions/checkout's own exemption lives in a throwaway
-      # HOME that is gone by now.
-      - name: Check out Buildroot and the externals
-        run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
-
-      # Unpack the shared host-swift to the same absolute path the producer
-      # built it at, then point this architecture's tree at it with a symlink.
+      # Point this architecture's tree at the shared host-swift with a symlink.
       # swift.mk guards both expensive steps on directories existing
       # (swift-source for configure, build/llvm for the build), so a populated
       # tree makes them no-ops and only the per-arch install runs.
       #
-      # On the self-hosted runner /mnt/br/shared is usually already there from
-      # the producing job, and the download is skipped entirely.
+      # On the self-hosted runner the shared tree is already there from the
+      # producing job, and the download is skipped entirely.
       - name: Fetch the shared host-swift
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -eu
           VER=${{ needs['host-swift'].outputs.version }}
-          D=/mnt/br/shared/build/host-swift-$VER
+          D=$SHARED_DIR/build/host-swift-$VER
           if [ ! -d "$D" ]; then
-            mkdir -p /mnt/br/shared/build
+            mkdir -p "$SHARED_DIR/build"
             cd /mnt/br
             gh release download host-swift-latest --repo "$GITHUB_REPOSITORY" \
               --pattern "host-swift-$VER.tar.zst.part*"
-            cat host-swift-$VER.tar.zst.part* | tar --zstd -x -C /mnt/br/shared/build
+            cat host-swift-$VER.tar.zst.part* | tar --zstd -x -C "$SHARED_DIR/build"
             rm -f host-swift-$VER.tar.zst.part*
           fi
           # Fail here rather than four hours later: an incomplete tree would
@@ -406,32 +570,15 @@ jobs:
           # would do so silently.
           test -x "$D/build/usr/bin/swiftc" || { echo "shared host-swift has no swiftc" >&2; exit 1; }
           test -e "$D/build/llvm/lib/cmake/llvm" || { echo "shared host-swift has no usable build/llvm" >&2; exit 1; }
-          mkdir -p /mnt/br/output/${{ matrix.arch }}/build
-          ln -sfn "$D" /mnt/br/output/${{ matrix.arch }}/build/host-swift-$VER
+          mkdir -p "$BR_O/build"
+          ln -sfn "$D" "$BR_O/build/host-swift-$VER"
           "$D/build/usr/bin/swiftc" --version
 
-      - name: Build toolchain + host tools (sdk profile)
+      - name: Build the rest of the sdk profile
         run: |
           set -eu
-          B="$GITHUB_WORKSPACE/buildroot"
-          O=/mnt/br/output/${{ matrix.arch }}
-          EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
-          J=$(nproc)
-          M=$(awk '/MemAvailable/{print int($2/1024/1024)}' /proc/meminfo)
-          if [ "$((M / 2))" -lt "$J" ]; then J=$((M / 2)); fi
-          if [ "$J" -lt 1 ]; then J=1; fi
-          echo "building with -j$J (nproc=$(nproc), MemAvailable=${M}G)"
-          ./generate-config.sh --arch ${{ matrix.arch }} --profile sdk -o /tmp/sdk.defconfig
-          printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/sdk.defconfig
-          make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="$BR2_DL_DIR" \
-            BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG=/tmp/sdk.defconfig defconfig
-          # compiler_check=content so hits survive the compiler living at a
-          # different path in the image and SDK workflows, which share this
-          # very directory on the runner's disk.
-          make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
-          FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" \
-            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$J"
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS"
 
       # The published tree is the whole output dir minus the bulky per-package
       # build dirs - but each build dir's stamp files must survive, because they
@@ -507,7 +654,7 @@ jobs:
         if: always()
         run: |
           ccache -d "$CCACHE_DIR" -s 2>/dev/null || true
-          du -sh "$CCACHE_DIR" "$BR2_DL_DIR" || true
+          du -sh "$CCACHE_DIR" /mnt/br/dl || true
           df -h / /mnt
 
       # See the host-swift job: root-owned files in a workspace that outlives

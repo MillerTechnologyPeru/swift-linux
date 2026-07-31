@@ -1,0 +1,149 @@
+name: Buildroot setup
+description: >
+  Prepare a container job to run Buildroot against an output tree on the
+  self-hosted runner's persistent disk, and configure that tree. Exports
+  BR_O, BR_B, BR_EXT and BR_JOBS for the make step that follows.
+
+# build-toolchain.yml runs one job per host tool, which means twenty jobs
+# repeating the same eight-step prelude. This is that prelude, once.
+
+inputs:
+  output-dir:
+    description: Buildroot output tree (O=). Lives on /mnt so it survives the job.
+    required: true
+  arch:
+    description: Target architecture for generate-config.sh.
+    required: false
+    default: x86_64
+  profile:
+    description: Profile for generate-config.sh (sdk, app-sdk, image, lib32).
+    required: false
+    default: sdk
+  min-free-gb:
+    description: Fail immediately if /mnt has less than this much free.
+    required: false
+    default: '50'
+  dl-dir:
+    description: Buildroot download cache, shared by every job.
+    required: false
+    default: /mnt/br/dl
+  ccache-dir:
+    description: ccache directory for this tree.
+    required: true
+  ccache-max-size:
+    description: ccache size limit.
+    required: false
+    default: 20G
+
+runs:
+  using: composite
+  steps:
+    # The image already carries Buildroot's host dependencies; these are the
+    # ones a from-source Swift/LLVM build needs on top, which a
+    # toolchain-shipping image has no reason to include. Installed as a set
+    # rather than one package per failed run, because each discovery costs a
+    # multi-hour build.
+    #
+    # uuid-dev is the one that bit us: swift's lib/Basic does
+    # find_package(UUID), and without it the swift component never configures -
+    # which surfaces hours later as "CMAKE_Swift_COMPILER ... is not a full
+    # path to an existing compiler tool" from the target swift package looking
+    # for a swiftc that was never produced.
+    #
+    # No sudo: the container runs as root, and the image has no sudo.
+    - name: Host prerequisites
+      shell: bash
+      run: |
+        set -eu
+        apt-get update
+        apt-get install -y --no-install-recommends \
+          uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
+          libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
+          libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
+        # gh is preinstalled on a GitHub-hosted runner but not in this image,
+        # and both the shared host-swift download and the release uploads need it.
+        if ! command -v gh >/dev/null 2>&1; then
+          apt-get install -y --no-install-recommends gh 2>/dev/null || {
+            apt-get install -y --no-install-recommends curl ca-certificates
+            curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+              -o /usr/share/keyrings/githubcli.gpg
+            echo "deb [signed-by=/usr/share/keyrings/githubcli.gpg] https://cli.github.com/packages stable main" \
+              > /etc/apt/sources.list.d/github-cli.list
+            apt-get update
+            apt-get install -y --no-install-recommends gh
+          }
+        fi
+
+    # Fail in five seconds rather than five hours. /mnt is the runner's own
+    # disk and it accumulates: four output trees, the shared host-tool tree,
+    # dl/ and the ccaches all live there, and ENOSPC deep into an LLVM build
+    # costs the whole run.
+    - name: Runner facts and disk guard
+      shell: bash
+      run: |
+        set -eu
+        echo "runner:  $RUNNER_NAME"
+        echo "cpus:    $(nproc)"
+        free -h || true
+        df -h / /mnt
+        mkdir -p /mnt/br "${{ inputs.dl-dir }}" "${{ inputs.ccache-dir }}" "${{ inputs.output-dir }}"
+        avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
+        if [ "${avail:-0}" -lt "${{ inputs.min-free-gb }}" ]; then
+          echo "only ${avail}G free on /mnt, need ${{ inputs.min-free-gb }}G." >&2
+          echo "prune with: rm -rf /mnt/br/output/<arch>   (see docs/build.md)" >&2
+          exit 1
+        fi
+
+    # Everything the build compiles comes from this repo's submodules - the
+    # patched Buildroot fork, the buildroot-swift external and the ports
+    # external - not from the image, which supplies only the environment.
+    # Non-recursive on purpose: the swift submodule's own buildroot pointer is
+    # redundant with the top-level one.
+    #
+    # safe.directory first: the workspace is created by the runner on the host
+    # while git here runs as root in the container, and actions/checkout's own
+    # exemption lives in a throwaway HOME that is gone by now.
+    - name: Check out Buildroot and the externals
+      shell: bash
+      run: |
+        set -eu
+        git config --global --add safe.directory "$GITHUB_WORKSPACE"
+        git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
+
+    # Idempotent: re-running defconfig on an existing tree regenerates the same
+    # .config, which is what lets each job in the chain pick the tree up where
+    # the previous one left it.
+    #
+    # -j is bounded by memory as well as cores: Swift and LLVM link steps are
+    # multi-gigabyte apiece, and nproc of them in flight on a desktop OOMs
+    # hours in.
+    - name: Configure the tree
+      shell: bash
+      run: |
+        set -eu
+        B="$GITHUB_WORKSPACE/buildroot"
+        O="${{ inputs.output-dir }}"
+        EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
+        "$GITHUB_WORKSPACE/generate-config.sh" \
+          --arch "${{ inputs.arch }}" --profile "${{ inputs.profile }}" -o /tmp/br.defconfig
+        printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/br.defconfig
+        make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="${{ inputs.dl-dir }}" \
+          BR2_CCACHE_DIR="${{ inputs.ccache-dir }}" BR2_DEFCONFIG=/tmp/br.defconfig defconfig
+        # compiler_check=content so hits survive the compiler living at a
+        # different path in the image and SDK workflows, which share these very
+        # directories on the runner's disk.
+        make -C "$B" O="$O" ccache-options \
+          CCACHE_OPTIONS="--max-size=${{ inputs.ccache-max-size }} --set-config=compression=true --set-config=compiler_check=content" || true
+
+        J=$(nproc)
+        M=$(awk '/MemAvailable/{print int($2/1024/1024)}' /proc/meminfo)
+        if [ "$((M / 2))" -lt "$J" ]; then J=$((M / 2)); fi
+        if [ "$J" -lt 1 ]; then J=1; fi
+        echo "make -j$J (nproc=$(nproc), MemAvailable=${M}G)"
+
+        {
+          echo "BR_B=$B"
+          echo "BR_O=$O"
+          echo "BR_EXT=$EXT"
+          echo "BR_JOBS=$J"
+        } >> "$GITHUB_ENV"
