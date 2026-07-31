@@ -224,9 +224,11 @@ jobs:
           FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
             BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
             host-mono
-          m=$(find "$BR_O/host" -maxdepth 3 -type f -name mono -perm -u+x | head -1)
-          [ -n "$m" ] || { echo "host-mono installed no mono binary under $BR_O/host" >&2; exit 1; }
-          "$m" --version | head -1
+          # Run it, the way the other host tools here are checked. Searching for
+          # the file instead fails: Buildroot installs host/bin/mono as a
+          # symlink to mono-sgen, which "find -type f" never matches, so a
+          # perfectly good build reported "installed no mono binary".
+          "$BR_O/host/bin/mono" --version | head -1
       - name: Return the workspace to the runner user
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
