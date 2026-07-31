@@ -34,6 +34,16 @@ inputs:
     description: ccache size limit.
     required: false
     default: 20G
+  extra-config:
+    description: >
+      Extra defconfig lines appended before "make defconfig", for a job that
+      needs a package configured differently from the profile. Every symbol
+      passed here is asserted to have survived kconfig - an unmet dependency
+      does not fail Buildroot, it silently drops the symbol.
+      Plain BR2_FOO=y lines only: the value is interpolated into a
+      double-quoted shell string, so quotes and $ would not survive.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -137,8 +147,28 @@ runs:
         "$GITHUB_WORKSPACE/generate-config.sh" \
           --arch "${{ inputs.arch }}" --profile "${{ inputs.profile }}" -o /tmp/br.defconfig
         printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/br.defconfig
+        # printf rather than a heredoc: a heredoc terminator has to sit at
+        # column 0, which would end the YAML block scalar this script lives in.
+        printf '%s\n' "${{ inputs.extra-config }}" | sed 's/^[[:space:]]*//' > /tmp/br.extra
+        cat /tmp/br.extra >> /tmp/br.defconfig
         make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="${{ inputs.dl-dir }}" \
           BR2_CCACHE_DIR="${{ inputs.ccache-dir }}" BR2_DEFCONFIG=/tmp/br.defconfig defconfig
+
+        # An unmet dependency does not fail Buildroot - kconfig just drops the
+        # symbol, and you find out hours later from a package that quietly
+        # built without the feature. So anything asked for explicitly has to be
+        # in the resulting .config. Read from a file, not a pipe: a "while" on
+        # the right of a pipe runs in a subshell where exit would not fail the
+        # step.
+        while IFS= read -r line; do
+          case "$line" in ''|'#'*) continue ;; esac
+          grep -qxF "$line" "$O/.config" || {
+            echo "kconfig dropped '$line' - an unmet dependency, not a typo." >&2
+            echo "The build would have silently produced something else." >&2
+            exit 1
+          }
+          echo "asserted: $line"
+        done < /tmp/br.extra
         # compiler_check=content so hits survive the compiler living at a
         # different path in the image and SDK workflows, which share these very
         # directories on the runner's disk.
