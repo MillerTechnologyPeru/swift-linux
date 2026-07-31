@@ -12,14 +12,24 @@ name: Build Toolchain
 # the repo's 10 GB cache budget, assets are not evicted after 7 days, and
 # a Release gives the toolchain an inspectable, pinnable identity.
 #
-# EXPERIMENTAL, two known hazards, stated up front:
-#   - host-swift is a multi-hour build. With a cold ccache an arch may not
-#     fit the 6-hour job limit; the schedule is weekly and each run chains
-#     on the last run's ccache, so it converges - but the first runs can
-#     red-mark. timeout-minutes fails them cleanly.
-#   - GitHub release assets cap at 2 GiB each, and a compressed output
-#     tree is larger; the tree ships as split .tar.zst parts that the
-#     consumer concatenates.
+# Runs on the self-hosted x86 runner (see docs/build.md). That is what makes
+# this workflow tractable at all: no 6-hour job cap, more cores, and - the
+# thing that actually matters - a disk that survives between runs. /mnt/br
+# holds dl/, the per-arch ccaches, the shared host-swift tree and the per-arch
+# output trees, so a second run is incremental instead of starting cold. There
+# are no actions/cache steps for that reason; the state is already on the box.
+#
+# Two properties of a persistent runner the steps below are written around:
+#   - The output trees must NOT be pruned in place to build the release
+#     tarball. Packaging works from a hardlinked staging copy under
+#     /mnt/br/pkg/<arch> so the live tree keeps its extracted sources.
+#   - Container jobs run as root and leave root-owned files in the workspace,
+#     which the next run's actions/checkout (running as the runner user)
+#     cannot clean. Every job hands the workspace back on the way out.
+#
+# GitHub release assets still cap at 2 GiB each, and a compressed output tree
+# is larger; the trees ship as split .tar.zst parts that the consumer
+# concatenates.
 #
 # Weekly, not nightly: the toolchain changes when toolchain.config or
 # swift.config change, not when board overlays do.
@@ -27,10 +37,22 @@ on:
   schedule:
     - cron: '0 3 * * 6'   # Saturday 03:00 UTC
   workflow_dispatch:
+    inputs:
+      force_republish:
+        description: 'Re-package and re-upload host-swift even if this version is already on the release'
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
+
+env:
+  # The old 1.5G cap existed to fit four architectures plus dl/ inside the
+  # 10 GB repo-wide actions/cache budget. The caches live on the runner's own
+  # disk now, so they can be sized for hit rate instead. One knob for every
+  # ccache-options call in this file.
+  CCACHE_MAX_SIZE: 20G
 
 jobs:
   # The host Swift toolchain is the same artifact for every architecture, so it
@@ -49,14 +71,18 @@ jobs:
   # tree, because the build bakes absolute paths into its CMake caches and into
   # the build/llvm symlink. The consuming jobs unpack to that same path and
   # symlink it into their own tree, so every one of those references still
-  # resolves.
+  # resolves. On the self-hosted runner that path persists, so after the first
+  # successful run this job is a stamp-guarded no-op.
   host-swift:
     name: Host Swift
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     container:
       image: colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt
-    timeout-minutes: 350
+    # Generous, not calibrated: the 6-hour hosted-runner cap this used to dodge
+    # does not apply here. It exists so a wedged build eventually releases the
+    # runner rather than blocking every other workflow forever.
+    timeout-minutes: 1440
     permissions:
       contents: write             # uploads assets to the host-swift-latest release
     outputs:
@@ -87,7 +113,24 @@ jobs:
             }
           fi
           mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
+
+      # Fail in five seconds rather than five hours. /mnt is the runner's own
+      # disk and it accumulates: four output trees, the shared host-swift tree,
+      # dl/ and the ccaches all live there, and ENOSPC deep into an LLVM build
+      # costs the whole run.
+      - name: Runner facts and disk guard
+        run: |
+          set -eu
+          echo "runner:      $RUNNER_NAME"
+          echo "cpus:        $(nproc)"
+          free -h || true
           df -h / /mnt
+          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
+          if [ "${avail:-0}" -lt 100 ]; then
+            echo "only ${avail}G free on /mnt; host-swift needs ~100G of headroom." >&2
+            echo "prune with: rm -rf /mnt/br/output/<arch>   (see docs/build.md)" >&2
+            exit 1
+          fi
 
       - name: Check out Buildroot and the externals
         run: |
@@ -105,54 +148,84 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "swift $v"
 
-      - name: Restore dl/
-        uses: actions/cache/restore@v4
-        with:
-          path: /mnt/br/dl
-          key: br-dl-${{ hashFiles('sdk/defconfig/**', 'external/package/**/*.hash', 'ports/package/**/*.hash') }}
-          restore-keys: |
-            br-dl-
-
-      - name: Restore ccache
-        uses: actions/cache/restore@v4
-        with:
-          path: /mnt/br/ccache/host-swift
-          key: br-ccache-host-swift-${{ github.run_id }}
-          restore-keys: |
-            br-ccache-host-swift-
+      # On a persistent runner the build below is a no-op once it has succeeded
+      # once, but packaging and uploading are not: they would re-tar and re-push
+      # gigabytes every Saturday for a byte-identical result. Decide here, and
+      # say so in the log, rather than finding out from the upload.
+      - name: Is this version already published?
+        id: pub
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -eu
+          VER=${{ steps.ver.outputs.version }}
+          if [ "${{ github.event.inputs.force_republish }}" = "true" ]; then
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "force_republish set: will package and upload regardless"
+            exit 0
+          fi
+          n=$(gh release view host-swift-latest --repo "$GITHUB_REPOSITORY" \
+                --json assets \
+                --jq "[.assets[].name | select(startswith(\"host-swift-$VER.tar.zst.part\"))] | length" \
+                2>/dev/null || echo 0)
+          if [ "${n:-0}" -gt 0 ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "host-swift $VER is already on the release ($n parts); skipping package + upload"
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "host-swift $VER is not on the release yet"
+          fi
 
       # Only the host-swift package: with no dependencies declared it pulls in
       # neither the cross toolchain nor anything else from the profile. The
       # architecture of the defconfig is irrelevant to what gets built - it just
       # has to be a configured tree.
+      #
+      # -j is bounded by memory as well as cores: Swift and LLVM link steps are
+      # multi-gigabyte apiece, and nproc of them in flight on a desktop OOMs
+      # hours in.
       - name: Build host-swift
         run: |
           set -eu
           B="$GITHUB_WORKSPACE/buildroot"
           O=/mnt/br/shared
           EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
+          J=$(nproc)
+          M=$(awk '/MemAvailable/{print int($2/1024/1024)}' /proc/meminfo)
+          if [ "$((M / 2))" -lt "$J" ]; then J=$((M / 2)); fi
+          if [ "$J" -lt 1 ]; then J=1; fi
+          echo "building with -j$J (nproc=$(nproc), MemAvailable=${M}G)"
           "$GITHUB_WORKSPACE/generate-config.sh" --arch x86_64 --profile sdk -o /tmp/hs.defconfig
           printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/hs.defconfig
           make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="$BR2_DL_DIR" \
             BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG=/tmp/hs.defconfig defconfig
           make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true --set-config=compiler_check=content" || true
+            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
           FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" \
-            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$(nproc)" host-swift
+            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$J" host-swift
 
       # What the consumers actually need, and how big it is. The sizes are
       # reported because the split threshold and the wisdom of shipping the
       # whole build tree depend on them.
+      #
+      # The two tests are the same pair the matrix jobs run before trusting the
+      # shared tree, repeated here because packaging - which used to be what
+      # caught a missing swiftc - is now skipped when the version is already
+      # published. Without them a broken build could go green.
       - name: Measure
         run: |
           set -eu
           D=/mnt/br/shared/build/host-swift-${{ steps.ver.outputs.version }}
+          test -x "$D/build/usr/bin/swiftc" || { echo "no swiftc at $D/build/usr/bin" >&2; exit 1; }
+          test -e "$D/build/llvm/lib/cmake/llvm" || { echo "no usable build/llvm at $D" >&2; exit 1; }
+          "$D/build/usr/bin/swiftc" --version
           du -sh "$D" || true
           du -sh "$D/build/usr" "$D/swift-source" 2>/dev/null || true
           du -sh "$D"/swift-source/build/buildbot_linux/* 2>/dev/null || true
           df -h /mnt
 
       - name: Package host-swift
+        if: steps.pub.outputs.needed == 'true'
         run: |
           set -eu
           VER=${{ steps.ver.outputs.version }}
@@ -173,6 +246,7 @@ jobs:
           ls -lh /mnt/br/host-swift-$VER.tar.zst.part*
 
       - name: Publish to the host-swift-latest release
+        if: steps.pub.outputs.needed == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -189,13 +263,24 @@ jobs:
           done
           gh release upload host-swift-latest /mnt/br/host-swift-$VER.tar.zst.part* \
             --repo "$GITHUB_REPOSITORY"
+          # The runner's disk is not thrown away after the job; the parts are
+          # reproducible from /mnt/br/shared, so do not leave ~10 GB behind.
+          rm -f /mnt/br/host-swift-$VER.tar.zst.part*
 
-      - name: Save ccache
-        if: always() && github.event_name != 'pull_request'
-        uses: actions/cache/save@v4
-        with:
-          path: /mnt/br/ccache/host-swift
-          key: br-ccache-host-swift-${{ github.run_id }}
+      - name: ccache stats
+        if: always()
+        run: |
+          ccache -d "$CCACHE_DIR" -s 2>/dev/null || true
+          du -sh "$CCACHE_DIR" "$BR2_DL_DIR" || true
+          df -h /mnt
+
+      # The container runs as root; the workspace belongs to the runner user on
+      # the host and, unlike a hosted VM, survives the job. Without this the
+      # next run's actions/checkout git-cleans as the runner user and hits EPERM
+      # on the root-owned submodule trees this job created.
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
 
   toolchain:
     name: Toolchain (${{ matrix.arch }})
@@ -204,7 +289,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64, armv7, i386]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     # The plain base image: Debian with the Swift toolchain and the host
     # dependencies both Buildroot and a from-source Swift build need. Not the
     # per-arch swift_<arch>_defconfig tags the image and SDK workflows use -
@@ -212,13 +297,12 @@ jobs:
     # workflow exists to rebuild from source. Only the build environment comes
     # from the image; every artifact here is still built from scratch.
     #
-    # /mnt is bind-mounted because that is where the heavy trees live: the
-    # runner's large scratch disk is not visible inside a container otherwise,
-    # and / alone does not have the room.
+    # /mnt is bind-mounted because that is where the heavy trees live, and on
+    # the self-hosted runner it is also where they persist between runs.
     container:
       image: colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt
-    timeout-minutes: 350          # job hard limit is 360; fail cleanly before it
+    timeout-minutes: 720
     permissions:
       contents: write             # uploads assets to the toolchain-latest release
     env:
@@ -264,7 +348,20 @@ jobs:
             }
           fi
           mkdir -p /mnt/br "$BR2_DL_DIR" "$CCACHE_DIR"
+
+      - name: Runner facts and disk guard
+        run: |
+          set -eu
+          echo "runner:      $RUNNER_NAME"
+          echo "cpus:        $(nproc)"
+          free -h || true
           df -h / /mnt
+          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
+          if [ "${avail:-0}" -lt 100 ]; then
+            echo "only ${avail}G free on /mnt; a toolchain tree plus its tarball needs ~100G." >&2
+            echo "prune with: rm -rf /mnt/br/output/<arch>   (see docs/build.md)" >&2
+            exit 1
+          fi
 
       # Everything the build compiles comes from this repo's submodules - the
       # patched Buildroot fork, the buildroot-swift external and the ports
@@ -281,34 +378,14 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" submodule update --init --depth 1 buildroot swift ports
 
-      # dl/: shared across every workflow in the repo (same key namespace).
-      # Keyed loosely on purpose - a stale dl/ is still mostly useful, and
-      # the per-package hashes protect correctness.
-      - name: Restore dl/
-        id: dl
-        uses: actions/cache/restore@v4
-        with:
-          path: /mnt/br/dl
-          key: br-dl-${{ hashFiles('sdk/defconfig/**', 'external/package/**/*.hash', 'ports/package/**/*.hash') }}
-          restore-keys: |
-            br-dl-
-
-      # ccache: per-arch, shared by name across ALL workflows (the cache is
-      # repo-scoped). Restore-only here; the save step writes a run_id-keyed
-      # entry so each run chains on the previous one.
-      - name: Restore ccache
-        uses: actions/cache/restore@v4
-        with:
-          path: /mnt/br/ccache/${{ matrix.arch }}
-          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
-          restore-keys: |
-            br-ccache-${{ matrix.arch }}-
-
       # Unpack the shared host-swift to the same absolute path the producer
       # built it at, then point this architecture's tree at it with a symlink.
       # swift.mk guards both expensive steps on directories existing
       # (swift-source for configure, build/llvm for the build), so a populated
       # tree makes them no-ops and only the per-arch install runs.
+      #
+      # On the self-hosted runner /mnt/br/shared is usually already there from
+      # the producing job, and the download is skipped entirely.
       - name: Fetch the shared host-swift
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -339,46 +416,72 @@ jobs:
           B="$GITHUB_WORKSPACE/buildroot"
           O=/mnt/br/output/${{ matrix.arch }}
           EXT="$GITHUB_WORKSPACE/swift:$GITHUB_WORKSPACE/ports:$GITHUB_WORKSPACE/external"
+          J=$(nproc)
+          M=$(awk '/MemAvailable/{print int($2/1024/1024)}' /proc/meminfo)
+          if [ "$((M / 2))" -lt "$J" ]; then J=$((M / 2)); fi
+          if [ "$J" -lt 1 ]; then J=1; fi
+          echo "building with -j$J (nproc=$(nproc), MemAvailable=${M}G)"
           ./generate-config.sh --arch ${{ matrix.arch }} --profile sdk -o /tmp/sdk.defconfig
           printf 'BR2_CCACHE=y\nBR2_CCACHE_USE_BASEDIR=y\n' >> /tmp/sdk.defconfig
           make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_DL_DIR="$BR2_DL_DIR" \
             BR2_CCACHE_DIR="$CCACHE_DIR" BR2_DEFCONFIG=/tmp/sdk.defconfig defconfig
-          # Budget the shared cache: 10 GB per repo across four arches + dl.
+          # compiler_check=content so hits survive the compiler living at a
+          # different path in the image and SDK workflows, which share this
+          # very directory on the runner's disk.
           make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true" || true
+            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
           FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" \
-            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$(nproc)"
+            BR2_DL_DIR="$BR2_DL_DIR" BR2_CCACHE_DIR="$CCACHE_DIR" -j"$J"
 
-      # Package the whole output tree minus the bulky per-package build
-      # dirs - but each build dir's stamp files must survive, because they
+      # The published tree is the whole output dir minus the bulky per-package
+      # build dirs - but each build dir's stamp files must survive, because they
       # are what tells a consuming Buildroot "already built, skip". The
       # extracted sources themselves are only needed to REbuild.
+      #
+      # Built from a hardlinked staging copy rather than by pruning in place:
+      # on this runner the output tree persists, and deleting its sources to
+      # make a tarball would throw away the incremental build the next run
+      # wants. Hardlinks make the copy cost inodes and no bytes.
       - name: Package output tree
         run: |
           set -eu
-          O=/mnt/br/output/${{ matrix.arch }}
-          # host-swift is a symlink into the shared tree here, and tar would
-          # archive it as one - dangling for anyone who unpacks this asset via
-          # "make <t>-seed". Put a real directory back, carrying just the
-          # stamps, which is the shape the published tree had when every job
-          # built host-swift in place.
-          L="$O/build/host-swift-${{ needs['host-swift'].outputs.version }}"
-          if [ -L "$L" ]; then
-            t=$(readlink "$L")
-            rm -f "$L"
-            mkdir -p "$L"
-            cp -a "$t"/.stamp_* "$L"/ 2>/dev/null || true
+          A=${{ matrix.arch }}
+          VER=${{ needs['host-swift'].outputs.version }}
+          O=/mnt/br/output/$A
+          S=/mnt/br/pkg/$A
+          rm -rf "$S"
+          mkdir -p "$S/build"
+          if ! find "$O" -mindepth 1 -maxdepth 1 ! -name build -exec cp -al {} "$S"/ \; ; then
+            echo "hardlinking failed (different filesystem?); falling back to a full copy" >&2
+            rm -rf "$S"
+            mkdir -p "$S/build"
+            find "$O" -mindepth 1 -maxdepth 1 ! -name build -exec cp -a {} "$S"/ \;
           fi
-          find "$O/build" -mindepth 2 -maxdepth 2 \
-            ! -name '.stamp_*' ! -name '.br2_*' ! -name '.applied_patches_list' \
-            -exec rm -rf {} + 2>/dev/null || true
-          tar -C /mnt/br/output --zstd -cf /mnt/br/toolchain-${{ matrix.arch }}.tar.zst ${{ matrix.arch }}
+          # build/'s own top-level files (packages-file-list.txt, build-time.log)
+          # ship; the package subdirectories ship only their stamps.
+          find "$O/build" -mindepth 1 -maxdepth 1 -type f -exec cp -a {} "$S/build"/ \;
+          ( cd "$O/build" && find . -mindepth 2 -maxdepth 2 \
+              \( -name '.stamp_*' -o -name '.br2_*' -o -name '.applied_patches_list' \) \
+              -print0 | tar --null -T - -cf - ) | tar -C "$S/build" -xf -
+          # host-swift is a symlink into the shared tree, and find above does
+          # not follow it. Put a real directory carrying just the stamps into
+          # the STAGING tree - the shape the published tree had when every job
+          # built host-swift in place - while the live symlink stays put so the
+          # next run still skips the eight-hour build.
+          L="$O/build/host-swift-$VER"
+          if [ -e "$L" ]; then
+            mkdir -p "$S/build/host-swift-$VER"
+            cp -a "$L"/.stamp_* "$S/build/host-swift-$VER"/ 2>/dev/null || true
+          fi
+          du -sh "$S"
+          tar -C /mnt/br/pkg --zstd -cf /mnt/br/toolchain-$A.tar.zst "$A"
+          rm -rf "$S"
           # Release assets cap at 2 GiB apiece: ship split parts, consumers
           # `cat toolchain-<arch>.tar.zst.part* | tar --zstd -x`.
-          split -b 1900M -d /mnt/br/toolchain-${{ matrix.arch }}.tar.zst \
-            /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part
-          rm /mnt/br/toolchain-${{ matrix.arch }}.tar.zst
-          ls -lh /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part*
+          split -b 1900M -d /mnt/br/toolchain-$A.tar.zst \
+            /mnt/br/toolchain-$A.tar.zst.part
+          rm /mnt/br/toolchain-$A.tar.zst
+          ls -lh /mnt/br/toolchain-$A.tar.zst.part*
 
       - name: Publish to the toolchain-latest release
         env:
@@ -397,6 +500,8 @@ jobs:
           done
           gh release upload toolchain-latest /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part* \
             --repo "$GITHUB_REPOSITORY"
+          # Reproducible from the output tree, and this disk is not thrown away.
+          rm -f /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part*
 
       - name: ccache stats
         if: always()
@@ -405,18 +510,8 @@ jobs:
           du -sh "$CCACHE_DIR" "$BR2_DL_DIR" || true
           df -h / /mnt
 
-      # Only write caches from scheduled/dispatched runs on the default
-      # branch; PR-scoped caches are discarded on close and churn eviction.
-      - name: Save ccache
-        if: always() && github.event_name != 'pull_request'
-        uses: actions/cache/save@v4
-        with:
-          path: /mnt/br/ccache/${{ matrix.arch }}
-          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
-
-      - name: Save dl/
-        if: always() && github.event_name != 'pull_request' && steps.dl.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v4
-        with:
-          path: /mnt/br/dl
-          key: br-dl-${{ hashFiles('sdk/defconfig/**', 'external/package/**/*.hash', 'ports/package/**/*.hash') }}
+      # See the host-swift job: root-owned files in a workspace that outlives
+      # the job break the next run's checkout.
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true

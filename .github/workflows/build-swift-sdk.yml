@@ -16,6 +16,12 @@ name: Build Swift SDK
 # and headers - libGL/EGL/GLES, SDL, wayland, X11, cairo, ALSA - rather than
 # arm64/x86_64 shipping only what the image profile happened to build. armv7
 # and i386 have no bootable image target and exist only here.
+#
+# Runs on the self-hosted x86 runner (see docs/build.md), which is a single
+# machine: the four app-sdk jobs execute one after another rather than in
+# parallel. The ccache lives on that machine's own disk at
+# /mnt/br/ccache/<arch> - the same directory the toolchain and image workflows
+# use - so it survives between runs and there is nothing to upload or restore.
 
 # Four Buildroot trees, so hours per run: nightly, plus on demand from the
 # Actions tab ("gh workflow run build-swift-sdk.yml"). Scheduled two hours
@@ -26,6 +32,17 @@ on:
     - cron: '0 5 * * *'
   workflow_dispatch:
 
+# One runner, so a nightly still running when the next fires would otherwise
+# queue behind itself. Supersede instead.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # The caches are on the runner's disk, not in the 10 GB repo-wide
+  # actions/cache budget, so they are sized for hit rate.
+  CCACHE_MAX_SIZE: 20G
+
 jobs:
   app-sdk:
     name: App SDK (${{ matrix.arch }})
@@ -33,13 +50,31 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64, armv7, i386]
-    runs-on: ubuntu-latest
-    container: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 480
+    # /mnt is bind-mounted so the ccache outlives the container.
+    container:
+      image: colemancda/buildroot-swift:swift_${{ matrix.arch }}_defconfig
+      options: --volume /mnt:/mnt
     env:
-      CCACHE_DIR: /workspaces/br-ccache
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
       - name: Checkout swift-linux
         uses: actions/checkout@v4
+
+      - name: Runner facts and disk guard
+        run: |
+          set -eu
+          echo "runner:      $RUNNER_NAME"
+          echo "cpus:        $(nproc)"
+          free -h || true
+          df -h / /mnt
+          avail=$(df -BG --output=avail /mnt | tail -1 | tr -dc '0-9')
+          if [ "${avail:-0}" -lt 50 ]; then
+            echo "only ${avail}G free on /mnt; see docs/build.md for how to prune." >&2
+            exit 1
+          fi
+          mkdir -p "$CCACHE_DIR"
 
       # Buildroot and the buildroot-swift external come from the container's
       # cached copies (that is what the prebuilt output/<arch> was built
@@ -55,19 +90,11 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git -C "$GITHUB_WORKSPACE" submodule update --init ports
 
-      # ccache: the same per-arch entries every workflow in this repo uses
-      # (br-ccache-<arch>-...), so a toolchain built by build-toolchain.yml
-      # warms the SDK build here and vice versa. compiler_check=content
-      # below is what makes hits survive the compiler living at different
-      # paths in different workflows.
-      - name: Restore ccache
-        uses: actions/cache/restore@v4
-        with:
-          path: /workspaces/br-ccache
-          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
-          restore-keys: |
-            br-ccache-${{ matrix.arch }}-
-
+      # ccache: the same per-arch directory every workflow in this repo uses
+      # on the runner's disk, so a toolchain built by build-toolchain.yml warms
+      # the SDK build here and vice versa. compiler_check=content below is what
+      # makes hits survive the compiler living at different paths in different
+      # workflows.
       - name: Build app-sdk (Swift + applibs)
         run: |
           set -eu
@@ -81,7 +108,7 @@ jobs:
           make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR" \
             BR2_DEFCONFIG=/tmp/appsdk.defconfig defconfig
           make -C "$B" O="$O" ccache-options \
-            CCACHE_OPTIONS="--max-size=1.5G --set-config=compression=true --set-config=compiler_check=content" || true
+            CCACHE_OPTIONS="--max-size=$CCACHE_MAX_SIZE --set-config=compression=true --set-config=compiler_check=content" || true
           FORCE_UNSAFE_CONFIGURE=1 make -C "$B" O="$O" BR2_EXTERNAL="$EXT" BR2_CCACHE_DIR="$CCACHE_DIR"
 
       # Runs in the container deliberately: a container-built sysroot contains
@@ -106,26 +133,50 @@ jobs:
           path: swift-linux-${{ matrix.arch }}-swift-sdk.tar.gz
           if-no-files-found: error
 
-      # Caches are only written from scheduled/dispatched runs; PR-scoped
-      # entries die with the PR and just churn the 10 GB budget.
-      - name: Save ccache
-        if: always() && github.event_name != 'pull_request'
-        uses: actions/cache/save@v4
-        with:
-          path: /workspaces/br-ccache
-          key: br-ccache-${{ matrix.arch }}-${{ github.run_id }}
+      - name: ccache stats
+        if: always()
+        run: |
+          ccache -d "$CCACHE_DIR" -s 2>/dev/null || true
+          df -h /mnt
+
+      # The container runs as root; the workspace belongs to the runner user on
+      # the host and, unlike a hosted VM, survives the job. Without this the
+      # next run's actions/checkout git-cleans as the runner user and hits EPERM
+      # on the root-owned ports tree and tarball this job created.
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
 
   # Merge the per-arch Swift SDKs into one artifactbundle that cross-compiles
   # for every architecture (swift build --swift-sdk aarch64/x86_64-...-linux-gnu).
-  # Runs on a plain runner - it only rearranges files (jq + tar).
+  # No container - it only rearranges files (jq + tar), so it runs against the
+  # runner machine's own tools.
   combined-swift-sdk:
     name: Combined Swift SDK
     needs: app-sdk
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 30
     permissions:
       contents: write             # uploads assets to the swift-sdk-latest release
     steps:
       - uses: actions/checkout@v4
+
+      # This job used to inherit jq and gh from the ubuntu-latest image. On the
+      # self-hosted machine they are the admin's to install, so say which one is
+      # missing rather than failing later inside a pipeline.
+      - name: Host prerequisites
+        run: |
+          set -eu
+          missing=
+          for c in jq gh tar; do
+            command -v "$c" >/dev/null 2>&1 || missing="$missing $c"
+          done
+          if [ -n "$missing" ]; then
+            echo "missing on the runner:$missing" >&2
+            echo "install with: sudo apt-get install -y$missing   (see docs/build.md)" >&2
+            exit 1
+          fi
+
       - name: Download per-arch Swift SDKs
         uses: actions/download-artifact@v4
         with:

@@ -101,7 +101,8 @@ ccache hashes - do not depend on where the repo is checked out.
 CI is the exception, and only historically: `build-images.yml` and
 `build-swift-sdk.yml` still start from the published
 `colemancda/buildroot-swift` per-arch images, while `build-toolchain.yml` is the
-from-source replacement whose release assets `<t>-seed` consumes.
+from-source replacement whose release assets `<t>-seed` consumes. All of them
+run on the self-hosted runner - see [Continuous integration](#continuous-integration).
 
 ### Accelerators
 
@@ -116,6 +117,80 @@ from-source replacement whose release assets `<t>-seed` consumes.
 
 These carry over to `build-images.sh`, which builds x86_64 + arm64 (with their
 32-bit companions) in parallel.
+
+## Continuous integration
+
+All three workflows run on a **self-hosted x86 runner**, not on GitHub's pool:
+
+```
+runs-on: [self-hosted, Linux, X64]
+```
+
+A hosted runner cannot finish this work. `build-toolchain.yml` builds
+`host-swift` from source - hours of LLVM and Swift on four cores - against a
+hard six-hour job limit, and throws its disk away afterwards, so every run
+starts cold. The self-hosted machine has none of those limits, and, more
+importantly, **its disk persists between runs**: an output tree built last week
+is still there this week, so a rebuild is incremental.
+
+### What the machine must provide
+
+- **Docker.** Every heavy job runs in a `colemancda/buildroot-swift` container.
+- **A writable `/mnt` with room to spare**, on a large filesystem. All the state
+  below lives there, and the jobs bind-mount it with `--volume /mnt:/mnt`. Each
+  job checks free space up front and fails in seconds rather than at hour six -
+  100 GB for the toolchain jobs, 50 GB for the rest.
+- **`jq`, `gh` and `tar` installed on the host**, for the two jobs that run
+  outside a container (`combined-swift-sdk`, `config-check`). Those used to come
+  free with `ubuntu-latest`. `combined-swift-sdk` checks and names what is
+  missing.
+
+### What lives on the runner's disk
+
+```
+/mnt/br/dl/              Buildroot downloads, shared by every workflow
+/mnt/br/ccache/<arch>/   per-arch ccache, shared by every workflow
+/mnt/br/shared/          the once-built host-swift tree (build-toolchain.yml)
+/mnt/br/output/<arch>/   the per-arch Buildroot output trees
+/mnt/br/pkg/<arch>/      scratch staging for the release tarball; removed after
+```
+
+This replaces the `actions/cache` restore/save steps the workflows used to
+carry: uploading a multi-gigabyte ccache to GitHub and downloading it again next
+run is pointless when the same disk is still there, and it no longer has to fit
+the 10 GB repo-wide cache budget that forced `--max-size=1.5G`. The workflows
+now set `CCACHE_MAX_SIZE: 20G` (one `env:` at the top of each file).
+
+To force something to rebuild from scratch:
+
+```sh
+rm -rf /mnt/br/output/<arch>          # one architecture's toolchain tree
+rm -rf /mnt/br/shared                 # host-swift; costs ~8 hours to replace
+ccache -d /mnt/br/ccache/<arch> -C    # clear one architecture's ccache
+```
+
+`host-swift` is built once and only republished when `SWIFT_VERSION` changes;
+`gh workflow run build-toolchain.yml -f force_republish=true` overrides that.
+
+### Two things not to break
+
+**The workflows have no `pull_request` or `push` trigger, and must not gain
+one.** This repository is public. A self-hosted runner executes whatever the
+workflow says on a real machine, so a fork PR that could trigger a workflow
+would be arbitrary code execution on it. `schedule` and `workflow_dispatch` can
+only be fired from the default branch by someone with write access.
+
+**Container jobs hand the workspace back on the way out.** They run as root and
+leave root-owned files in `$GITHUB_WORKSPACE`, which - unlike a hosted VM -
+survives the job. The next run's `actions/checkout` runs as the runner user and
+cannot `git clean` them, so every container job ends with a `chown -R` back to
+the workspace's owner. Removing that step makes the *second* run fail, not the
+first.
+
+Since there is one runner, jobs queue rather than run side by side: eight jobs
+across the three workflows execute one at a time. Each workflow has a
+`concurrency` group so a nightly still running when the next fires is superseded
+rather than stacked.
 
 ## Artifacts
 
