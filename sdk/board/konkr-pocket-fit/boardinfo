@@ -5,4 +5,4 @@ FAMILY=qualcomm-sm8650
 SOC=sm8650
 ARCH=arm64
 BOOTFW=abl
-DTS=sm8650-konkr-pf
+DTS=qcom/sm8650-konkr-pf

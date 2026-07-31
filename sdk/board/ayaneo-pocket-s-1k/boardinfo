@@ -5,4 +5,4 @@ FAMILY=qualcomm-sm8550
 SOC=sm8550
 ARCH=arm64
 BOOTFW=abl
-DTS=qcs8550-ayaneo-pockets1k
+DTS=qcom/qcs8550-ayaneo-pockets1k

@@ -5,4 +5,4 @@ FAMILY=amlogic-s922x
 SOC=s922x
 ARCH=arm64
 BOOTFW=uboot
-DTS=meson-g12b-odroid-go-ultra
+DTS=amlogic/meson-g12b-odroid-go-ultra

@@ -252,4 +252,15 @@ if [ ! -f "$board_post_build" ]; then
     mv "$output.tmp" "$output"
 fi
 
+# Same for the board's own rootfs overlay: Buildroot rsyncs every entry of
+# BR2_ROOTFS_OVERLAY and stops on one that is not there, but most boards have
+# no files to add beyond the shared overlay. A family that does ships its
+# overlay under the family directory and names it in its own
+# BR2_ROOTFS_OVERLAY, which replaces this line entirely and so is unaffected.
+board_overlay="${board_dir:-$SCRIPT_DIR/sdk/board/$arch}/rootfs-overlay"
+if [ ! -d "$board_overlay" ]; then
+    sed -e "s| *${board_overlay}||" "$output" > "$output.tmp"
+    mv "$output.tmp" "$output"
+fi
+
 echo "Generated $profile configuration for ${device:-$arch} at $output"

@@ -5,4 +5,4 @@ FAMILY=qualcomm-sm6115
 SOC=sm6115
 ARCH=arm64
 BOOTFW=abl
-DTS=sm6115-mangmi-air-x-mq66
+DTS=qcom/sm6115-mangmi-air-x-mq66
