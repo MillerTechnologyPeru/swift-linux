@@ -5,4 +5,4 @@ FAMILY=rockchip-rk3588
 SOC=rk3588
 ARCH=arm64
 BOOTFW=uboot
-DTS=rk3588s-gameforce-ace
+DTS=rockchip/rk3588s-gameforce-ace

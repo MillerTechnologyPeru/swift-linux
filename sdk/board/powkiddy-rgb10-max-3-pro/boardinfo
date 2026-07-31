@@ -5,4 +5,4 @@ FAMILY=amlogic-s922x
 SOC=s922x
 ARCH=arm64
 BOOTFW=uboot
-DTS=meson-g12b-powkiddy-rgb10-max-3-pro
+DTS=amlogic/meson-g12b-powkiddy-rgb10-max-3-pro

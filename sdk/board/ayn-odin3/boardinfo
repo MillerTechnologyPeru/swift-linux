@@ -5,4 +5,4 @@ FAMILY=qualcomm-sm8750
 SOC=sm8750
 ARCH=arm64
 BOOTFW=abl
-DTS=cq8725s-ayn-odin3
+DTS=qcom/cq8725s-ayn-odin3

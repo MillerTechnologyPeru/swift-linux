@@ -5,4 +5,4 @@ FAMILY=rockchip-rk3399
 SOC=rk3399
 ARCH=arm64
 BOOTFW=uboot
-DTS=rk3399-anbernic-rg552
+DTS=rockchip/rk3399-anbernic-rg552

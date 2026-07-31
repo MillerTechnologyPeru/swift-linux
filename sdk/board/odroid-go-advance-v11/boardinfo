@@ -5,4 +5,4 @@ FAMILY=rockchip-rk3326
 SOC=rk3326
 ARCH=arm64
 BOOTFW=uboot
-DTS=rk3326-odroid-go2-v11
+DTS=rockchip/rk3326-odroid-go2-v11

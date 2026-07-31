@@ -5,4 +5,4 @@ FAMILY=allwinner-h700
 SOC=h700
 ARCH=arm64
 BOOTFW=uboot
-DTS=sun50i-h700-anbernic-rg35xx-h-rev6-panel
+DTS=allwinner/sun50i-h700-anbernic-rg35xx-h-rev6-panel
