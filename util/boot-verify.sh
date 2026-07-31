@@ -117,7 +117,7 @@ wait_for 'Welcome to Swift Linux' 'userspace reached a login prompt'
 
 # ---- the session ---------------------------------------------------------
 # Give the autologin chain a moment: agetty.tty1 -> autologin -> login -f
-# swift -> /etc/profile.d/sway.sh -> sway-session.
+# user -> /etc/profile.d/sway.sh -> sway-session.
 sleep 20
 
 echo "session:"
@@ -128,7 +128,7 @@ echo "session:"
 PS_OUT="$(guest "ps -eo user,comm | grep -E 'sway|foot' | grep -v grep | sort -u")"
 # sway owned by the session user is the real assertion: a root-owned sway would
 # mean it came from somewhere other than the tty1 autologin chain.
-echo "$PS_OUT" | grep -qE '(^|[[:space:]])swift[[:space:]]+.*sway' || {
+echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*sway' || {
 	echo "  FAIL  sway is not running as the session user" >&2
 	[ -n "$PS_OUT" ] && echo "$PS_OUT" | sed 's/^/        /' >&2
 	echo "serial log: $KEPT_LOG" >&2
@@ -151,7 +151,7 @@ fi
 # free one, so it is wayland-1 on a system whose runtime dir already had one.
 WL='for s in /tmp/xdg-1000/wayland-[0-9]*; do case "$s" in *.lock) continue;; esac; W=$(basename "$s"); break; done;'
 echo "graphics:"
-GL_OUT="$(guest "$WL su swift -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'")"
+GL_OUT="$(guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'")"
 echo "$GL_OUT" | grep -qi renderer || fail "no GL renderer reported - is the compositor up?"
 echo "$GL_OUT" | sed 's/^/        /'
 echo "$GL_OUT" | grep -qiE 'llvmpipe|softpipe' && fail "GL fell back to software rendering"
@@ -159,7 +159,7 @@ pass "GL is hardware-accelerated"
 
 # ---- evidence -----------------------------------------------------------
 echo "screenshot:"
-guest "$WL su swift -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W grim /tmp/bv.png\"; ls -l /tmp/bv.png" > "$RUN/shot.txt"
+guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W grim /tmp/bv.png\"; ls -l /tmp/bv.png" > "$RUN/shot.txt"
 grep -q '/tmp/bv.png' "$RUN/shot.txt" || fail "grim produced no screenshot"
 # Out over the serial console - the one channel needing no credentials.
 guest "base64 /tmp/bv.png" > "$RUN/shot.b64"

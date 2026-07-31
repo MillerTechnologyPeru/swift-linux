@@ -1,4 +1,4 @@
 #!/bin/sh
 # Invoked by getty (-n -l) on the console to log the default user in without
 # a password prompt.
-exec /bin/login -f swift
+exec /bin/login -f user

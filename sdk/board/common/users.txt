@@ -1,6 +1,6 @@
 # Default non-root user for Swift Linux.
 # Format: <username> <uid> <group> <gid> <password> <home> <shell> <groups> <comment>
-#   password "=swift"  -> clear-text password "swift"
+#   password "=1234"   -> clear-text password "1234"
 #   group "video"      -> access to the seatd socket (seatd -g video), which
 #                         grants the Weston session DRM/input without root.
 #   group "input"      -> /dev/input/event* (udev's 50-udev-default.rules
@@ -11,4 +11,4 @@
 #                         and games. Buildroot's skeleton has no such
 #                         group, hence the group-only line below.
 - - input -1 * - - - -
-swift 1000 swift 1000 =swift /home/swift /bin/sh video,tty,audio,dialout,wheel,input Swift User
+user 1000 user 1000 =1234 /home/user /bin/sh video,tty,audio,dialout,wheel,input Default User

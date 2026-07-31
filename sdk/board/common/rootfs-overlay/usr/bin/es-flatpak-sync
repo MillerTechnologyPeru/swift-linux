@@ -45,7 +45,7 @@ while IFS="${tab}" read -r id name; do
 		echo "exec flatpak run ${id}"
 	} > "${f}"
 	chmod +x "${f}"
-	chown swift:swift "${f}" 2>/dev/null || true
+	chown user:user "${f}" 2>/dev/null || true
 done
 
 exit 0

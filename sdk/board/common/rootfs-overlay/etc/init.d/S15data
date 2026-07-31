@@ -127,9 +127,9 @@ start() {
 
 	# Persist the default user's home directory on the data partition.
 	mkdir -p "${DATA}/home"
-	if [ ! -d "${DATA}/home/swift" ]; then
-		cp -a /home/swift "${DATA}/home/swift" 2>/dev/null || mkdir -p "${DATA}/home/swift"
-		chown -R swift:swift "${DATA}/home/swift"
+	if [ ! -d "${DATA}/home/user" ]; then
+		cp -a /home/user "${DATA}/home/user" 2>/dev/null || mkdir -p "${DATA}/home/user"
+		chown -R user:user "${DATA}/home/user"
 	fi
 	mount -o bind "${DATA}/home" /home
 
@@ -144,13 +144,13 @@ start() {
 		".config/lutris /data/saves/lutris/config" \
 		".config/heroic /data/saves/heroic" \
 		".local/share/Steam /data/saves/steam"; do
-		link="/home/swift/${pair%% *}"
+		link="/home/user/${pair%% *}"
 		dest="${pair#* }"
 		[ -e "${link}" ] && continue
 		mkdir -p "$(dirname "${link}")"
-		chown swift:swift "$(dirname "${link}")" 2>/dev/null || true
+		chown user:user "$(dirname "${link}")" 2>/dev/null || true
 		ln -s "${dest}" "${link}"
-		chown -h swift:swift "${link}" 2>/dev/null || true
+		chown -h user:user "${link}" 2>/dev/null || true
 	done
 
 	# Default install locations, so games land in the content tree rather
@@ -159,12 +159,12 @@ start() {
 	if [ -x /usr/bin/lutris ] && [ ! -f /data/saves/lutris/config/lutris.conf ]; then
 		printf '[system]\ngame_path = /data/roms/lutris\n' \
 			> /data/saves/lutris/config/lutris.conf
-		chown swift:swift /data/saves/lutris/config/lutris.conf
+		chown user:user /data/saves/lutris/config/lutris.conf
 	fi
 	if [ -x /usr/bin/heroic ] && [ ! -f /data/saves/heroic/config.json ]; then
 		printf '{"defaultSettings": {"defaultInstallPath": "/data/roms/heroic"}}\n' \
 			> /data/saves/heroic/config.json
-		chown swift:swift /data/saves/heroic/config.json
+		chown user:user /data/saves/heroic/config.json
 	fi
 
 	# EmulationStation user-content groups (see /etc/emulationstation/
@@ -186,9 +186,9 @@ start() {
 		saves/lutris/config saves/heroic saves/steam saves/windows apps; do
 		[ -d "${DATA}/${d}" ] && continue
 		mkdir -p "${DATA}/${d}"
-		chown swift:swift "${DATA}/${d}"
+		chown user:user "${DATA}/${d}"
 	done
-	chown swift:swift "${DATA}/roms" 2>/dev/null
+	chown user:user "${DATA}/roms" 2>/dev/null
 
 	# Drop the BIOS/saves note where someone browsing the card will meet
 	# it. Not overwritten if it is already there - the user may have
@@ -196,7 +196,7 @@ start() {
 	if [ ! -f "${DATA}/roms/bios/README.txt" ] && \
 	   [ -f /usr/share/swift-linux/bios-README.txt ]; then
 		cp /usr/share/swift-linux/bios-README.txt "${DATA}/roms/bios/README.txt"
-		chown swift:swift "${DATA}/roms/bios/README.txt"
+		chown user:user "${DATA}/roms/bios/README.txt"
 	fi
 
 	# Seed the EmulationStation Apps group with an entry per application
@@ -210,10 +210,10 @@ start() {
 		[ -f "/usr/share/swift-linux/apps/${name}" ] || return 0
 		grep -qxF "${name}" "${DATA}/apps/.seeded" 2>/dev/null && return 0
 		cp "/usr/share/swift-linux/apps/${name}" "${DATA}/apps/${name}"
-		chown swift:swift "${DATA}/apps/${name}"
+		chown user:user "${DATA}/apps/${name}"
 		chmod +x "${DATA}/apps/${name}"
 		echo "${name}" >> "${DATA}/apps/.seeded"
-		chown swift:swift "${DATA}/apps/.seeded"
+		chown user:user "${DATA}/apps/.seeded"
 	}
 	seed_app "App Store.sh"  /usr/bin/gnome-software
 	seed_app "Lutris.sh"     /usr/bin/lutris
@@ -227,7 +227,7 @@ start() {
 	   [ -d "${DATA}/roms/steam" ] && \
 	   [ -z "$(ls -A "${DATA}/roms/steam" 2>/dev/null)" ]; then
 		cp /usr/share/swift-linux/steam/*.sh "${DATA}/roms/steam/"
-		chown swift:swift "${DATA}/roms/steam/"*.sh
+		chown user:user "${DATA}/roms/steam/"*.sh
 		chmod +x "${DATA}/roms/steam/"*.sh
 	fi
 
