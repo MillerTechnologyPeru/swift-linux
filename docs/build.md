@@ -98,11 +98,13 @@ Buildroot's default cache location, and the per-target output *also* at the
 container root (`O=/<target>`), so the absolute paths Buildroot embeds - and
 ccache hashes - do not depend on where the repo is checked out.
 
-CI is the exception, and only historically: `build-images.yml` and
-`build-swift-sdk.yml` still start from the published
-`colemancda/buildroot-swift` per-arch images, while `build-toolchain.yml` is the
-from-source replacement whose release assets `<t>-seed` consumes. All of them
-run on the self-hosted runner - see [Continuous integration](#continuous-integration).
+CI works the same way: all three workflows run in the `:latest` base image on
+the self-hosted runner. `build-toolchain.yml` builds the toolchains from source
+and publishes them to the rolling `toolchain-latest` release; `build-images.yml`
+and `build-swift-sdk.yml` seed their trees from those assets (the
+`.github/actions/br-seed` action - the CI counterpart of `make <t>-seed`) and
+build only their profile's delta. The per-arch images are fully retired - see
+[Continuous integration](#continuous-integration).
 
 ### Accelerators
 
@@ -275,7 +277,38 @@ tree, which is a separate decision.
 The prelude every one of these thirty-six jobs shares — apt prerequisites, the
 disk guard, the submodule checkout, `defconfig`, and the memory-bounded `-j` — lives
 once in the `.github/actions/br-setup` composite action, which exports `BR_B`,
-`BR_O`, `BR_EXT` and `BR_JOBS` for the `make` step that follows.
+`BR_O`, `BR_EXT` and `BR_JOBS` for the `make` step that follows. A job can pass
+`configure: 'false'` to stop after the checkout when another script owns the
+tree's defconfig, as `build-images.sh` does for the image job.
+
+### How the SDK and image workflows consume the toolchain
+
+`build-swift-sdk.yml` and `build-images.yml` do not build toolchains: each job
+starts with the `.github/actions/br-seed` action, which downloads the
+`toolchain-<arch>.tar.zst.part*` assets from `toolchain-latest`, unpacks them
+into the job's output tree and stamps the tree with the assets' `updatedAt`.
+A tree whose stamp already matches downloads nothing, so the nightly runs are
+incremental; the weekly toolchain publish triggers one re-seed per tree, and
+the profile delta rebuilds ccache-warm. If the release or an arch's assets are
+missing (a fresh repository, a fresh runner is fine), the seed step fails with
+a pointer at `gh workflow run build-toolchain.yml`.
+
+The packaged tree bakes the absolute prefix `/mnt/br/output/<arch>` into
+`.config`, the `host/` CMake caches, the libtool/pkg-config files and the gcc
+specs, so the consumers must present their tree at exactly that path — but that
+directory on the host is `build-toolchain.yml`'s own incremental tree, and
+reconfiguring it with another profile would let the weekly publish package a
+wrong-profile tree. Each consuming job therefore keeps its own persistent tree
+at `/mnt/br/profiles/<profile>/<arch>` on the host and bind-mounts it over
+`/mnt/br/output/<arch>` inside the container:
+
+```
+--volume /mnt:/mnt
+--volume /mnt/br/profiles/app-sdk/x86_64:/mnt/br/output/x86_64
+```
+
+Inside the container the baked paths resolve; on the host the toolchain
+workflow's trees are never touched.
 
 ### What lives on the runner's disk
 
@@ -285,7 +318,10 @@ once in the `.github/actions/br-setup` composite action, which exports `BR_B`,
 /mnt/br/ccache/host-shared/  ccache for the shared host-tool tree
 /mnt/br/shared/              the once-built arch-independent host tools
                              (base, JDK, .NET, Swift)
-/mnt/br/output/<arch>/       the per-arch Buildroot output trees
+/mnt/br/output/<arch>/       build-toolchain.yml's per-arch output trees
+/mnt/br/profiles/<p>/<arch>/ the SDK and image workflows' seeded trees
+                             (app-sdk, lib32, image), bind-mounted to
+                             /mnt/br/output/<arch> inside their containers
 /mnt/br/pkg/<arch>/          scratch staging for the release tarball; removed after
 ```
 
@@ -300,6 +336,7 @@ To force something to rebuild from scratch:
 ```sh
 rm -rf /mnt/br/output/<arch>          # one architecture's gcc/rust/go + toolchain
 rm -rf /mnt/br/shared                 # every shared host tool; ~8 hours to replace
+rm -rf /mnt/br/profiles/<p>/<arch>    # one seeded tree; re-seeds on the next run
 ccache -d /mnt/br/ccache/<arch> -C    # clear one architecture's ccache
 ```
 
