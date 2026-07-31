@@ -4,6 +4,14 @@ CONFIG_PINCTRL_MT8183=y
 CONFIG_MTK_PMIC_WRAP=y
 CONFIG_MTK_SVS=y
 CONFIG_DRM=y
+# The display chain has to be built in, not modular. There is no initramfs,
+# so a module cannot load until the root filesystem is already mounted, and
+# the panel would stay dark for the whole of boot. MTK_CMDQ and MTK_MMSYS are
+# listed because DRM_MEDIATEK cannot be built in while they are modules -
+# Kconfig quietly caps it at m instead.
+CONFIG_MTK_CMDQ=y
+CONFIG_MTK_MMSYS=y
+CONFIG_PHY_MTK_MIPI_DSI=y
 CONFIG_DRM_MEDIATEK=y
 CONFIG_DRM_PANFROST=y
 CONFIG_DRM_PANEL_BOE_TV101WUM_NL6=y

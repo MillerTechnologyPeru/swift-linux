@@ -11,3 +11,12 @@ CONFIG_I2C_CROS_EC_TUNNEL=y
 CONFIG_EXTCON_USBC_CROS_EC=y
 CONFIG_INPUT_EVDEV=y
 CONFIG_EXT4_FS=y
+
+# Depthcharge lights the panel and hands the kernel a framebuffer, and this
+# is what lets the kernel keep drawing on it. Without it there is no console
+# at all until the SoC's own display driver is up, so an early failure - a
+# root filesystem that will not mount, a panic - shows as a black screen with
+# nothing to go on. The image carries no initramfs, which makes that window
+# the whole of boot.
+CONFIG_FB=y
+CONFIG_FB_SIMPLE=y

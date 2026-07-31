@@ -4,6 +4,11 @@
 # the family fragment); jacuzzi puts an Analogix ANX7625 DSI-to-eDP bridge in
 # front of a generic eDP panel instead, so without these the display never
 # lights up. Compatible strings are in mainline's mt8183-kukui-jacuzzi.dtsi.
+# TYPEC is here because anx7625 depends on it, and a modular TYPEC caps the
+# bridge at a module however plainly this asks for it to be built in - which
+# is what happened, and left the panel dark until userspace loaded it.
+CONFIG_TYPEC=y
+CONFIG_USB_ROLE_SWITCH=y
 CONFIG_DRM_ANALOGIX_ANX7625=y
 CONFIG_DRM_PANEL_EDP=y
 
