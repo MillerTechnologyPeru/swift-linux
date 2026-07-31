@@ -36,7 +36,6 @@ cat > "${BINARIES_DIR}/kernel.its" <<ITS
 		fdt-1 {
 			data = /incbin/("$(basename "$DTB")");
 			type = "flat_dt"; arch = "arm64"; compression = "none";
-			hash-1 { algo = "sha1"; };
 		};
 	};
 	configurations {
@@ -45,8 +44,17 @@ cat > "${BINARIES_DIR}/kernel.its" <<ITS
 	};
 };
 ITS
-( cd "${BINARIES_DIR}" && "${HOST_DIR}/bin/mkimage" -D "-I dts -O dtb -p 2048" \
-	-f kernel.its vmlinux.uimg >/dev/null )
+# A FIT image is a flattened device tree, and the .its above is its source, so
+# dtc compiles it directly - /incbin/ pulls the kernel and dtb in. mkimage is
+# the usual way to do this but cannot here: Buildroot's host build of it ends
+# up with neither the dtc path it shells out to (CONFIG_MKIMAGE_DTC_PATH, so
+# it runs the options as a command and the shell reports "-I: not found") nor
+# any hash algorithm, and it rejects even a FIT it has just written itself.
+# Nothing of value is lost. mkimage would only add hash values inside the FIT,
+# and this image's integrity comes from the vboot signature futility puts over
+# the whole kernel partition below, which is what Depthcharge actually checks.
+( cd "${BINARIES_DIR}" && "${HOST_DIR}/bin/dtc" -I dts -O dtb -p 2048 \
+	-o vmlinux.uimg kernel.its 2>/dev/null )
 
 # 2. Sign for both slots. PARTNROFF counts partitions FROM THE KERNEL
 #    PARTITION THAT BOOTED, so both slots use 2: KERN-A(1)+2 = ROOT-A(3),
