@@ -138,7 +138,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       CCACHE_DIR: /mnt/br/ccache/host-shared
     steps:
@@ -171,7 +171,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 60
+    timeout-minutes: 120
     env:
       CCACHE_DIR: /mnt/br/ccache/host-shared
     steps:
@@ -205,7 +205,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 240
+    timeout-minutes: 480
     env:
       CCACHE_DIR: /mnt/br/ccache/host-shared
     steps:
@@ -259,7 +259,7 @@ jobs:
     # Generous, not calibrated: the 6-hour hosted-runner cap this used to dodge
     # does not apply here. It exists so a wedged build eventually releases the
     # runner rather than blocking every other workflow forever.
-    timeout-minutes: 1440
+    timeout-minutes: 2880
     permissions:
       contents: write             # uploads assets to the host-swift-latest release
     outputs:
@@ -424,7 +424,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 300
+    timeout-minutes: 600
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -467,7 +467,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 120
+    timeout-minutes: 240
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -505,7 +505,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 180
+    timeout-minutes: 360
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -578,7 +578,7 @@ jobs:
       options: --volume /mnt:/mnt --security-opt label=disable
     # The most expensive per-arch job by a wide margin - a full LLVM plus clang,
     # four times over. Weekly and incremental, but the first run is long.
-    timeout-minutes: 900
+    timeout-minutes: 1800
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -632,7 +632,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 240
+    timeout-minutes: 480
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -674,7 +674,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 240
+    timeout-minutes: 480
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -735,7 +735,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 300
+    timeout-minutes: 600
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
     steps:
@@ -789,7 +789,7 @@ jobs:
     container:
       image: docker.io/colemancda/buildroot-swift:latest
       options: --volume /mnt:/mnt --security-opt label=disable
-    timeout-minutes: 720
+    timeout-minutes: 1440
     permissions:
       contents: write             # uploads assets to the toolchain-latest release
     env:
