@@ -110,7 +110,14 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Not cancel-in-progress: this chain includes host-swift, a from-source
+  # Swift+LLVM build that runs five to six hours from cold. The weekly
+  # schedule and a manual workflow_dispatch both target the same ref, so
+  # cancel-in-progress let the Saturday 03:00 UTC schedule kill a
+  # workflow_dispatch run mid-build - at 5h33m in, past the two failures it
+  # had already been re-dispatched to fix. Queuing costs an idle wait; a
+  # cancellation this deep costs the run.
+  cancel-in-progress: false
 
 env:
   # The old 1.5G cap existed to fit four architectures plus dl/ inside the
