@@ -75,10 +75,14 @@ runs:
       run: |
         set -eu
         apt-get update
+        # zstd is not a build dependency but a packaging one: the jobs that
+        # publish a tree to a release do "tar --zstd", and tar shells out to
+        # the zstd binary, which this image does not carry. br-seed installs
+        # it for the same reason on the consuming side.
         apt-get install -y --no-install-recommends \
           uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
           libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
-          libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config
+          libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config zstd
         # gh is preinstalled on a GitHub-hosted runner but not in this image,
         # and both the shared host-swift download and the release uploads need it.
         if ! command -v gh >/dev/null 2>&1; then
