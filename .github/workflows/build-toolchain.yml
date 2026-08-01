@@ -321,6 +321,30 @@ jobs:
             echo "host-swift $VER is not on the release yet"
           fi
 
+      # Unpack the released toolchain into the place host-swift would have
+      # built one, instead of compiling Swift and LLVM from source for five to
+      # six hours. HOST_SWIFT_BUILD_CMDS is guarded on the existence of
+      # $(SWIFT_LLVM_DIR), so once build/usr and build/llvm are populated the
+      # build-script invocation is skipped and the package goes straight to
+      # installing; nothing in swift.mk has to change.
+      #
+      # The download is the same compiler the source build was producing - the
+      # released clang reports swiftlang/llvm-project 82cdc19, the very commit
+      # llvm-project is pinned to - so this is not a downgrade. It is also what
+      # fixes the -index-store-path failure: swift-sdk-generator's WASM SDK
+      # step shells out to a bare "clang", and the distro clang-19 in this
+      # image is built without libIndexStore and rejects the flag, while this
+      # one accepts it.
+      #
+      # The script is idempotent: it tests for build/usr/bin and build/llvm
+      # and does nothing when the tree already has them.
+      - name: Install the prebuilt host Swift toolchain
+        run: |
+          set -eu
+          BUILDROOT_OUTPUT="$BR_O" SWIFT_BUILDROOT="$GITHUB_WORKSPACE/swift" \
+            bash "$GITHUB_WORKSPACE/swift/.devcontainer/library-scripts/install-swift.sh"
+          "$BR_O/build/host-swift-${{ steps.ver.outputs.version }}/build/usr/bin/swiftc" --version
+
       # Only the host-swift package: with no dependencies declared it pulls in
       # neither the cross toolchain nor anything else from the profile. The
       # architecture of the defconfig is irrelevant to what gets built - it just
