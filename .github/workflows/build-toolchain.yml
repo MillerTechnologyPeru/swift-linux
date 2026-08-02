@@ -803,8 +803,17 @@ jobs:
           # Assert the artifacts, not the exit code. A host-mesa3d configured
           # with no drivers builds and installs happily; it just produces
           # nothing a board can use, and the stamp then hides that forever.
-          test -x "$BR_O/host/bin/mesa-clc" || {
-            echo "host-mesa3d installed no mesa-clc (-Dinstall-mesa-clc=true did not take)" >&2
+          #
+          # The binary is mesa_clc (underscore) - Meson's target name, not the
+          # -Dinstall-mesa-clc (hyphenated) option that requests it:
+          #
+          #   /usr/bin/install -D -m 0755 .../src/compiler/clc/mesa_clc $BR_O/host/bin/mesa_clc
+          #   host-mesa3d installed no mesa-clc (-Dinstall-mesa-clc=true did not take)
+          #
+          # so the check was failing on every architecture regardless of
+          # whether mesa_clc actually landed.
+          test -x "$BR_O/host/bin/mesa_clc" || {
+            echo "host-mesa3d installed no mesa_clc (-Dinstall-mesa-clc=true did not take)" >&2
             exit 1; }
           ls "$BR_O"/host/bin/*panfrost* >/dev/null 2>&1 || {
             echo "host-mesa3d built no panfrost precomp compiler - it was configured" >&2
@@ -812,7 +821,7 @@ jobs:
             echo "to catch. Check that the extra-config symbols survived kconfig." >&2
             ls "$BR_O/host/bin" >&2
             exit 1; }
-          ls -la "$BR_O"/host/bin/mesa-clc "$BR_O"/host/bin/*panfrost*
+          ls -la "$BR_O"/host/bin/mesa_clc "$BR_O"/host/bin/*panfrost*
       - name: Return the workspace to the runner user
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
