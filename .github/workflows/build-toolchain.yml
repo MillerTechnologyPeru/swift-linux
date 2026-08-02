@@ -723,10 +723,20 @@ jobs:
           FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
             BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
             host-libclc
-          # The deliverable is bitcode, not a binary: assert some landed.
-          find "$BR_O/host" -name '*.bc' -path '*clc*' -print -quit | grep -q . || {
-            echo "host-libclc installed no .bc builtins under $BR_O/host" >&2; exit 1; }
-          find "$BR_O/host" -name '*.bc' -path '*clc*' | head -5
+          # The deliverable is bitcode - except here it isn't. This tree's
+          # HOST_LIBCLC_CONF_OPTS builds only the spirv64-mesa3d- target
+          # (libclc.mk), and that target's final linked builtins are
+          # translated to SPIR-V and installed as a .spv, not left as .bc:
+          #
+          #   -- Installing: .../host/share/clc/spirv64-mesa3d-.spv
+          #
+          # Every *.cl.bc under the build tree is an intermediate object,
+          # never installed; asserting on .bc here always failed, on every
+          # architecture, and never caught a real regression - it just
+          # never matched what this target actually produces.
+          find "$BR_O/host" -name '*.spv' -path '*clc*' -print -quit | grep -q . || {
+            echo "host-libclc installed no .spv builtins under $BR_O/host" >&2; exit 1; }
+          find "$BR_O/host" -name '*.spv' -path '*clc*' | head -5
       - name: Return the workspace to the runner user
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
