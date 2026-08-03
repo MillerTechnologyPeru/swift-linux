@@ -987,8 +987,23 @@ jobs:
           # to run. Host tools are profile-independent and already installed
           # into host/, so skipping them stays correct; target packages must
           # download and build normally in the consumer.
+          # host-icu is excluded: icu.mk cross-compiles the target build against
+          # the host build TREE, not its installed output -
+          #
+          #   --with-cross-build=$(HOST_ICU_DIR)/source
+          #
+          # so a stamp saying "built" with no sources behind it leaves the
+          # target configure stopping at
+          #
+          #   configure: error: No such directory .../build/host-icu-78.2/source
+          #   supplied as the argument to --with-cross-build
+          #
+          # Letting it rebuild in the consumer costs minutes and is correct.
+          # It is the only such package in the tree: nothing else references
+          # another package's host build directory (checked across package/*.mk
+          # for _SRCDIR/_BUILDDIR and --with-cross-build).
           ( cd "$O/build" && find . -mindepth 2 -maxdepth 2 \
-              -path './host-*' \
+              -path './host-*' ! -path './host-icu-*' \
               \( -name '.stamp_*' -o -name '.br2_*' -o -name '.applied_patches_list' \) \
               -print0 | tar --null -T - -cf - ) | tar -C "$S/build" -xf -
           # host-swift is a symlink into the shared tree, and find above does
