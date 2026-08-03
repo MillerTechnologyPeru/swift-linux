@@ -57,7 +57,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64, armv7, i386]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 480
     # Plain base image; the toolchain comes from br-seed, not a per-arch tag.
     # /mnt is bind-mounted so the tree and ccache outlive the container, and
@@ -95,6 +95,10 @@ jobs:
           profile: app-sdk
           ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
           ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          # GitHub-hosted runners have ~70G on /mnt, not the terabyte the
+          # self-hosted box has, and the seeded tree already occupies a chunk
+          # of it. The default 50G guard would abort a job that has ample room.
+          min-free-gb: '20'
 
       # The seeded tree carries the sdk profile's stamps, so this replays them
       # and compiles only the app-sdk delta. ccache is the same per-arch
@@ -150,7 +154,7 @@ jobs:
   combined-swift-sdk:
     name: Combined Swift SDK
     needs: app-sdk
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
       contents: write             # uploads assets to the swift-sdk-latest release

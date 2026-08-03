@@ -826,11 +826,65 @@ jobs:
         if: always()
         run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
 
+  # host-glslang: the GLSL-to-SPIR-V compiler, as a build-time tool.
+  #
+  # mesa3d-demos compiles its Vulkan demos' shaders during the build and looks
+  # glslangValidator up as a host program, so without this every consumer of a
+  # seeded tree stops at
+  #
+  #   ERROR: Program 'glslangValidator' not found or not executable
+  #
+  # which is what failed all four App SDK jobs. It belongs here rather than in
+  # the SDK or image workflow for the same reason every other host tool does:
+  # built once per architecture, shipped in the toolchain tarball, and then
+  # free for everything that seeds from it.
+  host-glslang:
+    name: Host glslang (${{ matrix.arch }})
+    needs: host-mesa3d
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x86_64, arm64, armv7, i386]
+    runs-on: [self-hosted, Linux, X64]
+    container:
+      image: docker.io/colemancda/buildroot-swift:latest
+      options: --volume /mnt:/mnt --security-opt label=disable
+    timeout-minutes: 240
+    env:
+      CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/br-setup
+        with:
+          output-dir: /mnt/br/output/${{ matrix.arch }}
+          arch: ${{ matrix.arch }}
+          ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
+          ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          min-free-gb: '60'
+      - name: Build host-glslang
+        run: |
+          set -eu
+          FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
+            host-glslang
+          # Assert the name the consumers actually invoke. Upstream installs
+          # the binary as "glslang" and leaves glslangValidator as a symlink
+          # to it, so testing for the binary alone would pass while the name
+          # meson looks for was missing.
+          test -x "$BR_O/host/bin/glslangValidator" || {
+            echo "host-glslang installed no glslangValidator under $BR_O/host" >&2
+            ls "$BR_O/host/bin" | grep -i glslang >&2 || true
+            exit 1; }
+          "$BR_O/host/bin/glslangValidator" --version
+      - name: Return the workspace to the runner user
+        if: always()
+        run: chown -R "$(stat -c '%u:%g' "$GITHUB_WORKSPACE")" "$GITHUB_WORKSPACE" || true
+
   # Everything the sdk profile still wants on top of the host tools above -
   # the target libraries and the Swift runtime - then package and publish.
   toolchain:
     name: Toolchain (${{ matrix.arch }})
-    needs: [host-swift, host-mesa3d]
+    needs: [host-swift, host-glslang]
     strategy:
       fail-fast: false
       matrix:

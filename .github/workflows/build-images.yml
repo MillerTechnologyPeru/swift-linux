@@ -49,7 +49,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     needs: lib32
     timeout-minutes: 480
     # Plain base image; the toolchain comes from br-seed. /mnt is
@@ -89,6 +89,10 @@ jobs:
           configure: 'false'
           ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
           ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          # GitHub-hosted runners have ~70G on /mnt, not the terabyte the
+          # self-hosted box has, and the seeded tree already occupies a chunk
+          # of it. The default 50G guard would abort a job that has ample room.
+          min-free-gb: '20'
 
       - name: Fetch the 32-bit companion
         uses: actions/download-artifact@v4
@@ -161,7 +165,7 @@ jobs:
       fail-fast: false
       matrix:
         arch: [i386, armv7]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 480
     # Same mount arrangement as the image job, one profile over.
     container:
@@ -192,6 +196,10 @@ jobs:
           profile: lib32
           ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
           ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
+          # GitHub-hosted runners have ~70G on /mnt, not the terabyte the
+          # self-hosted box has, and the seeded tree already occupies a chunk
+          # of it. The default 50G guard would abort a job that has ample room.
+          min-free-gb: '20'
 
       - name: Build the 32-bit companion
         run: |
@@ -229,7 +237,7 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, arm64]
-    runs-on: [self-hosted, Linux, X64]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
