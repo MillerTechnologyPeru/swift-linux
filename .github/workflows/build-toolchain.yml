@@ -972,7 +972,23 @@ jobs:
           # build/'s own top-level files (packages-file-list.txt, build-time.log)
           # ship; the package subdirectories ship only their stamps.
           find "$O/build" -mindepth 1 -maxdepth 1 -type f -exec cp -a {} "$S/build"/ \;
+          # Host packages only. A stamp without its sources tells the consumer
+          # "already done", which is what makes seeding cheap - but it is only
+          # safe while nothing invalidates it. Target packages are configured
+          # from the buildroot .config, and a consumer builds a different
+          # profile (app-sdk, image) than the sdk profile packaged here, so
+          # their stamps go stale and the step re-runs against sources that
+          # were never shipped. busybox is the one that shows it:
+          #
+          #   merged configuration written to .../busybox-1.38.0/.config
+          #   make[1]: *** No rule to make target 'oldconfig'.  Stop.
+          #
+          # because .stamp_extracted said "extracted" and there was no Makefile
+          # to run. Host tools are profile-independent and already installed
+          # into host/, so skipping them stays correct; target packages must
+          # download and build normally in the consumer.
           ( cd "$O/build" && find . -mindepth 2 -maxdepth 2 \
+              -path './host-*' \
               \( -name '.stamp_*' -o -name '.br2_*' -o -name '.applied_patches_list' \) \
               -print0 | tar --null -T - -cf - ) | tar -C "$S/build" -xf -
           # host-swift is a symlink into the shared tree, and find above does
