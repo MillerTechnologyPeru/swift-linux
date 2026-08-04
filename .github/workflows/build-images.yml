@@ -30,6 +30,15 @@ on:
     # result is waiting in the morning.
     - cron: '0 7 * * *'
   workflow_dispatch:
+    inputs:
+      frontend:
+        description: >
+          Frontend the image boots into (sdk/defconfig/frontend/), or "none"
+          for the frontend-independent baseline.
+        required: false
+        default: minimal
+        type: choice
+        options: [minimal, emulationstation, gmenu2x, gnome, phosh, xfce, none]
 
 # One runner, so a nightly that is still running when the next fires would
 # otherwise queue behind itself. Supersede instead.
@@ -42,6 +51,15 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Which frontend the image boots into. build-images.sh passes this to
+  # generate-config.sh as --frontend, which is emitted after the board so it
+  # beats the emulationstation the image profile would otherwise include.
+  #
+  # A scheduled run has no inputs, so it takes the fallback rather than an
+  # empty string - without it the schedule would silently build a different
+  # image from the one a dispatch builds.
+  FRONTEND: ${{ inputs.frontend || 'minimal' }}
+
   # The caches are on the runner's disk, not in the 10 GB repo-wide
   # actions/cache budget, so they are sized for hit rate.
   CCACHE_MAX_SIZE: 20G
@@ -266,6 +284,44 @@ jobs:
       - uses: actions/checkout@v4
       - name: Generate image defconfig
         run: |
-          ./generate-config.sh --arch ${{ matrix.arch }} --profile image -o /tmp/image.defconfig
-          echo "----- generated defconfig -----"
-          grep -E '^BR2_(aarch64|x86_64|PACKAGE_(SWAYWM|STEAM|BOX64|MESA3D_GALLIUM_DRIVER_VIRGL)|TARGET_GRUB2_.*_EFI|INIT_BUSYBOX)' /tmp/image.defconfig || true
+          set -eu
+          # Same --frontend the build job uses, or this checks a defconfig
+          # nothing builds. "none" is the absence of a fragment, not a file,
+          # and generate-config.sh takes it as such.
+          ./generate-config.sh --arch ${{ matrix.arch }} --profile image \
+            --frontend "$FRONTEND" -o /tmp/image.defconfig
+          echo "----- generated defconfig ($FRONTEND) -----"
+          grep -E '^BR2_(aarch64|x86_64|PACKAGE_(SWAYWM|FOOT|EMULATIONSTATION|STEAM|BOX64|MESA3D_GALLIUM_DRIVER_VIRGL)|TARGET_GRUB2_.*_EFI|INIT_BUSYBOX)' /tmp/image.defconfig || true
+
+          # minimal unwinds the game frontend and the translation layers. It
+          # does that by negating what earlier fragments turned on, so both
+          # lines are in the file and only the order decides the outcome:
+          # kconfig takes the last assignment, and "# X is not set" is how a
+          # defconfig spells n. Testing for the absence of "X=y" would pass
+          # on a file where the negation had been emitted first and lost.
+          #
+          # Checked here rather than by reading the resolved .config because
+          # this job has no submodules and so no kconfig to run - the
+          # ordering is the property that decides the result anyway.
+          last_state() {
+            grep -nE "^(# )?BR2_PACKAGE_$1(=y| is not set)\$" /tmp/image.defconfig \
+              | tail -1 | sed 's/^[0-9]*://'
+          }
+          if [ "$FRONTEND" = minimal ]; then
+            rc=0
+            # Hours of build apiece, and a different image if they came back.
+            for sym in EMULATIONSTATION RETROARCH BOX64 BOX86 WINE QEMU PORTMASTER; do
+              s=$(last_state "$sym")
+              case "$s" in
+                ''|'# BR2_PACKAGE_'*' is not set') ;;
+                *) echo "minimal did not unwind BR2_PACKAGE_$sym (last: $s)" >&2; rc=1 ;;
+              esac
+            done
+            # Without these there is no session to boot into at all.
+            for sym in SWAYWM FOOT DEJAVU; do
+              [ "$(last_state "$sym")" = "BR2_PACKAGE_$sym=y" ] || {
+                echo "minimal is missing BR2_PACKAGE_$sym - no session" >&2; rc=1; }
+            done
+            [ "$rc" = 0 ] || exit 1
+            echo "minimal: sway session present, game frontend and translation layers unwound"
+          fi
