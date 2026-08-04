@@ -73,7 +73,17 @@ jobs:
         arch: [x86_64, arm64]
     runs-on: ubuntu-latest
     needs: lib32
-    timeout-minutes: 480
+    # Under GitHub's own six-hour ceiling on a hosted job, not over it. This
+    # was 480, which never applied: the platform cancelled Image (x86_64) at
+    # 6:00:04 with no timeout recorded, no diagnosis, and - because a
+    # cancellation is not a failure - without running the step that dumps the
+    # build log. A job that stops at 350 stops as OUR timeout, which is a
+    # failure, so the log survives and says where it got to.
+    #
+    # For scale: arm64 finished this profile in 4h32m and x86_64 did not fit,
+    # its GPU stack being the larger one (crocus, i915, iris, radeonsi,
+    # nouveau, svga and llvmpipe against arm64's narrower set).
+    timeout-minutes: 350
     # Plain base image; the toolchain comes from br-seed. /mnt is
     # bind-mounted so the tree and ccache outlive the container, and the
     # per-profile host dir is mounted at the path the packaged toolchain was
@@ -156,8 +166,12 @@ jobs:
           export CCACHE=1
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
+      # Also on cancellation, not just failure. build-images.sh sends the build
+      # output to a file and this step is the only thing that surfaces it, so
+      # when the job was cancelled - by GitHub's six-hour ceiling, or by hand -
+      # "if: failure()" skipped it and the whole build left no trace at all.
       - name: Dump build log on failure
-        if: failure()
+        if: ${{ failure() || cancelled() }}
         run: |
           log="/mnt/br/output/${{ matrix.arch }}-image.log"
           echo "===== tail of $log ====="
@@ -198,7 +212,7 @@ jobs:
       matrix:
         arch: [i386, armv7]
     runs-on: ubuntu-latest
-    timeout-minutes: 480
+    timeout-minutes: 350
     # Same mount arrangement as the image job, one profile over.
     container:
       image: docker.io/colemancda/buildroot-swift:latest

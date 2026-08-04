@@ -68,7 +68,7 @@ jobs:
       matrix:
         arch: [x86_64, arm64, armv7, i386]
     runs-on: ubuntu-latest
-    timeout-minutes: 480
+    timeout-minutes: 350
     # Plain base image; the toolchain comes from br-seed, not a per-arch tag.
     # /mnt is bind-mounted so the tree and ccache outlive the container, and
     # the per-profile host dir is mounted at the exact path the packaged
