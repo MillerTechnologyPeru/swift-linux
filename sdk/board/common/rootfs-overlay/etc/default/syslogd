@@ -1,0 +1,33 @@
+# Arguments for busybox syslogd, sourced by /etc/init.d/S01syslogd (which
+# the busybox package installs because its default config carries the
+# syslogd applet and no other syslog package is selected).
+#
+# Where this writes: /var/log/messages, and /var/log is a symlink to ../tmp
+# in Buildroot's skeleton, so the log lives on the /tmp tmpfs. That is
+# deliberate. The root filesystem is read-only, and the only writable
+# partition is /data, which /etc/init.d/S15data does not mount until well
+# after S01 - so syslogd cannot write there at the point it starts, and a
+# log that survived reboots would mean writing to eMMC or SD continuously
+# for the life of the device. Logs are therefore volatile: they cover the
+# session you are debugging and are gone at the next boot.
+#
+# What this file changes is the bound. busybox rotates by default at 200 KB
+# keeping one old file, so roughly 400 KB of history - short enough that a
+# chatty daemon can push the interesting part out before anyone reads it.
+# 512 KB with four rotations gives about 2.5 MB, which on a tmpfs sized at
+# half of RAM costs nothing and holds a whole boot plus a session's worth of
+# a misbehaving service.
+#
+#   -s SIZE   max size in KB before rotation (0 disables rotation)
+#   -b N      how many rotated logs to keep (max 99, 0 purges instead)
+#
+# Reading them: "logread" only works with the shared-memory backend, which
+# this build does not use (CONFIG_FEATURE_IPC_SYSLOG_BUFFER_SIZE=0), so use
+# the files - tail -f /var/log/messages. Kernel messages arrive here too,
+# via S02klogd, and are also in dmesg regardless of syslogd.
+#
+# To keep logs across reboots instead, the sequence is: let this stay as it
+# is for early boot, and add a script ordered after S15data that restarts
+# syslogd with -O /data/log/messages. Doing it here would silently drop
+# every message logged before /data mounts.
+SYSLOGD_ARGS="-s 512 -b 4"
