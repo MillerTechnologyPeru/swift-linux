@@ -1,0 +1,46 @@
+From: Swift Linux <noreply@localhost>
+Subject: [PATCH] gallivm: deduce the StringMap iterator type
+
+lp_build_fill_mattrs names llvm::StringMapIterator<bool> explicitly to walk
+the feature map that llvm::sys::getHostCPUFeatures returns. LLVM 22 removed
+that name: StringMap's iterators are now StringMapIterBase<ValueTy, IsConst>,
+reached through StringMap<ValueTy>::iterator, and "StringMapIterator" does
+not appear anywhere in ADT/StringMap.h. So the build stops at
+
+    ../src/gallium/auxiliary/gallivm/lp_bld_misc.cpp:334:15: error:
+      'StringMapIterator' is not a member of 'llvm'; did you mean
+      'StringMapKeyIterator'?
+      334 |    for (llvm::StringMapIterator<bool> f = features.begin();
+
+and takes mesa3d with it, which every gallium driver built with LLVM
+depends on.
+
+The compiler already knows the type, so let it deduce one rather than
+spell out a name that has changed twice. This keeps working whatever the
+iterator is called next, and needs no LLVM_VERSION_MAJOR guard - the
+surrounding code already carries one for the LLVM 19 change to
+getHostCPUFeatures' signature, and adding a second for a purely spelled
+type would be noise.
+
+Nothing else about the loop changes, because nothing else had to:
+operator* still yields StringMapEntry<ValueTy>&, StringMapEntry::first()
+still returns the key as a StringRef, and second is still the value - all
+three verified against LLVM 22.1.8's ADT/StringMap.h and ADT/StringMapEntry.h.
+Only the name of the iterator broke.
+
+This block is inside #if DETECT_ARCH_ARM, which detect_arch.h defines from
+__arm__ alone, so it is 32-bit ARM that fails to build; aarch64 takes the
+DETECT_ARCH_AARCH64 path and x86 the DETECT_ARCH_X86 one, neither of which
+names the iterator type.
+
+--- a/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
++++ b/src/gallium/auxiliary/gallivm/lp_bld_misc.cpp
+@@ -331,7 +331,7 @@
+       llvm::sys::getHostCPUFeatures(features);
+    #endif
+
+-   for (llvm::StringMapIterator<bool> f = features.begin();
++   for (auto f = features.begin();
+         f != features.end();
+         ++f) {
+       MAttrs.push_back(((*f).second ? "+" : "-") + (*f).first().str());
