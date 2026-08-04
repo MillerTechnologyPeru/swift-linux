@@ -94,6 +94,16 @@ jobs:
           # of it. The default 50G guard would abort a job that has ample room.
           min-free-gb: '20'
 
+      # The seed ships host packages as stamps without sources, and the Swift
+      # packages read host-swift's build directory rather than only what it
+      # installed into host/. See the action for why that combination fails.
+      - name: Fetch the shared host-swift
+        uses: ./.github/actions/host-swift
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          build-dir: /mnt/br/output/${{ matrix.arch }}/build
+
       - name: Fetch the 32-bit companion
         uses: actions/download-artifact@v4
         with:
@@ -200,6 +210,15 @@ jobs:
           # self-hosted box has, and the seeded tree already occupies a chunk
           # of it. The default 50G guard would abort a job that has ample room.
           min-free-gb: '20'
+
+      # Same reason as the image job: the companion builds the Swift runtime
+      # for its architecture, so it needs the real host-swift tree.
+      - name: Fetch the shared host-swift
+        uses: ./.github/actions/host-swift
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          build-dir: /mnt/br/output/${{ matrix.arch }}/build
 
       - name: Build the 32-bit companion
         run: |

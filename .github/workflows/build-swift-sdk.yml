@@ -100,6 +100,18 @@ jobs:
           # of it. The default 50G guard would abort a job that has ample room.
           min-free-gb: '20'
 
+      # The seed ships host packages as stamps without sources, which the Swift
+      # packages cannot live with: they read host-swift's build directory and
+      # its swift-source tree, not just what it installed into host/. Without
+      # this the target swift package configures against a compiler that is not
+      # there and stops ninety minutes in. See the action for the detail.
+      - name: Fetch the shared host-swift
+        uses: ./.github/actions/host-swift
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          build-dir: /mnt/br/output/${{ matrix.arch }}/build
+
       # The seeded tree carries the sdk profile's stamps, so this replays them
       # and compiles only the app-sdk delta. ccache is the same per-arch
       # directory every workflow uses; compiler_check=content (set by

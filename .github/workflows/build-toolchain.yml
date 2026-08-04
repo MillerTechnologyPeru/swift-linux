@@ -915,29 +915,19 @@ jobs:
       #
       # On the self-hosted runner the shared tree is already there from the
       # producing job, and the download is skipped entirely.
+      #
+      # The same action runs in the SDK and image workflows. It was inline here
+      # first, and their not having it is what let a consumer build get ninety
+      # minutes in before the target swift package went looking for a compiler
+      # the seed never carried.
       - name: Fetch the shared host-swift
+        uses: ./.github/actions/host-swift
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -eu
-          VER=${{ needs['host-swift'].outputs.version }}
-          D=$SHARED_DIR/build/host-swift-$VER
-          if [ ! -d "$D" ]; then
-            mkdir -p "$SHARED_DIR/build"
-            cd /mnt/br
-            gh release download host-swift-latest --repo "$GITHUB_REPOSITORY" \
-              --pattern "host-swift-$VER.tar.zst.part*"
-            cat host-swift-$VER.tar.zst.part* | tar --zstd -x -C "$SHARED_DIR/build"
-            rm -f host-swift-$VER.tar.zst.part*
-          fi
-          # Fail here rather than four hours later: an incomplete tree would
-          # simply re-trigger the build, and a dangling build/llvm symlink
-          # would do so silently.
-          test -x "$D/build/usr/bin/swiftc" || { echo "shared host-swift has no swiftc" >&2; exit 1; }
-          test -e "$D/build/llvm/lib/cmake/llvm" || { echo "shared host-swift has no usable build/llvm" >&2; exit 1; }
-          mkdir -p "$BR_O/build"
-          ln -sfn "$D" "$BR_O/build/host-swift-$VER"
-          "$D/build/usr/bin/swiftc" --version
+        with:
+          build-dir: /mnt/br/output/${{ matrix.arch }}/build
+          shared-dir: ${{ env.SHARED_DIR }}
+          version: ${{ needs['host-swift'].outputs.version }}
 
       - name: Build the rest of the sdk profile
         run: |
@@ -958,7 +948,6 @@ jobs:
         run: |
           set -eu
           A=${{ matrix.arch }}
-          VER=${{ needs['host-swift'].outputs.version }}
           O=/mnt/br/output/$A
           S=/mnt/br/pkg/$A
           rm -rf "$S"
@@ -999,23 +988,39 @@ jobs:
           #   supplied as the argument to --with-cross-build
           #
           # Letting it rebuild in the consumer costs minutes and is correct.
-          # It is the only such package in the tree: nothing else references
-          # another package's host build directory (checked across package/*.mk
-          # for _SRCDIR/_BUILDDIR and --with-cross-build).
+          #
+          # host-swift is the other one, and is excluded for the same reason
+          # with a different remedy. swift.mk compiles the target stdlib with
+          # $(HOST_SWIFT_DIR)/build/usr/bin/clang and configures it against
+          # $(HOST_SWIFT_DIR)/swift-source/...; swift-foundation reads
+          # $(HOST_SWIFT_SRCDIR) and pkg-swift.mk $(HOST_SWIFT_SUPPORT_DIR).
+          # This step used to fabricate a stamps-only host-swift directory
+          # here, and the target swift package duly stopped at
+          #
+          #   CMAKE_C_COMPILER: .../build/host-swift-<ver>/build/usr/bin/clang
+          #   is not a full path to an existing compiler tool
+          #
+          # ninety minutes into the consumer's build. Rebuilding it there is
+          # not an option the way it is for icu - that is a five-to-six-hour
+          # build-script run - so consumers materialise the real tree from the
+          # host-swift-latest release instead, via .github/actions/host-swift.
+          # Shipping no host-swift directory at all is what lets that action
+          # drop a symlink at the path without colliding with a real one.
+          #
+          # These two are the whole set, but the earlier version of this
+          # comment claimed icu alone was, having grepped only package/*.mk -
+          # swift.mk lives in the BR2_EXTERNAL tree. The check that covers it:
+          #
+          #   grep -rE '\$\(HOST_[A-Z0-9_]+_(DIR|SRCDIR|BUILDDIR)\)' \
+          #     buildroot/package swift/package ports/package external
+          #
+          # discounting a package's references to its own host variant. Adding
+          # a package that reads another's host build directory means adding it
+          # here, or it fails only in a consumer, only after an hour.
           ( cd "$O/build" && find . -mindepth 2 -maxdepth 2 \
-              -path './host-*' ! -path './host-icu-*' \
+              -path './host-*' ! -path './host-icu-*' ! -path './host-swift-*' \
               \( -name '.stamp_*' -o -name '.br2_*' -o -name '.applied_patches_list' \) \
               -print0 | tar --null -T - -cf - ) | tar -C "$S/build" -xf -
-          # host-swift is a symlink into the shared tree, and find above does
-          # not follow it. Put a real directory carrying just the stamps into
-          # the STAGING tree - the shape the published tree had when every job
-          # built host-swift in place - while the live symlink stays put so the
-          # next run still skips the eight-hour build.
-          L="$O/build/host-swift-$VER"
-          if [ -e "$L" ]; then
-            mkdir -p "$S/build/host-swift-$VER"
-            cp -a "$L"/.stamp_* "$S/build/host-swift-$VER"/ 2>/dev/null || true
-          fi
           du -sh "$S"
           tar -C /mnt/br/pkg --zstd -cf /mnt/br/toolchain-$A.tar.zst "$A"
           rm -rf "$S"

@@ -1,0 +1,105 @@
+name: Host Swift
+description: >
+  Point a Buildroot output tree at the shared host-swift toolchain, downloading
+  it from the rolling host-swift-latest release when it is not already on the
+  runner. No-op beyond the symlink when the shared tree is already populated.
+
+# Why this exists as a step rather than falling out of the toolchain seed:
+# the toolchain tarball ships host packages as stamps without their sources,
+# which is what makes seeding cheap. That trade is only sound while nothing
+# reads a host package's BUILD directory - and the Swift packages do exactly
+# that. swift.mk builds the target stdlib with the compiler at
+#
+#   $(HOST_SWIFT_DIR)/build/usr/bin/clang
+#
+# and configures it against $(HOST_SWIFT_DIR)/swift-source/..., while
+# swift-foundation reads $(HOST_SWIFT_SRCDIR) and pkg-swift.mk reads
+# $(HOST_SWIFT_SUPPORT_DIR). A stamp saying "built" with nothing behind it
+# leaves the target swift package stopping at
+#
+#   CMAKE_C_COMPILER: .../build/host-swift-<ver>/build/usr/bin/clang
+#   is not a full path to an existing compiler tool
+#
+# roughly ninety minutes into a consumer build. So host-swift is materialised
+# for real, from the tree the toolchain workflow already publishes.
+#
+# icu is the same shape and is handled the other way - its stamp is left out
+# of the tarball so the consumer rebuilds it, which costs minutes. host-swift
+# cannot be treated that way: rebuilding it is a five-to-six-hour build-script
+# run, which is the whole reason the release exists.
+
+inputs:
+  build-dir:
+    description: >
+      The tree's build/ directory (i.e. $BR_O/build). The symlink
+      host-swift-<version> is created here, replacing whatever is at that path.
+    required: true
+  shared-dir:
+    description: >
+      Where the shared host-swift tree lives. On the self-hosted runner this
+      persists between runs and the download is skipped; on a GitHub-hosted
+      runner it starts empty.
+    required: false
+    default: /mnt/br/shared
+  version:
+    description: >
+      Swift version to fetch. Read from swift/package/swift/swift.mk when
+      empty, which is where the toolchain workflow gets it too.
+    required: false
+    default: ''
+
+runs:
+  using: composite
+  steps:
+    - name: Materialise the shared host-swift
+      shell: bash
+      run: |
+        set -eu
+
+        VER="${{ inputs.version }}"
+        if [ -z "$VER" ]; then
+          VER=$(sed -n 's/^SWIFT_VERSION *= *//p' \
+                  "$GITHUB_WORKSPACE/swift/package/swift/swift.mk" | head -1)
+          [ -n "$VER" ] || {
+            echo "no SWIFT_VERSION in swift/package/swift/swift.mk" >&2; exit 1; }
+        fi
+
+        SHARED="${{ inputs.shared-dir }}"
+        D="$SHARED/build/host-swift-$VER"
+        B="${{ inputs.build-dir }}"
+
+        if [ ! -d "$D" ]; then
+          mkdir -p "$SHARED/build"
+          # Staged inside $SHARED/build, not /tmp: the move below has to be a
+          # rename. Across filesystems it would copy several gigabytes instead.
+          T=$(mktemp -d -p "$SHARED/build")
+          # Downloaded outside the final path and moved in only once it has
+          # unpacked: an interrupted download otherwise leaves a partial
+          # host-swift-$VER that the -d test above would accept next time.
+          ( cd "$T"
+            gh release download host-swift-latest --repo "$GITHUB_REPOSITORY" \
+              --pattern "host-swift-$VER.tar.zst.part*"
+            mkdir -p unpack
+            cat host-swift-$VER.tar.zst.part* | tar --zstd -x -C unpack )
+          mv "$T/unpack/host-swift-$VER" "$D"
+          rm -rf "$T"
+        fi
+
+        # Fail here rather than an hour and a half later: an incomplete tree
+        # would just re-trigger the build-script run, and a dangling
+        # build/llvm symlink would do so silently.
+        test -x "$D/build/usr/bin/swiftc" || {
+          echo "shared host-swift has no swiftc at $D/build/usr/bin" >&2; exit 1; }
+        test -e "$D/build/llvm/lib/cmake/llvm" || {
+          echo "shared host-swift has no usable build/llvm at $D" >&2; exit 1; }
+
+        # rm -rf, not ln -sfn alone: a seeded tree may already carry a real
+        # host-swift-<version> directory, and "ln -s" onto an existing
+        # directory silently creates the link INSIDE it. The stamps that
+        # directory holds are in the shared tree too, so nothing is lost.
+        mkdir -p "$B"
+        rm -rf "$B/host-swift-$VER"
+        ln -sfn "$D" "$B/host-swift-$VER"
+
+        "$D/build/usr/bin/swiftc" --version
+        echo "host-swift $VER: $B/host-swift-$VER -> $D"
