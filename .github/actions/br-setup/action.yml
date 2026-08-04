@@ -83,6 +83,34 @@ runs:
           uuid-dev libicu-dev icu-devtools libedit-dev libxml2-dev \
           libsqlite3-dev swig libpython3-dev libblocksruntime-dev \
           libcurl4-openssl-dev systemtap-sdt-dev tzdata zip pkg-config zstd
+        # 32-bit headers for the build machine's own compiler, for 32-bit
+        # targets only. LuaJIT cannot cross-compile to a different pointer
+        # size, so Buildroot builds its host tools with "gcc -m32" whenever
+        # the target is 32-bit - and this image carries no 32-bit libc, so
+        # the very first host object stopped at
+        #
+        #   HOSTCC    host/buildvm_asm.o
+        #   host/buildvm.h:9:10: fatal error: sys/types.h: No such file or directory
+        #
+        # This is about the host compiler, not the cross one: the cross
+        # toolchain Buildroot builds is complete on its own. armv7 needs it
+        # for the same reason i386 does - what matters is the target's
+        # pointer size, not its instruction set.
+        # libc6-dev-i386 comes in as a dependency of gcc-multilib; naming it
+        # too means a failure says which piece is missing.
+        case "${{ inputs.arch }}" in
+          i386|armv5|armv6|armv7)
+            apt-get install -y --no-install-recommends gcc-multilib libc6-dev-i386
+            echo '#include <sys/types.h>' > /tmp/m32check.c
+            echo 'int main(void){return 0;}' >> /tmp/m32check.c
+            gcc -m32 -o /tmp/m32check /tmp/m32check.c || {
+              echo "gcc -m32 still cannot build a trivial program;" >&2
+              echo "luajit's host tools would fail later in the build." >&2
+              exit 1
+            }
+            rm -f /tmp/m32check /tmp/m32check.c
+            echo "gcc -m32: working" ;;
+        esac
         # gh is preinstalled on a GitHub-hosted runner but not in this image,
         # and both the shared host-swift download and the release uploads need it.
         if ! command -v gh >/dev/null 2>&1; then
