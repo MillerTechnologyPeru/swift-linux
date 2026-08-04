@@ -23,7 +23,7 @@
 #               + swift + applibs + runtimes
 #   image     = arch + toolchain + libs + tools + supportdata + tools-gui
 #               + swift + applibs + runtimes + network + audio + daemons
-#               + emulation + image
+#               + debug + emulation + image
 #               + board.config
 #                                            (bootable A/B UEFI image)
 #   lib32     = arch + toolchain + libs + tools + supportdata + tools-gui + swift
@@ -107,7 +107,7 @@ case "$profile" in
                 exit 1
             fi
         fi
-        fragments=(toolchain libs tools supportdata tools-gui swift applibs runtimes network audio daemons emulation image) ;;
+        fragments=(toolchain libs tools supportdata tools-gui swift applibs runtimes network audio daemons debug emulation image) ;;
     lib32)
         # 32-bit companion userland, merged into a 64-bit image as /usr/lib32
         # by sdk/board/common/post-build-lib32.sh. Buildroot has no multilib
