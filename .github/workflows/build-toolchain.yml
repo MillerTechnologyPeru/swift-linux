@@ -961,21 +961,37 @@ jobs:
           # build/'s own top-level files (packages-file-list.txt, build-time.log)
           # ship; the package subdirectories ship only their stamps.
           find "$O/build" -mindepth 1 -maxdepth 1 -type f -exec cp -a {} "$S/build"/ \;
-          # Host packages only. A stamp without its sources tells the consumer
-          # "already done", which is what makes seeding cheap - but it is only
-          # safe while nothing invalidates it. Target packages are configured
-          # from the buildroot .config, and a consumer builds a different
-          # profile (app-sdk, image) than the sdk profile packaged here, so
-          # their stamps go stale and the step re-runs against sources that
-          # were never shipped. busybox is the one that shows it:
+          # A stamp without its sources tells the consumer "already done",
+          # which is what makes seeding cheap. Every package ships one, host
+          # and target alike, with the exclusions below.
+          #
+          # Target stamps were dropped once, on the theory that a consumer
+          # building a different profile invalidates them. That was the wrong
+          # reading of one failure. Buildroot does not re-run a step whose
+          # stamp exists, whatever the .config now says - which is exactly how
+          # the self-hosted runner behaves when it builds the image profile
+          # over the sdk profile in one tree. What actually re-ran was a
+          # kconfig-package: those re-enter their config step on every make,
+          # and with no sources behind the stamp busybox stopped at
           #
           #   merged configuration written to .../busybox-1.38.0/.config
           #   make[1]: *** No rule to make target 'oldconfig'.  Stop.
           #
-          # because .stamp_extracted said "extracted" and there was no Makefile
-          # to run. Host tools are profile-independent and already installed
-          # into host/, so skipping them stays correct; target packages must
-          # download and build normally in the consumer.
+          # So the exclusion is kconfig-packages, not target packages. And
+          # dropping every target stamp had a second cost that took three more
+          # runs to surface: the consumer rebuilt packages the seed had already
+          # installed into the sysroot, and swift-foundation cannot survive
+          # that - it builds against the very headers its last install left
+          # behind, and stops at
+          #
+          #   sysroot/usr/lib/swift/_FoundationCShims/module.modulemap:1:8:
+          #     error: redefinition of module '_FoundationCShims'
+          #   note: previously defined here (swift-source/swift-foundation/...)
+          #
+          # Not rebuilding it is both faster and the only thing that is
+          # correct: the seeded sysroot already holds what the toolchain job
+          # built.
+          #
           # host-icu is excluded: icu.mk cross-compiles the target build against
           # the host build TREE, not its installed output -
           #
@@ -1017,10 +1033,20 @@ jobs:
           # discounting a package's references to its own host variant. Adding
           # a package that reads another's host build directory means adding it
           # here, or it fails only in a consumer, only after an hour.
+          #
+          # The kconfig-packages, whose config step re-runs regardless of any
+          # stamp. From `grep -rl 'kconfig-package))' buildroot --include=*.mk`;
+          # the external trees have none. The prefix match also catches
+          # uboot-tools and the like, which merely rebuild - the cost of being
+          # wrong in this direction is minutes, in the other it is a red run.
+          KCONFIG_PKGS="at91bootstrap3 barebox busybox linux linux-backports
+                        swupdate ti-k3-r5-loader uboot uclibc xvisor"
+          SKIP="host-icu|host-swift"
+          for p in $KCONFIG_PKGS; do SKIP="$SKIP|$p|host-$p"; done
           ( cd "$O/build" && find . -mindepth 2 -maxdepth 2 \
-              -path './host-*' ! -path './host-icu-*' ! -path './host-swift-*' \
               \( -name '.stamp_*' -o -name '.br2_*' -o -name '.applied_patches_list' \) \
-              -print0 | tar --null -T - -cf - ) | tar -C "$S/build" -xf -
+              -print | grep -vE "^\./($SKIP)-" \
+              | tr '\n' '\0' | tar --null -T - -cf - ) | tar -C "$S/build" -xf -
           du -sh "$S"
           tar -C /mnt/br/pkg --zstd -cf /mnt/br/toolchain-$A.tar.zst "$A"
           rm -rf "$S"
