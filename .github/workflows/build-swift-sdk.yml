@@ -43,7 +43,17 @@ on:
 # queue behind itself. Supersede instead.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Not cancel-in-progress, for the same reason as build-toolchain.yml: the
+  # daily 05:00 UTC schedule and a workflow_dispatch share this group, so the
+  # schedule killed a dispatched run forty minutes in - seven seconds after
+  # starting, on the same commit, discarding four arches of progress to
+  # rebuild exactly the same thing.
+  #
+  # These jobs run on GitHub-hosted runners, so two runs of the same ref never
+  # share a tree: /mnt is local to each ephemeral runner. Overlapping runs
+  # cost machine time and nothing else, while a cancellation costs an hour or
+  # more of work.
+  cancel-in-progress: false
 
 env:
   # The caches are on the runner's disk, not in the 10 GB repo-wide

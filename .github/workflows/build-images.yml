@@ -35,7 +35,11 @@ on:
 # otherwise queue behind itself. Supersede instead.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # Not cancel-in-progress: same reasoning as build-toolchain.yml and
+  # build-swift-sdk.yml. An image build is hours long, the schedule and a
+  # workflow_dispatch share this group, and these run on GitHub-hosted
+  # runners where two runs of the same ref never share a tree.
+  cancel-in-progress: false
 
 env:
   # The caches are on the runner's disk, not in the 10 GB repo-wide
