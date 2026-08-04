@@ -174,6 +174,26 @@ for name in "${fragments[@]}"; do
     files+=("$DEFCONFIG_DIR/$name.config")
 done
 
+# An arch may follow up with arch/<arch>-override.config, emitted after the
+# profile's fragments instead of before them. The arch fragment leads, so it
+# can only set things a later fragment has not spoken about; this is for the
+# other case, where an architecture has to take back something a shared
+# fragment turned on. Kconfig honours the last assignment to a symbol, so a
+# "# BR2_PACKAGE_FOO is not set" here beats the fragment's BR2_PACKAGE_FOO=y.
+#
+# It stays optional and stays rare: a package that simply has no support for
+# an architecture belongs in that package's Config.in dependencies, where
+# kconfig drops it on its own. This is for packages that build everywhere the
+# symbol claims but not everywhere in practice.
+#
+# Before the board and frontend, which remain the most specific word: a board
+# names actual hardware, and --frontend is documented as beating the board's
+# own choice. With --device there is no --arch and so no override.
+if [ -n "$arch" ]; then
+    arch_override="$DEFCONFIG_DIR/arch/$arch-override.config"
+    [ -f "$arch_override" ] && files+=("$arch_override")
+fi
+
 # The image profile appends the board.config (kernel defconfig, GRUB EFI
 # target, serial port; for a device also the arch selection) after the
 # generic image.config.
