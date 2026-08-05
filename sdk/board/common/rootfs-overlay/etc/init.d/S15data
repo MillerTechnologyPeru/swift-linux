@@ -88,11 +88,37 @@ start() {
 	[ -f /etc/swift-linux/data-filesystem ] && \
 		DATA_FS="$(cat /etc/swift-linux/data-filesystem)"
 
-	# Detect an existing filesystem by ANY blkid output: busybox blkid prints
-	# LABEL/UUID but not a TYPE= field, so a type match cannot be relied on.
+	# Detect an existing filesystem by asking blkid for a TYPE, rather than by
+	# whether it printed anything at all.
+	#
+	# The earlier test was "any output means a filesystem", on the premise
+	# that this is busybox's blkid. It is not: the image ships util-linux's
+	# /sbin/blkid, which shadows the applet and reports the GPT entry even
+	# for a partition with nothing on it -
+	#
+	#   # blkid /dev/disk/by-partuuid/0d0d0d0d-0000-4000-8000-00000000000d
+	#   /dev/...: PARTLABEL="data" PARTUUID="0d0d0d0d-0000-4000-8000-...000d"
+	#
+	# so the output was never empty, mkfs never ran on a fresh image, and the
+	# mount below failed on every first boot with
+	#
+	#   mount: mounting /dev/disk/by-partuuid/0d0d... on /data failed:
+	#     Invalid argument
+	#
+	# which took the RNG seed, the saved clock and the sshd host keys with
+	# it, since all three live on /data.
+	#
+	# -s TYPE prints only when a filesystem was actually recognised and is
+	# empty for a blank partition. It also degrades correctly if busybox's
+	# blkid is ever the one found first: that applet parses no options, so it
+	# treats them as device names, fails to open them, and still prints a
+	# line for the real device only when it finds a filesystem there. Either
+	# way, empty means "no filesystem".
+	#
 	# Redirect stdin from /dev/null so mkfs can never block the boot on its
 	# "Proceed anyway?" prompt if it is ever pointed at a non-empty device.
-	if [ -z "$(blkid "${DATA_DEV}" 2>/dev/null)" ]; then
+	existing_fs="$(blkid -o value -s TYPE "${DATA_DEV}" 2>/dev/null)"
+	if [ -z "${existing_fs}" ]; then
 		printf 'Formatting data partition (%s): ' "${DATA_FS}"
 		case "${DATA_FS}" in
 			f2fs)
@@ -107,8 +133,8 @@ start() {
 		# stretch it to the partition's current size - a no-op when it
 		# already fills it. Dispatched on what is actually ON DISK, which
 		# may differ from DATA_FS above: the partition could have been
-		# formatted by the installer with the other choice.
-		existing_fs="$(blkid -o value -s TYPE "${DATA_DEV}" 2>/dev/null)"
+		# formatted by the installer with the other choice. Already read
+		# above, where it decided whether to format at all.
 		case "${existing_fs}" in
 			f2fs)
 				command -v resize.f2fs >/dev/null 2>&1 && \
