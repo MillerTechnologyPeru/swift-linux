@@ -100,3 +100,17 @@ rm -f "${TARGET_DIR}/etc/init.d/S30cgroupfs2"
 # every boot. S16seedrng does the same job afterwards against /data, where
 # the seed can actually persist - drop the boot-runlevel copy.
 rm -f "${TARGET_DIR}/etc/runlevels/boot/seedrng"
+# And the SysV half of the same thing, which the line above does not reach.
+# urandom-scripts installs /etc/init.d/S01seedrng; it is not selected any
+# more (BR2_PACKAGE_INITSCRIPTS comes with BR2_INIT_BUSYBOX, and this is
+# OpenRC), but Buildroot leaves a deselected package's files in an
+# incremental target/, and the seeded trees carry one built when it was.
+# sysv-rcs then runs it from the default runlevel and it fails exactly as
+# the OpenRC service did:
+#
+#   * Starting /etc/init.d/S01seedrng
+#   seedrng: Unable to create seed directory: Read-only file system
+#
+# Verified in QEMU against the image the nightly published: S01seedrng ran
+# and failed, S16seedrng ran afterwards and is the one that matters.
+rm -f "${TARGET_DIR}/etc/init.d/S01seedrng"
