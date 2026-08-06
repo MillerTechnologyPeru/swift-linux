@@ -16,6 +16,16 @@
 #                       and drive the console. See util/boot-verify.sh.
 #   QEMU_MONITOR_SOCK=<f>  QEMU monitor on a unix socket, so a script can shut
 #                       the machine down cleanly instead of killing it.
+#   QEMU_USB_BOOT=1     attach the image as a USB mass storage device on an
+#                       xHCI controller instead of virtio-blk, which is how
+#                       the image is actually used: written to a stick and
+#                       booted on real hardware. It is a different path all
+#                       the way down - UEFI enumerates a USB block device,
+#                       GRUB reads it over that, and the kernel needs
+#                       usb-storage plus xhci_hcd built in to find the root
+#                       filesystem (the board fragment has all three). Slower
+#                       than virtio by some margin; that is the emulation, not
+#                       the image.
 set -e
 
 IMG="${1:-disk.img}"
@@ -113,6 +123,23 @@ if [ -n "${QEMU_MONITOR_SOCK:-}" ]; then
 	MONITOR="-monitor unix:$QEMU_MONITOR_SOCK,server,nowait"
 fi
 
+# How the image is presented to the guest. virtio-blk by default because it is
+# the fastest thing to iterate against; QEMU_USB_BOOT swaps in a USB stick on
+# an xHCI controller, which is what the image meets in the field.
+#
+# bootindex=0 matters for the USB case: with two bootable paths and no
+# preference expressed, the firmware picks by its own enumeration order, and a
+# run that boots the wrong one looks like a broken image rather than a
+# mis-specified machine.
+if [ -n "${QEMU_USB_BOOT:-}" ]; then
+	STORAGE="-device qemu-xhci,id=xhci
+		-drive file=$IMG,if=none,format=raw,id=usbstick
+		-device usb-storage,bus=xhci.0,drive=usbstick,bootindex=0"
+else
+	STORAGE="-drive file=$IMG,if=none,format=raw,id=hd0
+		-device virtio-blk-pci,drive=hd0"
+fi
+
 # -vga none is important: without it q35 adds a default VGA adapter, so the
 # guest sees two DRM devices (bochs-drm alongside virtio-gpu). The compositor
 # can then hand Wayland clients the bochs device, which has no render node, and
@@ -125,8 +152,7 @@ exec qemu-system-x86_64 \
 	-m "${QEMU_MEM:-2G}" \
 	-drive if=pflash,format=raw,unit=0,readonly=on,file="$OVMF_CODE" \
 	-drive if=pflash,format=raw,unit=1,file="$OVMF_VARS" \
-	-drive file="$IMG",if=none,format=raw,id=hd0 \
-	-device virtio-blk-pci,drive=hd0 \
+	$STORAGE \
 	-netdev user,id=eth0,hostfwd=tcp:127.0.0.1:2222-:22 \
 	-device virtio-net-pci,netdev=eth0 \
 	$GPU \

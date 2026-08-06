@@ -89,19 +89,38 @@ QEMU_PID=$!
 # ---- the boot log ---------------------------------------------------------
 # Known-bad lines: regressions this tree has actually shipped, so a broken
 # boot fails in seconds instead of waiting out the timeout.
-BAD='sysv-rcs failed to start|failed to start .*ntpd|Unable to create seed directory|seatd does not exist|Kernel panic|Entering emergency mode'
+#
+# "Unable to create seed directory" used to be here and is not a regression:
+# busybox installs its own S01seedrng, which runs long before S15data has
+# mounted /data and so cannot write its seed on a read-only root. It fails
+# that way on every boot, healthy or not, which is exactly why this tree
+# ships S16seedrng to do the job once /data is there. Keeping it in this list
+# made a slow boot fail with a line that had nothing to do with the problem.
+#
+# The /data lines below replace it, and are the real thing: they only appear
+# when the data partition did not mount, which takes the RNG seed, the saved
+# clock and the sshd host keys down with it.
+BAD='sysv-rcs failed to start|failed to start .*ntpd|seatd does not exist|Kernel panic|Entering emergency mode'
+BAD="$BAD"'|mount: mounting .* on /data failed'
+BAD="$BAD""|can't create directory '/data"
 
 wait_for() {
 	pattern="$1"; label="$2"
 	deadline=$(( $(date +%s) + TIMEOUT ))
 	while :; do
 		if [ -f "$SERIAL_LOG" ]; then
-			grep -qE "$pattern" "$SERIAL_LOG" 2>/dev/null && { pass "$label"; return 0; }
+			# Known-bad first. With the success pattern tested first, a
+			# check whose line was already in the log passed before the
+			# bad line was ever looked at, so whether a broken boot was
+			# caught came down to which of the two landed in the same
+			# two-second poll - the same image passed on virtio and
+			# failed on slower USB storage.
 			if grep -qE "$BAD" "$SERIAL_LOG" 2>/dev/null; then
 				echo "  FAIL  $label - the boot log reports:" >&2
 				grep -hoE "$BAD.*" "$SERIAL_LOG" | sort -u | sed 's/^/        /' >&2
 				exit 1
 			fi
+			grep -qE "$pattern" "$SERIAL_LOG" 2>/dev/null && { pass "$label"; return 0; }
 		fi
 		kill -0 "$QEMU_PID" 2>/dev/null || fail "$label - qemu exited early (see $RUN/qemu.out)"
 		[ "$(date +%s)" -lt "$deadline" ] || fail "$label - timed out after ${TIMEOUT}s"
@@ -109,10 +128,15 @@ wait_for() {
 	done
 }
 
+# These match a service STARTING, so the label says that and no more. The
+# earlier wording - "RNG seed restored from /data" - claimed an outcome from
+# the presence of "S16seedrng" in the log, and duly printed ok on an image
+# where the next line was "can't create directory '/data/lib/'". Whether the
+# work succeeded is now the BAD list's job, which sees those failures.
 echo "boot:"
-wait_for 'S15data'                'data partition script ran'
-wait_for 'S16seedrng'             'RNG seed restored from /data'
-wait_for 'S16swclock'             'clock restored from /data'
+wait_for 'S15data'                'data partition service ran'
+wait_for 'S16seedrng'             'RNG seed service ran'
+wait_for 'S16swclock'             'clock service ran'
 wait_for 'Welcome to Swift Linux' 'userspace reached a login prompt'
 
 # ---- the session ---------------------------------------------------------
