@@ -40,15 +40,22 @@ on:
         type: choice
         options: [minimal, emulationstation, gmenu2x, gnome, phosh, xfce, none]
 
-# One runner, so a nightly that is still running when the next fires would
-# otherwise queue behind itself. Supersede instead.
+# One runner, so a nightly still running when the next fires would otherwise
+# queue behind itself. Supersede instead.
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
-  # Not cancel-in-progress: same reasoning as build-toolchain.yml and
-  # build-swift-sdk.yml. An image build is hours long, the schedule and a
-  # workflow_dispatch share this group, and these run on GitHub-hosted
-  # runners where two runs of the same ref never share a tree.
-  cancel-in-progress: false
+  # Back to cancel-in-progress now this is self-hosted again. It was turned
+  # off while these jobs ran on GitHub's pool, where the argument held: the
+  # runners are ephemeral, so two runs of the same ref never touch the same
+  # tree, and cancelling one threw away hours that had to be recompiled from
+  # nothing.
+  #
+  # Neither half of that is true here. The trees live on this machine at
+  # /mnt/br/profiles/image/<arch> and every run of a given arch uses the same
+  # one, so overlapping runs interleave on shared state. And superseding
+  # costs far less: the winner inherits the tree the loser was part way
+  # through, so the work is picked up rather than discarded.
+  cancel-in-progress: true
 
 env:
   # Which frontend the image boots into. build-images.sh passes this to
@@ -71,19 +78,18 @@ jobs:
       fail-fast: false
       matrix:
         arch: [x86_64, arm64]
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     needs: lib32
-    # Under GitHub's own six-hour ceiling on a hosted job, not over it. This
-    # was 480, which never applied: the platform cancelled Image (x86_64) at
-    # 6:00:04 with no timeout recorded, no diagnosis, and - because a
-    # cancellation is not a failure - without running the step that dumps the
-    # build log. A job that stops at 350 stops as OUR timeout, which is a
-    # failure, so the log survives and says where it got to.
+    # Generous, not calibrated - the six-hour hosted-runner ceiling does not
+    # apply here. It exists so a wedged build eventually releases the runner
+    # rather than blocking every other workflow forever, which matters more
+    # here than on the pool: this is one machine and the jobs queue behind
+    # each other.
     #
-    # For scale: arm64 finished this profile in 4h32m and x86_64 did not fit,
-    # its GPU stack being the larger one (crocus, i915, iris, radeonsi,
-    # nouveau, svga and llvmpipe against arm64's narrower set).
-    timeout-minutes: 350
+    # For scale: on hosted runners arm64 took 4h32m and x86_64 5h18m from a
+    # cold tree. This runner keeps its trees, so a repeat run compiles only
+    # what changed.
+    timeout-minutes: 1440
     # Plain base image; the toolchain comes from br-seed. /mnt is
     # bind-mounted so the tree and ccache outlive the container, and the
     # per-profile host dir is mounted at the path the packaged toolchain was
@@ -121,10 +127,12 @@ jobs:
           configure: 'false'
           ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
           ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
-          # GitHub-hosted runners have ~70G on /mnt, not the terabyte the
-          # self-hosted box has, and the seeded tree already occupies a chunk
-          # of it. The default 50G guard would abort a job that has ample room.
-          min-free-gb: '20'
+          # Back to a real guard now this runs on the self-hosted box: the
+          # 20G was sized for a hosted runner's ~70G /mnt, and on a machine
+          # that keeps four output trees, the shared host-tool tree, dl/ and
+          # the ccaches it is low enough to let a build start and then hit
+          # ENOSPC hours in. Same figure the toolchain jobs use.
+          min-free-gb: '60'
 
       # The seed ships host packages as stamps without sources, and the Swift
       # packages read host-swift's build directory rather than only what it
@@ -211,8 +219,8 @@ jobs:
       fail-fast: false
       matrix:
         arch: [i386, armv7]
-    runs-on: ubuntu-latest
-    timeout-minutes: 350
+    runs-on: [self-hosted, Linux, X64]
+    timeout-minutes: 1440
     # Same mount arrangement as the image job, one profile over.
     container:
       image: docker.io/colemancda/buildroot-swift:latest
@@ -242,10 +250,12 @@ jobs:
           profile: lib32
           ccache-dir: /mnt/br/ccache/${{ matrix.arch }}
           ccache-max-size: ${{ env.CCACHE_MAX_SIZE }}
-          # GitHub-hosted runners have ~70G on /mnt, not the terabyte the
-          # self-hosted box has, and the seeded tree already occupies a chunk
-          # of it. The default 50G guard would abort a job that has ample room.
-          min-free-gb: '20'
+          # Back to a real guard now this runs on the self-hosted box: the
+          # 20G was sized for a hosted runner's ~70G /mnt, and on a machine
+          # that keeps four output trees, the shared host-tool tree, dl/ and
+          # the ccaches it is low enough to let a build start and then hit
+          # ENOSPC hours in. Same figure the toolchain jobs use.
+          min-free-gb: '60'
 
       # Same reason as the image job: the companion builds the Swift runtime
       # for its architecture, so it needs the real host-swift tree.
@@ -292,7 +302,14 @@ jobs:
     strategy:
       matrix:
         arch: [x86_64, arm64]
-    runs-on: ubuntu-latest
+    # On the same runner as the rest, though it needs nothing from it. Left on
+    # the hosted pool it would be the one job that can still fail for reasons
+    # unrelated to the tree, and since nothing depends on it, that failure
+    # would only ever show up as a red run beside two good images.
+    #
+    # The cost is that it can queue behind an image build rather than
+    # answering in seconds, which blunts it as a fast gate.
+    runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
