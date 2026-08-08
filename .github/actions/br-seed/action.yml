@@ -90,8 +90,39 @@ runs:
 
         tmp=$(mktemp -d /mnt/br/seed.XXXXXX)
         trap 'rm -rf "$tmp"' EXIT
-        gh release download "$release" --repo "$GITHUB_REPOSITORY" \
-          --pattern "toolchain-$arch.tar.zst.part*" --dir "$tmp"
+        # Retry the download. Two things make a single attempt unreliable, and
+        # both are transient:
+        #
+        #   - build-toolchain.yml replaces these assets one architecture at a
+        #     time over half an hour, and this workflow is on its own schedule,
+        #     so a job can ask for an asset while that upload is still running:
+        #
+        #       stream error: stream ID 1; PROTOCOL_ERROR; received from peer
+        #
+        #     which is what took the arm64 seed out while the arm64 part was
+        #     still being written (the three arches uploaded earlier that run
+        #     seeded cleanly).
+        #   - ordinary network faults on a gigabyte-scale transfer.
+        #
+        # The waits are long because the failure being waited out is an upload
+        # in progress, not a blip - a few seconds would just burn the attempts
+        # and fail identically. This spans about ten minutes, comfortably more
+        # than one asset takes to upload. A partial download would poison the
+        # concatenation below, so clear the directory before each retry.
+        for attempt in 1 2 3 4 5 6; do
+          if gh release download "$release" --repo "$GITHUB_REPOSITORY" \
+               --pattern "toolchain-$arch.tar.zst.part*" --dir "$tmp"; then
+            break
+          fi
+          if [ "$attempt" = 6 ]; then
+            echo "could not download toolchain-$arch after $attempt attempts." >&2
+            exit 1
+          fi
+          wait=$((attempt * 30))
+          echo "download failed (attempt $attempt), retrying in ${wait}s" >&2
+          rm -rf "${tmp:?}"/*
+          sleep "$wait"
+        done
         # The tarball's single top-level entry is <arch>/; strip it so the
         # tree lands in dest itself.
         cat "$tmp"/toolchain-"$arch".tar.zst.part* | \
