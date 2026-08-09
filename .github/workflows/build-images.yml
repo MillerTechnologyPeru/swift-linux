@@ -151,6 +151,37 @@ jobs:
           name: lib32-${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}
           path: lib32
 
+      # The download above can hand back a truncated file, and nothing notices
+      # until the build step extracts it, three seconds in:
+      #
+      #   gzip: stdin: unexpected end of file
+      #   tar: Unexpected EOF in archive
+      #
+      # The artifact itself was fine that time - 225224255 bytes, the same size
+      # the previous day's built - so this is the transfer, not the upload, and
+      # re-fetching is all it takes. Test the archive here rather than letting
+      # tar discover it later: the failure is identical either way, but this
+      # names the cause instead of leaving a bare tar error in the build log.
+      - name: Verify the companion archive
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NAME: lib32-${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}
+        run: |
+          set -eu
+          for attempt in 1 2 3; do
+            if gzip -t lib32/"$NAME".tar.gz 2>/dev/null; then
+              echo "companion archive intact ($(stat -c%s lib32/"$NAME".tar.gz) bytes)"
+              exit 0
+            fi
+            echo "companion archive is truncated (attempt $attempt)" >&2
+            [ "$attempt" = 3 ] && break
+            rm -rf lib32
+            gh run download "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" \
+              --name "$NAME" --dir lib32
+          done
+          echo "could not fetch an intact $NAME after 3 attempts." >&2
+          exit 1
+
       - name: Build image
         run: |
           set -eu
