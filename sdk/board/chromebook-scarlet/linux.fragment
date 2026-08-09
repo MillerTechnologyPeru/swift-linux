@@ -1,0 +1,17 @@
+# Acer Chromebook Tab 10 (scarlet), on top of the family fragments.
+#
+# The wifi (ath10k_pci), bluetooth (btusb), touchscreen (elants_i2c) and the
+# Hantro decoder are already modules in the arch default configuration; what
+# follows is only what that configuration lacks.
+
+# Tablet cameras: front OV2685, rear OV5695, both routed through the RK3399's
+# ISP (rk3399-gru-scarlet.dtsi wires the two sensors to isp0's MIPI ports).
+# The sensors are useless without the ISP and vice versa, so the three travel
+# together.
+CONFIG_VIDEO_ROCKCHIP_ISP1=m
+CONFIG_VIDEO_OV2685=m
+CONFIG_VIDEO_OV5695=m
+
+# The RK3399's second video decoder. Hantro (the arch default carries it)
+# does VP8 and JPEG; H.264 and VP9 decode on this SoC live in rkvdec.
+CONFIG_VIDEO_ROCKCHIP_VDEC=m
