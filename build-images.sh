@@ -112,6 +112,29 @@ br_build() {
 		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 			"$pkg-dirclean" >/dev/null || return 1
 	done
+	# Clear the linker configuration the lib32 merge leaves behind, or an
+	# incremental build stops before it gets anywhere:
+	#
+	#   ERROR: we shouldn't have a /etc/ld.so.conf file
+	#   make: *** [Makefile:772: target-finalize] Error 1
+	#
+	# Buildroot refuses both /etc/ld.so.conf and /etc/ld.so.conf.d, and tests
+	# for them inside target-finalize - while BR2_ROOTFS_POST_BUILD_SCRIPT runs
+	# at the end of that same rule. So post-build-lib32.sh writes the files
+	# after the test that forbids them, every build leaves them behind, and the
+	# next build over the same tree fails on what the last one wrote.
+	#
+	# It stayed hidden because br-seed empties the tree whenever the toolchain
+	# release changes, and until now every image build happened to follow one.
+	# The toolchain is weekly, so the first nightly that seeds no new tree hits
+	# this - six nights out of seven, once it starts.
+	#
+	# Removing them here rather than in a post-build script: those all run
+	# after the test, so anything they delete is either recreated by the lib32
+	# merge moments later or lost from the image entirely. This is the last
+	# point that is still before make.
+	rm -f "$out/target/etc/ld.so.conf"
+	rm -rf "$out/target/etc/ld.so.conf.d"
 	# FORCE_UNSAFE_CONFIGURE lets host tools configure as root (CI/containers).
 	FORCE_UNSAFE_CONFIGURE=1 make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" \
 		$DL_OPT BR2_CCACHE_DIR="$CCACHE_DIR" $BR2_MAKE_OPTS "$@"
