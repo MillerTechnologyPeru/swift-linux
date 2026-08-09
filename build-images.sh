@@ -19,6 +19,12 @@
 #   SKIP_SWIFT=1        build without the swift package, for hosts that lack
 #                       the native Swift toolchain the swift package needs.
 #                       The image is otherwise complete.
+#   DEVICE=<name>       build the image for one board (sdk/board/<name>)
+#                       instead of the generic UEFI board for the
+#                       architecture - its kernel defconfig, device tree and
+#                       boot chain. Only valid alongside that board's own
+#                       architecture, and only for a single arch at a time.
+#                       Output goes to <name>-image rather than <arch>-image.
 #   NO_LIB32=1          skip the 32-bit companion (no /usr/lib32, no box86)
 #   LIB32_ROOT          use an already-built companion target/ tree instead of
 #                       building one (its toolchain lives in another container)
@@ -86,7 +92,14 @@ make_defconfig() {
 	# sdk/defconfig/frontend/); "minimal" is the bring-up session.
 	local fe=()
 	[ -n "${FRONTEND:-}" ] && [ "$profile" = "image" ] && fe=(--frontend "$FRONTEND")
-	"$GENERATE" --arch "$arch" --profile "$profile" "${fe[@]}" -o "$out" >/dev/null || return 1
+	# DEVICE=<name> builds for one board in sdk/board/<name> instead of the
+	# generic sdk/board/<arch>: its kernel defconfig, device tree and boot
+	# chain in place of the UEFI ones. Only the image carries a board - the
+	# 32-bit companion is a sysroot and has no hardware in it - so the lib32
+	# pass is left alone, and the two share the arch as before.
+	local dev=()
+	[ -n "${DEVICE:-}" ] && [ "$profile" = "image" ] && dev=(--device "$DEVICE")
+	"$GENERATE" --arch "$arch" --profile "$profile" "${fe[@]}" "${dev[@]}" -o "$out" >/dev/null || return 1
 	if [ "${SKIP_SWIFT:-0}" = "1" ]; then
 		sed -i -E '/^BR2_PACKAGE_(SWIFT|LIBSWIFTDISPATCH|SWIFT_FOUNDATION)=y/d' "$out"
 	fi
@@ -148,7 +161,12 @@ build_track() {
 	# at an existing output dir (e.g. a CI container's cached output/<arch>
 	# that already has the cross-toolchain and swift built), so only the
 	# remaining packages compile. Ignored when building multiple arches.
-	local img_out="$OUTPUT_BASE/$arch-image"
+	# Keyed on the device when there is one, so a board build and the generic
+	# arch build do not land in the same tree. They differ in kernel
+	# configuration, device tree and boot chain, and Buildroot would reconfigure
+	# over the top rather than start clean - which is how a file from the last
+	# build ends up in the next one's image.
+	local img_out="$OUTPUT_BASE/${DEVICE:-$arch}-image"
 	if [ -n "${IMAGE_OUTPUT_DIR:-}" ] && [ "$SINGLE_ARCH" = "1" ]; then
 		img_out="$IMAGE_OUTPUT_DIR"
 	fi
@@ -171,8 +189,8 @@ build_track() {
 		lib32_root="$l_out/target"
 	fi
 
-	echo "[$arch] building image"
-	local i_cfg="$OUTPUT_BASE/$arch-image.defconfig"
+	echo "[$arch] building image${DEVICE:+ for $DEVICE}"
+	local i_cfg="$OUTPUT_BASE/${DEVICE:-$arch}-image.defconfig"
 	make_defconfig image "$arch" "$i_cfg" || { echo "[$arch] image defconfig failed"; return 1; }
 	SWIFT_LINUX_LIB32_ROOT="$lib32_root" br_build "$img_out" "$i_cfg" all \
 		|| { echo "[$arch] image build FAILED"; return 1; }
@@ -188,6 +206,23 @@ build_track() {
 arches=("$@")
 [ ${#arches[@]} -gt 0 ] || arches=(x86_64 arm64)
 [ ${#arches[@]} -eq 1 ] && SINGLE_ARCH=1 || SINGLE_ARCH=0
+
+# A device names one board, and a board is one architecture, so building two
+# arches for it is meaningless - and silently applying it to both would produce
+# an x86_64 image claiming to be an arm64 tablet. The arch it belongs to is
+# recorded in the board's boardinfo; check it here rather than let the mismatch
+# turn up hours later as a kernel that does not match the device tree.
+if [ -n "${DEVICE:-}" ]; then
+	board_dir="$REPO_DIR/sdk/board/$DEVICE"
+	[ -f "$board_dir/board.config" ] || \
+		die "unknown device '$DEVICE' (no $board_dir/board.config)"
+	[ "$SINGLE_ARCH" = "1" ] || \
+		die "DEVICE=$DEVICE needs exactly one architecture (got: ${arches[*]})"
+	board_arch=$(sed -n 's/^ARCH=//p' "$board_dir/boardinfo" 2>/dev/null | head -1)
+	if [ -n "$board_arch" ] && [ "$board_arch" != "${arches[0]}" ]; then
+		die "device '$DEVICE' is $board_arch, not ${arches[0]}"
+	fi
+fi
 
 echo "build-images: BUILDROOT=$BUILDROOT"
 echo "build-images: externals=$EXTERNALS"

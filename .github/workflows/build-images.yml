@@ -39,6 +39,15 @@ on:
         default: minimal
         type: choice
         options: [minimal, emulationstation, gmenu2x, gnome, phosh, xfce, none]
+      device:
+        description: >
+          Board to build for (a directory under sdk/board/, e.g.
+          chromebook-scarlet), instead of the generic UEFI image for the
+          architecture. Only that board's architecture is built. Leave empty
+          for the usual x86_64 + arm64 pair.
+        required: false
+        default: ''
+        type: string
 
 # One runner, so a nightly still running when the next fires would otherwise
 # queue behind itself. Supersede instead.
@@ -72,14 +81,57 @@ env:
   CCACHE_MAX_SIZE: 20G
 
 jobs:
+  # Which architectures this run builds. Normally both; with a device, only the
+  # one that board is, read from its own boardinfo rather than from a list kept
+  # here - sdk/board has 116 boards and a second copy of that mapping would be
+  # wrong the first time one is added. Runs on the hosted runners: it reads two
+  # files and the self-hosted box is the scarce resource.
+  resolve:
+    name: Resolve build targets
+    runs-on: ubuntu-latest
+    outputs:
+      arches: ${{ steps.pick.outputs.arches }}
+      lib32: ${{ steps.pick.outputs.lib32 }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: pick
+        env:
+          DEVICE: ${{ inputs.device }}
+        run: |
+          set -eu
+          if [ -z "${DEVICE:-}" ]; then
+            echo 'arches=["x86_64","arm64"]' >> "$GITHUB_OUTPUT"
+            echo 'lib32=["i386","armv7"]'    >> "$GITHUB_OUTPUT"
+            echo "building the usual pair"
+            exit 0
+          fi
+          board="sdk/board/$DEVICE"
+          if [ ! -f "$board/board.config" ]; then
+            echo "unknown device '$DEVICE': no $board/board.config" >&2
+            echo "available: $(cd sdk/board && ls -d */board.config 2>/dev/null \
+              | sed 's|/board.config||' | grep -vE '^(x86_64|arm64|common)$' \
+              | tr '\n' ' ')" >&2
+            exit 1
+          fi
+          arch=$(sed -n 's/^ARCH=//p' "$board/boardinfo" | head -1)
+          [ -n "$arch" ] || { echo "no ARCH= in $board/boardinfo" >&2; exit 1; }
+          case "$arch" in
+            x86_64) companion=i386  ;;
+            arm64)  companion=armv7 ;;
+            *) echo "device '$DEVICE' is $arch, which has no image profile" >&2; exit 1 ;;
+          esac
+          printf 'arches=["%s"]\n' "$arch"      >> "$GITHUB_OUTPUT"
+          printf 'lib32=["%s"]\n'  "$companion" >> "$GITHUB_OUTPUT"
+          echo "building $DEVICE ($arch, companion $companion)"
+
   image:
-    name: Image (${{ matrix.arch }})
+    name: Image (${{ inputs.device || matrix.arch }})
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86_64, arm64]
+        arch: ${{ fromJSON(needs.resolve.outputs.arches) }}
     runs-on: [self-hosted, Linux, X64]
-    needs: lib32
+    needs: [resolve, lib32]
     # Generous, not calibrated - the six-hour hosted-runner ceiling does not
     # apply here. It exists so a wedged build eventually releases the runner
     # rather than blocking every other workflow forever, which matters more
@@ -98,7 +150,7 @@ jobs:
       image: docker.io/colemancda/buildroot-swift:latest
       options: >-
         --volume /mnt:/mnt
-        --volume /mnt/br/profiles/image/${{ matrix.arch }}:/mnt/br/output/${{ matrix.arch }}
+        --volume /mnt/br/profiles/image/${{ inputs.device || matrix.arch }}:/mnt/br/output/${{ matrix.arch }}
         --security-opt label=disable
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}
@@ -203,6 +255,7 @@ jobs:
           mkdir -p /tmp/lib32 && tar xzf lib32/lib32-*.tar.gz -C /tmp/lib32
           export LIB32_ROOT=/tmp/lib32/target
           export CCACHE=1
+          export DEVICE="${{ inputs.device }}"
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       # Also on cancellation, not just failure. build-images.sh sends the build
@@ -222,7 +275,7 @@ jobs:
       - name: Upload disk image
         uses: actions/upload-artifact@v4
         with:
-          name: swift-linux-${{ matrix.arch }}-disk
+          name: swift-linux-${{ inputs.device || matrix.arch }}-disk
           path: /mnt/br/output/${{ matrix.arch }}/images/disk.img
           if-no-files-found: error
 
@@ -246,10 +299,11 @@ jobs:
   # the x86_64 image, armv7 with arm64.
   lib32:
     name: lib32 (${{ matrix.arch }})
+    needs: resolve
     strategy:
       fail-fast: false
       matrix:
-        arch: [i386, armv7]
+        arch: ${{ fromJSON(needs.resolve.outputs.lib32) }}
     runs-on: [self-hosted, Linux, X64]
     timeout-minutes: 1440
     # Same mount arrangement as the image job, one profile over.
@@ -329,10 +383,11 @@ jobs:
   # Runs directly on the self-hosted machine rather than in a container, so it
   # needs nothing but bash, sed and awk - which is all generate-config.sh uses.
   config-check:
-    name: Config check (${{ matrix.arch }})
+    name: Config check (${{ inputs.device || matrix.arch }})
+    needs: resolve
     strategy:
       matrix:
-        arch: [x86_64, arm64]
+        arch: ${{ fromJSON(needs.resolve.outputs.arches) }}
     # On the same runner as the rest, though it needs nothing from it. Left on
     # the hosted pool it would be the one job that can still fail for reasons
     # unrelated to the tree, and since nothing depends on it, that failure
@@ -345,12 +400,17 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Generate image defconfig
+        env:
+          DEVICE: ${{ inputs.device }}
         run: |
           set -eu
           # Same --frontend the build job uses, or this checks a defconfig
           # nothing builds. "none" is the absence of a fragment, not a file,
           # and generate-config.sh takes it as such.
+          # And the same board, so a device run checks the defconfig it is
+          # about to build rather than the generic UEFI one for the arch.
           ./generate-config.sh --arch ${{ matrix.arch }} --profile image \
+            ${DEVICE:+--device "$DEVICE"} \
             --frontend "$FRONTEND" -o /tmp/image.defconfig
           echo "----- generated defconfig ($FRONTEND) -----"
           grep -E '^BR2_(aarch64|x86_64|PACKAGE_(SWAYWM|FOOT|EMULATIONSTATION|STEAM|BOX64|MESA3D_GALLIUM_DRIVER_VIRGL)|TARGET_GRUB2_.*_EFI|INIT_BUSYBOX)' /tmp/image.defconfig || true
