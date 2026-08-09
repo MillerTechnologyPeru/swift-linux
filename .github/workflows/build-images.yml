@@ -276,7 +276,14 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: swift-linux-${{ inputs.device || matrix.arch }}-disk
-          path: /mnt/br/output/${{ matrix.arch }}/images/disk.img
+          # Either boot chain's output: disk.img from the UEFI boards'
+          # genimage, chromebook.img from the Chromebooks' post-image. The
+          # per-arch swift-linux-*.img the post-image also leaves is a
+          # symlink to the same bytes, so it is not listed - uploading it
+          # too would double the artifact.
+          path: |
+            /mnt/br/output/${{ matrix.arch }}/images/disk.img
+            /mnt/br/output/${{ matrix.arch }}/images/chromebook.img
           if-no-files-found: error
 
       - name: ccache stats
