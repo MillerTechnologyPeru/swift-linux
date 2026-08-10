@@ -39,6 +39,15 @@ on:
         default: minimal
         type: choice
         options: [minimal, emulationstation, gmenu2x, gnome, phosh, xfce, none]
+      arch:
+        description: >
+          Architecture to build, for the generic UEFI boards. "both" is the
+          nightly's pair. Ignored when a device is given, since a board is
+          one architecture already.
+        required: false
+        default: both
+        type: choice
+        options: [both, x86_64, arm64]
       device:
         description: >
           Board to build for (a directory under sdk/board/, e.g.
@@ -97,14 +106,30 @@ jobs:
       - id: pick
         env:
           DEVICE: ${{ inputs.device }}
+          ARCH: ${{ inputs.arch }}
         run: |
           set -eu
           if [ -z "${DEVICE:-}" ]; then
-            echo 'arches=["x86_64","arm64"]' >> "$GITHUB_OUTPUT"
-            echo 'lib32=["i386","armv7"]'    >> "$GITHUB_OUTPUT"
-            echo "building the usual pair"
+            case "${ARCH:-both}" in
+              x86_64) echo 'arches=["x86_64"]' >> "$GITHUB_OUTPUT"
+                      echo 'lib32=["i386"]'    >> "$GITHUB_OUTPUT"
+                      echo "building x86_64 only" ;;
+              arm64)  echo 'arches=["arm64"]'  >> "$GITHUB_OUTPUT"
+                      echo 'lib32=["armv7"]'   >> "$GITHUB_OUTPUT"
+                      echo "building arm64 only" ;;
+              *)      echo 'arches=["x86_64","arm64"]' >> "$GITHUB_OUTPUT"
+                      echo 'lib32=["i386","armv7"]'    >> "$GITHUB_OUTPUT"
+                      echo "building the usual pair" ;;
+            esac
             exit 0
           fi
+          # The generic UEFI boards are not devices - see build-images.sh for
+          # what passing one as --device actually produces.
+          case "$DEVICE" in
+            x86_64|arm64|common)
+              echo "'$DEVICE' is an architecture, not a device: use the arch input" >&2
+              exit 1 ;;
+          esac
           board="sdk/board/$DEVICE"
           if [ ! -f "$board/board.config" ]; then
             echo "unknown device '$DEVICE': no $board/board.config" >&2

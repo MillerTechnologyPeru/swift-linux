@@ -224,6 +224,22 @@ if [ -n "${DEVICE:-}" ]; then
 	board_dir="$REPO_DIR/sdk/board/$DEVICE"
 	[ -f "$board_dir/board.config" ] || \
 		die "unknown device '$DEVICE' (no $board_dir/board.config)"
+	# sdk/board/x86_64 and sdk/board/arm64 are the generic UEFI boards the
+	# --arch path already uses, not devices, and generate-config.sh leaves
+	# them out of the device list it prints for exactly that reason. Passing
+	# one as --device produces a defconfig with no architecture selected at
+	# all, so kconfig falls back to its first choice - i386 - and the build
+	# dies configuring the first target package it reaches:
+	#
+	#   ac_cv_env_CC_value=.../host/bin/i686-swift-linux-gnu-gcc
+	#   configure: error: C compiler cannot create executables
+	#
+	# in a tree whose only compiler is x86_64-swift-linux-gnu-gcc. Say so
+	# here instead, and point at the flag that does what was meant.
+	case "$DEVICE" in
+		x86_64|arm64|common)
+			die "'$DEVICE' is an architecture, not a device - build it with 'build-images.sh $DEVICE' and no DEVICE=" ;;
+	esac
 	[ "$SINGLE_ARCH" = "1" ] || \
 		die "DEVICE=$DEVICE needs exactly one architecture (got: ${arches[*]})"
 	board_arch=$(sed -n 's/^ARCH=//p' "$board_dir/boardinfo" 2>/dev/null | head -1)
