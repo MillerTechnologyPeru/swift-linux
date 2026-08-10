@@ -276,14 +276,13 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: swift-linux-${{ inputs.device || matrix.arch }}-disk
-          # Either boot chain's output: disk.img from the UEFI boards'
-          # genimage, chromebook.img from the Chromebooks' post-image. The
-          # per-arch swift-linux-*.img the post-image also leaves is a
-          # symlink to the same bytes, so it is not listed - uploading it
-          # too would double the artifact.
-          path: |
-            /mnt/br/output/${{ matrix.arch }}/images/disk.img
-            /mnt/br/output/${{ matrix.arch }}/images/chromebook.img
+          # swift-linux-<arch>.img rather than the board's own name, because
+          # every board's post-image leaves this symlink pointing at whatever
+          # it built - disk.img on the UEFI boards, chromebook.img on the
+          # Chromebooks - and the upload resolves it. One glob, one file, no
+          # list of names to keep current. Globbing *.img instead would match
+          # the symlink and its target and upload the image twice.
+          path: /mnt/br/output/${{ matrix.arch }}/images/swift-linux-*.img
           if-no-files-found: error
 
       - name: ccache stats

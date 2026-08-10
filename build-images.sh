@@ -195,19 +195,18 @@ build_track() {
 	SWIFT_LINUX_LIB32_ROOT="$lib32_root" br_build "$img_out" "$i_cfg" all \
 		|| { echo "[$arch] image build FAILED"; return 1; }
 
-	# What counts as success depends on the board's boot chain: the UEFI
-	# boards' genimage writes disk.img, the Chromebooks' post-image writes
-	# chromebook.img (Depthcharge A/B). The first scarlet build compiled for
-	# five hours, produced a signed 6.5 GB chromebook.img, and was then
-	# declared failed by this check because the name was wrong.
-	local produced=""
-	for name in disk.img chromebook.img; do
-		if [ -f "$img_out/images/$name" ]; then produced="$name"; break; fi
-	done
+	# Any *.img counts. What the board's boot chain writes is its own
+	# business - genimage leaves disk.img on the UEFI boards, the
+	# Chromebooks' post-image leaves chromebook.img - and this check has no
+	# reason to hold a list of the names. It held one, and the first scarlet
+	# build compiled for five hours, produced a signed 6.5 GB chromebook.img
+	# and was declared failed for not being called disk.img.
+	local produced
+	produced=$(find "$img_out/images" -maxdepth 1 -name '*.img' 2>/dev/null | sort | head -1)
 	if [ -n "$produced" ]; then
-		echo "[$arch] DONE -> $img_out/images/$produced"
+		echo "[$arch] DONE -> $produced"
 	else
-		echo "[$arch] finished but no disk.img/chromebook.img"; return 1
+		echo "[$arch] finished but produced no .img"; return 1
 	fi
 }
 
@@ -260,10 +259,7 @@ done
 echo "build-images: images:"
 for a in "${arches[@]}"; do
 	dir="$OUTPUT_BASE/${DEVICE:-$a}-image/images"
-	img=""
-	for name in disk.img chromebook.img; do
-		[ -f "$dir/$name" ] && { img="$dir/$name"; break; }
-	done
+	img=$(find "$dir" -maxdepth 1 -name '*.img' 2>/dev/null | sort | head -1)
 	[ -n "$img" ] && echo "  $a: $img" || echo "  $a: (not produced)"
 done
 exit "$rc"
