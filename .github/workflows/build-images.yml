@@ -175,7 +175,7 @@ jobs:
       image: docker.io/colemancda/buildroot-swift:latest
       options: >-
         --volume /mnt:/mnt
-        --volume /mnt/br/profiles/image/${{ inputs.device || matrix.arch }}:/mnt/br/output/${{ matrix.arch }}
+        --volume /mnt/br/profiles/image/${{ inputs.device || matrix.arch }}${{ (inputs.frontend != '' && inputs.frontend != 'minimal') && format('-{0}', inputs.frontend) || '' }}:/mnt/br/output/${{ matrix.arch }}
         --security-opt label=disable
     env:
       CCACHE_DIR: /mnt/br/ccache/${{ matrix.arch }}

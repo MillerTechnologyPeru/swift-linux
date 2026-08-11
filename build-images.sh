@@ -166,7 +166,28 @@ build_track() {
 	# configuration, device tree and boot chain, and Buildroot would reconfigure
 	# over the top rather than start clean - which is how a file from the last
 	# build ends up in the next one's image.
-	local img_out="$OUTPUT_BASE/${DEVICE:-$arch}-image"
+	#
+	# And keyed on the frontend too, for the same reason one step further out.
+	# Buildroot rebuilds a package when its own sources change, not when the
+	# configuration that shaped it does, so a tree carries whatever its last
+	# build decided. Asking a tree built for "minimal" to produce GNOME gets:
+	#
+	#   Couldn't find include 'GLib-2.0.gir'
+	#   FAILED: [code=1] atk/Atk-1.0.gir
+	#
+	# because minimal built glib2 without introspection, that glib2 is stamped
+	# built, and at-spi2-core needs the .gir files it would have installed.
+	# The same hazard runs the other way: GNOME's packages would linger in
+	# target/ and ship inside the next "minimal" image.
+	#
+	# minimal keeps the unsuffixed name so the nightly's warm trees stay warm;
+	# every other frontend gets its own, cold the first time and reused after.
+	local key="${DEVICE:-$arch}"
+	case "${FRONTEND:-}" in
+		''|minimal) ;;
+		*) key="$key-$FRONTEND" ;;
+	esac
+	local img_out="$OUTPUT_BASE/$key-image"
 	if [ -n "${IMAGE_OUTPUT_DIR:-}" ] && [ "$SINGLE_ARCH" = "1" ]; then
 		img_out="$IMAGE_OUTPUT_DIR"
 	fi
@@ -190,7 +211,7 @@ build_track() {
 	fi
 
 	echo "[$arch] building image${DEVICE:+ for $DEVICE}"
-	local i_cfg="$OUTPUT_BASE/${DEVICE:-$arch}-image.defconfig"
+	local i_cfg="$OUTPUT_BASE/$key-image.defconfig"
 	make_defconfig image "$arch" "$i_cfg" || { echo "[$arch] image defconfig failed"; return 1; }
 	SWIFT_LINUX_LIB32_ROOT="$lib32_root" br_build "$img_out" "$i_cfg" all \
 		|| { echo "[$arch] image build FAILED"; return 1; }
@@ -274,7 +295,9 @@ done
 
 echo "build-images: images:"
 for a in "${arches[@]}"; do
-	dir="$OUTPUT_BASE/${DEVICE:-$a}-image/images"
+	key="${DEVICE:-$a}"
+	case "${FRONTEND:-}" in ''|minimal) ;; *) key="$key-$FRONTEND" ;; esac
+	dir="$OUTPUT_BASE/$key-image/images"
 	img=$(find "$dir" -maxdepth 1 -name '*.img' 2>/dev/null | sort | head -1)
 	[ -n "$img" ] && echo "  $a: $img" || echo "  $a: (not produced)"
 done
