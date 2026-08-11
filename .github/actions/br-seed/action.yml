@@ -78,7 +78,38 @@ runs:
           exit 1
         fi
 
+        # Staging .la files name build directories the seed does not carry.
+        # 49 of the 147 in an x86_64 sysroot carry entries like
+        #
+        #   dependency_libs=' .../build/util-linux-2.41.5/libuuid.la -lpthread'
+        #
+        # and a tree seeded from the release has that package's stamps but an
+        # empty build directory, so libtool stops the first time something
+        # links against one:
+        #
+        #   libtool: error: '.../build/util-linux-2.41.5/libuuid.la' is not a
+        #   valid libtool archive
+        #
+        # The long-lived trees never noticed because they built those packages
+        # in place; a fresh tree - a new frontend, a new board - hits it as
+        # soon as it reaches a package that links one, which is what happened
+        # to GNOME's libblockdev. The libraries themselves are installed in
+        # staging, so the reference means exactly -l<name>; rewrite it to that
+        # and let the linker find the real thing. Idempotent, and left out of
+        # libdir=, which correctly points into the sysroot.
+        fixup_la() {
+          local sysroot
+          for sysroot in "$dest"/host/*/sysroot; do
+            [ -d "$sysroot" ] || continue
+            find "$sysroot" -name '*.la' -print0 2>/dev/null | xargs -0 -r \
+              sed -i -E "s#[^ ']*/build/[^ ']*/lib([A-Za-z0-9._+-]+)\\.la#-l\\1#g"
+          done
+        }
+
         if [ -d "$dest/host/bin" ] && [ "$(cat "$dest/.seed-stamp" 2>/dev/null)" = "$key" ]; then
+          # Also on the skip path: trees seeded before this fixup existed still
+          # carry the broken references, and re-seeding them costs a gigabyte.
+          fixup_la
           echo "seed up to date ($key), skipping"
           exit 0
         fi
@@ -133,5 +164,6 @@ runs:
           echo "seeded tree has no cross-gcc in host/bin" >&2
           exit 1
         }
+        fixup_la
         printf '%s\n' "$key" > "$dest/.seed-stamp"
         du -sh "$dest" || true
