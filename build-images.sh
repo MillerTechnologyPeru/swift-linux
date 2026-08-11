@@ -125,6 +125,37 @@ br_build() {
 		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 			"$pkg-dirclean" >/dev/null || return 1
 	done
+	# Rebuild host-python3 when the tree's copy is missing an optional module
+	# the configuration asks for. Buildroot compiles host-python3 with the
+	# modules its configuration named at the time and stamps it built; asking
+	# for another one later changes the configuration and nothing else, because
+	# a package is rebuilt when its sources change, not when the options that
+	# shaped it do. The seeded trees make this certain rather than likely - the
+	# toolchain release carries a host-python3 built for the toolchain's own
+	# configuration, so every tree starts with that one, stamped.
+	#
+	# mozjs128 selects the curses module, its configure imports it through
+	# mach.logging and the vendored blessed, and the build stopped at:
+	#
+	#   ModuleNotFoundError: No module named 'curses'
+	#
+	# with BR2_PACKAGE_HOST_PYTHON3_CURSES=y sitting in the .config and an
+	# interpreter that had never heard of it.
+	#
+	# Asking the interpreter is the reliable test: it answers for the binary
+	# that will actually run, whatever produced it.
+	local py="$out/host/bin/python3" mod opt
+	if [ -x "$py" ]; then
+		for opt in BZIP2:bz2 XZ:lzma CURSES:curses SSL:ssl; do
+			grep -q "^BR2_PACKAGE_HOST_PYTHON3_${opt%%:*}=y" "$out/.config" 2>/dev/null || continue
+			mod="${opt##*:}"
+			"$py" -c "import $mod" 2>/dev/null && continue
+			echo "[br_build] host python3 lacks $mod, which the configuration selects - rebuilding it"
+			make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
+				host-python3-dirclean >/dev/null || return 1
+			break
+		done
+	fi
 	# Clear the linker configuration the lib32 merge leaves behind, or an
 	# incremental build stops before it gets anywhere:
 	#
