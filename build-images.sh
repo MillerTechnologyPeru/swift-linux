@@ -156,6 +156,39 @@ br_build() {
 			break
 		done
 	fi
+	# Re-extract a ports package when its patch set changes. Buildroot applies
+	# patches once, at extract time, and stamps the source directory; a patch
+	# added or edited afterwards changes nothing. It is the same rule as above
+	# - a package is rebuilt when its sources change, not when the thing that
+	# shaped it does - and on trees that persist between runs it means a new
+	# patch is quietly ignored and the build fails again with the exact error
+	# the patch was written to fix. That is what mozjs128's ast.Str fix cost:
+	# the tree already had the package extracted and stamped patched, so the
+	# new patch would have sat there unapplied.
+	#
+	# Digest each ports package's patches and keep the result beside the tree.
+	# A package whose digest moved gets dircleaned. One with nothing recorded
+	# yet is only recorded, never dircleaned, so switching this on does not
+	# rebuild all twenty patched packages at once - it only ever acts on a
+	# change it actually watched happen.
+	local stampdir="$out/.ports-patch-stamps" pdir pname digest prev
+	mkdir -p "$stampdir" 2>/dev/null || true
+	if [ -d "$stampdir" ]; then
+		for pdir in "$BR2_EXTERNAL_PORTS"/package/*/*/; do
+			# No "set --" here: this function passes its own positional
+			# parameters to make as the targets to build.
+			ls "$pdir"*.patch >/dev/null 2>&1 || continue
+			pname=$(basename "$pdir")
+			digest=$(cat "$pdir"*.patch | sha256sum | cut -d' ' -f1)
+			prev=$(cat "$stampdir/$pname" 2>/dev/null || true)
+			if [ -n "$prev" ] && [ "$prev" != "$digest" ]; then
+				echo "[br_build] $pname patches changed - re-extracting it"
+				make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
+					"$pname-dirclean" >/dev/null || return 1
+			fi
+			printf '%s\n' "$digest" > "$stampdir/$pname"
+		done
+	fi
 	# Clear the linker configuration the lib32 merge leaves behind, or an
 	# incremental build stops before it gets anywhere:
 	#
