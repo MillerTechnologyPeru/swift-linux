@@ -177,9 +177,14 @@ br_build() {
 		for pdir in "$BR2_EXTERNAL_PORTS"/package/*/*/; do
 			# No "set --" here: this function passes its own positional
 			# parameters to make as the targets to build.
-			ls "$pdir"*.patch >/dev/null 2>&1 || continue
+			#
+			# Packages with no patches are digested too, as the hash of no
+			# input. Skipping them would leave the case that actually happened
+			# to gjs undetectable: a package gaining its first patch is
+			# indistinguishable from one that never had any, so nothing would
+			# be re-extracted and the patch would not be applied.
 			pname=$(basename "$pdir")
-			digest=$(cat "$pdir"*.patch | sha256sum | cut -d' ' -f1)
+			digest=$(cat "$pdir"*.patch 2>/dev/null | sha256sum | cut -d' ' -f1)
 			prev=$(cat "$stampdir/$pname" 2>/dev/null || true)
 			if [ -n "$prev" ] && [ "$prev" != "$digest" ]; then
 				echo "[br_build] $pname patches changed - re-extracting it"
