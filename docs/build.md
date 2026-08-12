@@ -331,6 +331,14 @@ run is pointless when the same disk is still there, and it no longer has to fit
 the 10 GB repo-wide cache budget that forced `--max-size=1.5G`. The workflows
 now set `CCACHE_MAX_SIZE: 20G` (one `env:` at the top of each file).
 
+The same reasoning applies between jobs. `build-images.yml`'s image job merges
+the 32-bit companion straight out of `/mnt/br/profiles/lib32/<arch>/target`,
+where the `lib32` job left it, rather than taking it as an Actions artifact:
+both jobs run on this machine, so the tar/upload/download/untar round trip only
+added ways to fail (a truncated download once, a `BlobNotFound` upload once).
+The artifact is still published for use off the runner - it is just not what the
+image reads.
+
 To force something to rebuild from scratch:
 
 ```sh
