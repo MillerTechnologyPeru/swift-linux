@@ -1067,13 +1067,32 @@ jobs:
               --title "Toolchain (rolling)" \
               --notes "Rolling from-source toolchains built by build-toolchain.yml. Assets are split tar.zst parts: cat toolchain-<arch>.tar.zst.part* | tar --zstd -x" \
               --latest=false
-          # Replace this arch's parts atomically-ish: delete old, upload new.
-          for a in $(gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" \
-                      --json assets --jq '.assets[].name' | grep "^toolchain-${{ matrix.arch }}\." || true); do
-            gh release delete-asset toolchain-latest "$a" --repo "$GITHUB_REPOSITORY" -y
-          done
+          # Overwrite this arch's parts in place. Deleting them first and
+          # uploading afterwards leaves a window where the release carries no
+          # toolchain for this architecture at all, and anything seeding from
+          # it fails outright - which is what happened when the runner went
+          # down inside that window during an i386 build: the old asset was
+          # already gone, the new one never arrived, and every x86_64 image
+          # lost its 32-bit companion until the job was run again.
+          #
+          # --clobber replaces an existing asset of the same name, so an
+          # interrupted upload leaves the previous one in place.
           gh release upload toolchain-latest /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part* \
-            --repo "$GITHUB_REPOSITORY"
+            --repo "$GITHUB_REPOSITORY" --clobber
+
+          # Parts are numbered, so a tree that now splits into fewer parts than
+          # last time would otherwise leave the extras behind and corrupt the
+          # concatenation. Remove any that this run did not just upload.
+          keep=$(cd /mnt/br && ls toolchain-${{ matrix.arch }}.tar.zst.part* | tr '\n' ' ')
+          for a in $(gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" \
+                      --json assets --jq '.assets[].name' \
+                      | grep "^toolchain-${{ matrix.arch }}\." || true); do
+            case " $keep " in
+              *" $a "*) ;;
+              *) echo "removing stale asset $a"
+                 gh release delete-asset toolchain-latest "$a" --repo "$GITHUB_REPOSITORY" -y ;;
+            esac
+          done
           # Reproducible from the output tree, and this disk is not thrown away.
           rm -f /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part*
 
