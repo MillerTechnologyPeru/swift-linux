@@ -1067,18 +1067,48 @@ jobs:
               --title "Toolchain (rolling)" \
               --notes "Rolling from-source toolchains built by build-toolchain.yml. Assets are split tar.zst parts: cat toolchain-<arch>.tar.zst.part* | tar --zstd -x" \
               --latest=false
-          # Overwrite this arch's parts in place. Deleting them first and
-          # uploading afterwards leaves a window where the release carries no
-          # toolchain for this architecture at all, and anything seeding from
-          # it fails outright - which is what happened when the runner went
-          # down inside that window during an i386 build: the old asset was
-          # already gone, the new one never arrived, and every x86_64 image
-          # lost its 32-bit companion until the job was run again.
+          # An interrupted upload leaves the release with no toolchain for this
+          # architecture at all, and anything seeding from it fails outright.
+          # --clobber does not prevent that: it replaces an asset of the same
+          # name by removing the old one first, so an abort part-way through
+          # still lands in the gap. That is exactly how armv7 lost its asset -
+          # the build succeeded, the upload of the 1.2G part ran for twenty
+          # minutes and died, and the previous asset was already gone.
           #
-          # --clobber replaces an existing asset of the same name, so an
-          # interrupted upload leaves the previous one in place.
-          gh release upload toolchain-latest /mnt/br/toolchain-${{ matrix.arch }}.tar.zst.part* \
-            --repo "$GITHUB_REPOSITORY" --clobber
+          # Nothing here can close the window (the API has no atomic replace
+          # and no rename, and br-seed globs the part names so a staged name is
+          # not an option), so retry each part until it lands, and refuse to
+          # prune anything until the whole set is confirmed present.
+          for f in $(cd /mnt/br && ls toolchain-${{ matrix.arch }}.tar.zst.part*); do
+            ok=
+            for attempt in 1 2 3 4 5; do
+              if gh release upload toolchain-latest "/mnt/br/$f" \
+                   --repo "$GITHUB_REPOSITORY" --clobber; then
+                ok=yes
+                break
+              fi
+              echo "upload of $f failed (attempt $attempt of 5), retrying" >&2
+              sleep $((attempt * 30))
+            done
+            [ -n "$ok" ] || { echo "giving up on $f - the release is now missing this part" >&2; exit 1; }
+          done
+
+          # Confirm every part is on the release at its full size before the
+          # prune below is allowed to delete anything. A short asset means the
+          # upload was truncated, and seeding from a truncated part fails in a
+          # far more confusing way than failing here does.
+          gh release view toolchain-latest --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[] | "\(.name) \(.size)"' > /tmp/assets.$$
+          for f in $(cd /mnt/br && ls toolchain-${{ matrix.arch }}.tar.zst.part*); do
+            want=$(stat -c %s "/mnt/br/$f")
+            got=$(awk -v n="$f" '$1 == n { print $2 }' /tmp/assets.$$)
+            [ "$got" = "$want" ] || {
+              echo "$f is ${got:-absent} on the release, expected $want bytes" >&2
+              rm -f /tmp/assets.$$
+              exit 1
+            }
+          done
+          rm -f /tmp/assets.$$
 
           # Parts are numbered, so a tree that now splits into fewer parts than
           # last time would otherwise leave the extras behind and corrupt the
