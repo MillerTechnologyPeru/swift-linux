@@ -171,10 +171,21 @@ br_build() {
 	# yet is only recorded, never dircleaned, so switching this on does not
 	# rebuild all twenty patched packages at once - it only ever acts on a
 	# change it actually watched happen.
-	local stampdir="$out/.ports-patch-stamps" pdir pname digest prev
+	#
+	# The global patch directory is walked alongside the ports packages. It
+	# carries patches for packages that come from Buildroot itself rather than
+	# from ports - mesa3d, libical - and those are stamped in exactly the same
+	# way, so a patch added there is no more self-applying than one added to a
+	# ports package. Watching only ports would have left libical's gir fix
+	# unapplied on every tree that already had it extracted.
+	local stampdir="$out/.ports-patch-stamps" pdir pname stamp digest prev
 	mkdir -p "$stampdir" 2>/dev/null || true
 	if [ -d "$stampdir" ]; then
-		for pdir in "$BR2_EXTERNAL_PORTS"/package/*/*/; do
+		for pdir in "$BR2_EXTERNAL_PORTS"/package/*/*/ \
+			    "$REPO_DIR"/external/patches/packages/*/; do
+			# The glob for a directory that does not exist comes back
+			# unexpanded; there is nothing to digest in that case.
+			[ -d "$pdir" ] || continue
 			# No "set --" here: this function passes its own positional
 			# parameters to make as the targets to build.
 			#
@@ -184,14 +195,25 @@ br_build() {
 			# indistinguishable from one that never had any, so nothing would
 			# be re-extracted and the patch would not be applied.
 			pname=$(basename "$pdir")
+			# The two directories are separate namespaces, so a package could
+			# appear in both and the pair would then overwrite each other's
+			# stamp and dirclean on every build. Only the global entries are
+			# prefixed: renaming the ports stamps would make every one of them
+			# look unrecorded, and an unrecorded stamp is written but never
+			# acted on, which would silently skip a ports patch changed in the
+			# same commit.
+			case $pdir in
+			"$REPO_DIR"/external/patches/*) stamp="global--$pname" ;;
+			*)                              stamp="$pname" ;;
+			esac
 			digest=$(cat "$pdir"*.patch 2>/dev/null | sha256sum | cut -d' ' -f1)
-			prev=$(cat "$stampdir/$pname" 2>/dev/null || true)
+			prev=$(cat "$stampdir/$stamp" 2>/dev/null || true)
 			if [ -n "$prev" ] && [ "$prev" != "$digest" ]; then
 				echo "[br_build] $pname patches changed - re-extracting it"
 				make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 					"$pname-dirclean" >/dev/null || return 1
 			fi
-			printf '%s\n' "$digest" > "$stampdir/$pname"
+			printf '%s\n' "$digest" > "$stampdir/$stamp"
 		done
 	fi
 	# Clear the linker configuration the lib32 merge leaves behind, or an

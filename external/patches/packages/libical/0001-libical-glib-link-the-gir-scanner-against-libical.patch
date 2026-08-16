@@ -1,0 +1,48 @@
+From: Swift Linux <noreply@localhost>
+Subject: [PATCH] libical-glib: link the gir scanner against libical
+
+g-ir-scanner builds a temporary program against the library it is
+introspecting, and libical-glib names only itself:
+
+    set(ICalGLib_${LIB_VERSION}_gir_LIBS ical-glib)
+
+libical-glib.so is a thin wrapper over the core library and leaves every
+icalproperty_*, icalcomponent_* and icaltimezone_* symbol to be resolved
+through its DT_NEEDED on libical.so.3. Linking a program against it
+therefore needs libical.so.3 as well, and the scanner never puts it on
+the command line:
+
+    undefined reference to `icalproperty_get_organizer'
+    undefined reference to `icaltimezone_get_display_name'
+    ... and ~700 more
+    collect2: error: ld returned 1 exit status
+
+--library-path does add -L and -Wl,-rpath for the build directory, but
+neither resolves a DT_NEEDED entry of a shared object pulled into the
+link: -L governs -l lookups only, and a cross linker ignores -rpath for
+this purpose unless it was configured --with-sysroot. Only -rpath-link
+would do it, and g-ir-scanner emits that solely for directories it finds
+in LD_LIBRARY_PATH - which cannot be pointed at a target sysroot while
+host programs are still being run in the same build.
+
+Naming ical alongside ical-glib puts -lical on the link line, where the
+-L for the build directory already applies, so the symbols resolve
+without relying on the dependency search at all.
+
+This is masked on an incremental build: an earlier libical leaves
+libical.so.3 in the staging sysroot, whose lib directory is on the
+scanner's command line, so the DT_NEEDED resolves against the previous
+version. It only fails when the tree is cold - a re-seeded builder, or
+a first build of a new architecture - which is where it surfaced.
+
+--- a/src/libical-glib/CMakeLists.txt
++++ b/src/libical-glib/CMakeLists.txt
+@@ -179,7 +179,7 @@
+   set(ICalGLib_${LIB_VERSION}_gir_LIBRARY "ICalGLib")
+   set(ICalGLib_${LIB_VERSION}_gir_INCLUDES GObject-2.0 GLib-2.0)
+   set(ICalGLib_${LIB_VERSION}_gir_CFLAGS ${_includes} ${GLIB_CFLAGS} -DLIBICAL_GLIB_COMPILATION -I${CMAKE_CURRENT_BINARY_DIR} -I${CMAKE_CURRENT_SOURCE_DIR} -I${PROJECT_BINARY_DIR}/src/libical -I${PROJECT_SOURCE_DIR}/src/libical -I${PROJECT_BINARY_DIR}/src/libical-glib)
+-  set(ICalGLib_${LIB_VERSION}_gir_LIBS ical-glib)
++  set(ICalGLib_${LIB_VERSION}_gir_LIBS ical-glib ical)
+   set(ICalGLib_${LIB_VERSION}_gir_FILES ${LIBICAL_GLIB_GIR_SOURCES})
+
+   list(APPEND GObjectIntrospection_GIRS ICalGLib-${LIBICAL_GLIB_GIR_VERSION_STRING}.gir)

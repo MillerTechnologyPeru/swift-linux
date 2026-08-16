@@ -57,6 +57,18 @@ on:
         required: false
         default: ''
         type: string
+      rebuild:
+        description: >
+          Space-separated packages to dirclean before building, for when a
+          persistent tree holds a copy built the wrong way. Needed after
+          adding a patch to a package the tree already extracted: Buildroot
+          applies patches once, at extract time, so a new one is otherwise
+          ignored. build-images.sh watches the patch directories itself and
+          re-extracts on a change it saw happen, which leaves only the first
+          sighting - a package it had never recorded before - to name here.
+        required: false
+        default: ''
+        type: string
 
 # One runner, so a nightly still running when the next fires would otherwise
 # queue behind itself. Supersede instead.
@@ -288,6 +300,7 @@ jobs:
           export LIB32_ROOT=/mnt/br/profiles/lib32/${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}/target
           export CCACHE=1
           export DEVICE="${{ inputs.device }}"
+          export REBUILD_PKGS="${{ inputs.rebuild }}"
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       # Also on cancellation, not just failure. build-images.sh sends the build
