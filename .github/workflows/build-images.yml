@@ -61,7 +61,14 @@ on:
 # One runner, so a nightly still running when the next fires would otherwise
 # queue behind itself. Supersede instead.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Keyed the same way the tree is (see the --volume below): a frontend other
+  # than minimal, and a device, each get their own /mnt/br/profiles/image
+  # directory. Grouping on workflow and ref alone ignored that and made every
+  # image run supersede every other one regardless of what it was building -
+  # the nightly cancelled a gnome build four and a half hours in, having
+  # gained nothing, because the two share no tree and the runner serialises
+  # them anyway. Two nightlies still collide, which is what this is for.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ inputs.device || inputs.arch || 'both' }}-${{ inputs.frontend || 'minimal' }}
   # Back to cancel-in-progress now this is self-hosted again. It was turned
   # off while these jobs ran on GitHub's pool, where the argument held: the
   # runners are ephemeral, so two runs of the same ref never touch the same
@@ -69,10 +76,10 @@ concurrency:
   # nothing.
   #
   # Neither half of that is true here. The trees live on this machine at
-  # /mnt/br/profiles/image/<arch> and every run of a given arch uses the same
-  # one, so overlapping runs interleave on shared state. And superseding
-  # costs far less: the winner inherits the tree the loser was part way
-  # through, so the work is picked up rather than discarded.
+  # /mnt/br/profiles/image/<arch>[-<frontend>] and every run that shares a key
+  # uses the same one, so overlapping runs interleave on shared state. And
+  # superseding costs far less: the winner inherits the tree the loser was
+  # part way through, so the work is picked up rather than discarded.
   cancel-in-progress: true
 
 env:
