@@ -248,10 +248,50 @@ jobs:
               cat swift-linux-swift-sdk.tar.gz.part* | tar xzf -
               swift sdk install swift-linux.artifactbundle" \
               --latest=false
-          # Replace the previous parts: delete what is there, then upload.
-          for a in $(gh release view swift-sdk-latest --repo "$GITHUB_REPOSITORY" \
-                      --json assets --jq '.assets[].name' | grep '^swift-linux-swift-sdk\.' || true); do
-            gh release delete-asset swift-sdk-latest "$a" --repo "$GITHUB_REPOSITORY" -y
+          # Overwrite each part, retrying until it lands. Deleting the old
+          # assets up front and uploading afterwards leaves a window where the
+          # release carries no SDK at all, and an upload that dies inside that
+          # window leaves it that way - which is how the armv7 toolchain asset
+          # was lost. --clobber is not a fix on its own: it also removes the
+          # old asset before writing the new one, so the retry is the part that
+          # matters.
+          for f in swift-linux-swift-sdk.tar.gz.part*; do
+            ok=
+            for attempt in 1 2 3 4 5; do
+              if gh release upload swift-sdk-latest "$f" \
+                   --repo "$GITHUB_REPOSITORY" --clobber; then
+                ok=yes
+                break
+              fi
+              echo "upload of $f failed (attempt $attempt of 5), retrying" >&2
+              sleep $((attempt * 30))
+            done
+            [ -n "$ok" ] || { echo "giving up on $f - the release is now missing this part" >&2; exit 1; }
           done
-          gh release upload swift-sdk-latest swift-linux-swift-sdk.tar.gz.part* \
-            --repo "$GITHUB_REPOSITORY"
+
+          # Confirm the full set is present at full size before pruning, so a
+          # truncated upload fails here rather than when someone tries to
+          # concatenate the parts.
+          gh release view swift-sdk-latest --repo "$GITHUB_REPOSITORY" \
+            --json assets --jq '.assets[] | "\(.name) \(.size)"' > /tmp/sdk-assets.$$
+          for f in swift-linux-swift-sdk.tar.gz.part*; do
+            want=$(stat -c %s "$f")
+            got=$(awk -v n="$f" '$1 == n { print $2 }' /tmp/sdk-assets.$$)
+            [ "$got" = "$want" ] || {
+              echo "$f is ${got:-absent} on the release, expected $want bytes" >&2
+              rm -f /tmp/sdk-assets.$$
+              exit 1
+            }
+          done
+
+          # A bundle that now splits into fewer parts than last time would
+          # otherwise leave the extras behind and corrupt the concatenation.
+          keep=$(ls swift-linux-swift-sdk.tar.gz.part* | tr '\n' ' ')
+          for a in $(awk '{ print $1 }' /tmp/sdk-assets.$$ | grep '^swift-linux-swift-sdk\.' || true); do
+            case " $keep " in
+              *" $a "*) ;;
+              *) echo "removing stale asset $a"
+                 gh release delete-asset swift-sdk-latest "$a" --repo "$GITHUB_REPOSITORY" -y ;;
+            esac
+          done
+          rm -f /tmp/sdk-assets.$$
