@@ -125,6 +125,21 @@ br_build() {
 		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 			"$pkg-dirclean" >/dev/null || return 1
 	done
+	# A package that installed under a host path by mistake leaves the
+	# output directory mirrored inside staging or target - ibus once put a
+	# python override at <staging>/mnt/br/output/x86_64/... - and Buildroot
+	# fails any later staging install on the mere existence of that
+	# directory. dirclean does not touch it, since it is not in the build
+	# dir, so a rebuild meant to fix the path would fail on the leftover of
+	# the path it is fixing. Clear it when a rebuild is asked for.
+	if [ -n "${REBUILD_PKGS:-}" ]; then
+		for stray in "$out"/staging/"$out" "$out"/target/"$out"; do
+			if [ -d "$stray" ]; then
+				echo "[br_build] removing stray install at $stray"
+				rm -rf "$stray"
+			fi
+		done
+	fi
 	# Rebuild host-python3 when the tree's copy is missing an optional module
 	# the configuration asks for. Buildroot compiles host-python3 with the
 	# modules its configuration named at the time and stamps it built; asking
