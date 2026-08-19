@@ -176,6 +176,20 @@ jobs:
         arch: ${{ fromJSON(needs.resolve.outputs.arches) }}
     runs-on: [self-hosted, Linux, X64]
     needs: [resolve, lib32]
+    # "needs" is kept for ordering - the companion must finish building before
+    # an image reads it - but the image does not require the lib32 job to have
+    # *succeeded*. What it consumes is the tree on the shared disk, not that
+    # job's conclusion, and the two have come apart three times: the companion
+    # built and packed cleanly, then the runner process itself died during the
+    # artifact upload (SIGBUS in node, with an I/O error out of runsvc.sh), so
+    # continue-on-error on that step could not save the job. Each time a
+    # perfectly good companion sat on disk while both images were skipped.
+    #
+    # "Locate the 32-bit companion" below is the real gate: it checks the tree
+    # exists and carries a 32-bit loader, and fails the image if it does not.
+    # That check is what correctness rests on, so a dead upload step no longer
+    # costs the run.
+    if: ${{ !cancelled() && needs.resolve.result == 'success' }}
     # Generous, not calibrated - the six-hour hosted-runner ceiling does not
     # apply here. It exists so a wedged build eventually releases the runner
     # rather than blocking every other workflow forever, which matters more
