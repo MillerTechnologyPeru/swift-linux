@@ -1,0 +1,37 @@
+From: Alsey Coleman Miller <alseycmiller@gmail.com>
+Subject: [PATCH] stdafx.h: include stdint.h when config.h is not available
+
+stdafx.h guards its <stdint.h> include on HAVE_STDINT_H, which comes from
+libmodplug's own config.h - a build-time header that is not installed. An
+external consumer therefore gets neither the guard's value nor the include,
+and reaches the typedefs below with no uint8_t in scope:
+
+  stdafx.h:78:9: error: 'uint8_t' does not name a type
+     78 | typedef uint8_t UCHAR;
+
+which then surfaces further along as every BYTE, WORD and DWORD in
+sndfile.h failing to name a type. Both headers are installed and are the
+documented way to reach CSoundFile, so this makes them unusable outside
+the source tree - solarus includes exactly these two and cannot build.
+
+stdint.h is C99 and C++11; there is no target here that installs this
+header and lacks it.
+
+Upstream: https://github.com/Konstanty/libmodplug/issues
+Signed-off-by: Alsey Coleman Miller <alseycmiller@gmail.com>
+
+--- a/src/libmodplug/stdafx.h
++++ b/src/libmodplug/stdafx.h
+@@ -19,6 +19,12 @@
+ #endif
+ #ifdef HAVE_STDINT_H
+ # include <stdint.h>
++#else
++/* HAVE_STDINT_H comes from config.h, which is not installed alongside this
++ * header. Anything including it from outside the tree therefore reaches the
++ * typedefs below with no uint8_t in scope. stdint.h is C99 and C++11, so
++ * include it rather than leave the installed header unusable. */
++# include <stdint.h>
+ #endif
+ 
+ /* disable AGC and FILESAVE for all targets for uniformity. */
