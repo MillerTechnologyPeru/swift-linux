@@ -76,9 +76,12 @@ done
 ROOTFS="${BINARIES_DIR}/rootfs.erofs"
 # EROFS's own size is the compressed content, not a round number, and each
 # slot has to have room for a future RAUC update whose rootfs grew past
-# today's - so the slot is a fixed 3G floor (matching the x86_64/arm64 UEFI
-# images), not just "however big this build happens to be". Actual usage is
-# far less; the rest is unwritten sectors, not bytes actually spent.
+# today's - so the slot is a 3G floor, not just "however big this build
+# happens to be". Unlike the x86_64/arm64 UEFI images, which carry a fixed
+# slot size in genimage.cfg, this grows past the floor when the rootfs is
+# bigger, so a large frontend cannot overflow it - it just loses the spare
+# headroom. Actual usage is often far less; the rest is unwritten sectors,
+# not bytes actually spent.
 ROOTFS_SECTORS=$(( ($(stat -c%s "$ROOTFS") + 511) / 512 ))
 FLOOR_SECTORS=6291456 # 3 GiB / 512
 if [ "$ROOTFS_SECTORS" -gt "$FLOOR_SECTORS" ]; then
