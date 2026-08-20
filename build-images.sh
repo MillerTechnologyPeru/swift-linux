@@ -337,6 +337,21 @@ build_track() {
 	fi
 }
 
+# An exported-but-empty DEVICE is not the same thing as an absent one to
+# everything downstream. This script treats the two alike - ${DEVICE:-} is used
+# throughout - but a package build sees the raw environment, and CMake's
+# if(DEFINED ENV{DEVICE}) is satisfied by an empty string. emulationstation
+# guards its board defines that way and then emits
+#
+#   add_definitions(-D$ENV{DEVICE})
+#
+# which expands to a bare -D, so gcc takes the following flag as the macro name:
+#
+#   <command-line>: error: macro names must be identifiers
+#
+# Make the environment agree with what this script already means.
+[ -n "${DEVICE:-}" ] || unset DEVICE
+
 # ---- select arches -------------------------------------------------------
 arches=("$@")
 [ ${#arches[@]} -gt 0 ] || arches=(x86_64 arm64)
