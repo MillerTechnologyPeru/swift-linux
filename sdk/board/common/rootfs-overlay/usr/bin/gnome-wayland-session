@@ -12,6 +12,26 @@ mkdir -p "${XDG_RUNTIME_DIR}"
 chmod 0700 "${XDG_RUNTIME_DIR}"
 export XDG_SESSION_TYPE=wayland
 
+# mutter keeps its own typelibs - Meta, Clutter, Cogl, CoglPango, Mtk - in
+# /usr/lib/mutter-15 rather than the girepository directory, and gnome-shell's
+# JavaScript imports them. Upstream handles that by compiling the path in:
+# src/meson.build bakes -DMUTTER_TYPELIB_DIR from
+# mutter_dep.get_variable('typelibdir'), and gnome-shell prepends it to the
+# search path at startup.
+#
+# That value is wrong here. libmutter-15.pc derives typelibdir from libdir,
+# which pkg-config sysroot-prefixes - unlike a prefix-derived variable - so
+# what gets compiled in is the build machine's staging path, and on the target
+# it names a directory that does not exist:
+#
+#   JS ERROR: Error: Requiring Meta, version 15: Typelib file for namespace
+#     'Meta', version '15' not found
+#
+# Name the directory the target actually uses. GI_TYPELIB_PATH prepends rather
+# than replaces, so the girepository directory stays reachable.
+GI_TYPELIB_PATH="/usr/lib/mutter-15${GI_TYPELIB_PATH:+:$GI_TYPELIB_PATH}"
+export GI_TYPELIB_PATH
+
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
