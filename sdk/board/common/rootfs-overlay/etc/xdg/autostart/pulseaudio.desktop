@@ -1,0 +1,16 @@
+[Desktop Entry]
+Type=Application
+Name=PulseAudio Sound System
+# Overrides the entry the pulseaudio package installs, which runs
+# start-pulseaudio-x11 and brings up the PulseAudio daemon.
+#
+# This image's sound server is PipeWire (sdk/defconfig/audio.config), and
+# pipewire-pulse answers for PulseAudio's clients. The pulseaudio package is
+# here for libpulse alone - gnome-settings-daemon's volume control links it -
+# and gnome.config says as much: "the PulseAudio daemon itself stays off".
+# Left to autostart it would race pipewire-pulse for the same socket and the
+# same ALSA devices.
+Exec=/bin/true
+Hidden=true
+NoDisplay=true
+X-GNOME-Autostart-enabled=false

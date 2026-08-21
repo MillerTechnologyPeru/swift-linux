@@ -35,6 +35,29 @@ export GI_TYPELIB_PATH
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
+# Sound server. sdk/defconfig/audio.config puts PipeWire in this image and
+# says so plainly - "All run as user-session daemons launched from the sway
+# session" - and the sway config does exactly that. The GNOME session never
+# got the same treatment, so on this frontend nothing started PipeWire at all
+# and everything that wanted it failed:
+#
+#   xdg-desktop-portal: Failed connect to PipeWire: Couldn't connect to PipeWire
+#   GNOME Shell: Error connecting to the screencast service
+#
+# pipewire-pulse is the PulseAudio server here - gnome.config enables the
+# pulseaudio package only for libpulse, gnome-settings-daemon's volume
+# control, and notes that the PulseAudio daemon itself stays off.
+#
+# Started in order: the session manager and the pulse shim both connect to
+# the core, and both retry, but starting them in the order they depend on
+# saves a round of that.
+for _snd in pipewire wireplumber pipewire-pulse; do
+	if [ -x "/usr/bin/$_snd" ]; then
+		/usr/bin/$_snd >/dev/null 2>&1 &
+	fi
+done
+unset _snd
+
 # Send the session's output to syslog as well as the console.
 #
 # Everything the session says - gnome-session's own messages, and mutter's and
