@@ -141,38 +141,79 @@ wait_for 'Welcome to Swift Linux' 'userspace reached a login prompt'
 
 # ---- the session ---------------------------------------------------------
 # Give the autologin chain a moment: agetty.tty1 -> autologin -> login -f
-# user -> /etc/profile.d/sway.sh -> sway-session.
+# user -> /etc/profile.d/sway.sh -> the session for whichever frontend the
+# image ships (gnome-wayland-session, xfce-session or sway-session).
 sleep 20
 
 echo "session:"
+# Which compositor to expect follows what the image ships, the same way the
+# tty1 hook chooses one: GNOME if gnome-session is installed, XFCE if
+# startxfce4 is, sway otherwise. Asserting on sway regardless would fail a
+# perfectly healthy GNOME image, which is exactly what it used to do.
+case "$(guest "if [ -x /usr/bin/gnome-session ]; then echo gnome; elif [ -x /usr/bin/startxfce4 ]; then echo xfce; else echo sway; fi" | tr -d '\r')" in
+	*gnome*) SESSION_KIND=gnome ;;
+	*xfce*)  SESSION_KIND=xfce ;;
+	*)       SESSION_KIND=sway ;;
+esac
+echo "        frontend: $SESSION_KIND"
+
 # ps -e, not bare ps: tools.config installs procps-ng, whose ps shows only
 # the current terminal's processes by default - so the session on tty1 is
 # invisible from this serial console and every check below would fail on a
 # perfectly good image. (busybox ps ignores -e and lists everything anyway.)
-PS_OUT="$(guest "ps -eo user,comm | grep -E 'sway|foot' | grep -v grep | sort -u")"
-# sway owned by the session user is the real assertion: a root-owned sway would
-# mean it came from somewhere other than the tty1 autologin chain.
-echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*sway' || {
-	echo "  FAIL  sway is not running as the session user" >&2
-	[ -n "$PS_OUT" ] && echo "$PS_OUT" | sed 's/^/        /' >&2
-	echo "serial log: $KEPT_LOG" >&2
-	exit 1
-}
-pass "sway running as the session user, unattended"
-echo "$PS_OUT" | grep -q foot || fail "foot is not running - sway started no client"
-pass "foot running"
+case "$SESSION_KIND" in
+gnome)
+	# gnome-shell is both compositor and client, so there is no second
+	# process to look for the way sway has foot.
+	PS_OUT="$(guest "ps -eo user,comm | grep -E 'gnome-shell|gnome-session' | grep -v grep | sort -u")"
+	echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*gnome-shell' ||
+		fail "gnome-shell is not running as the session user"
+	pass "gnome-shell running as the session user, unattended"
 
-# The minimal frontend's negations must have reached the image, which is what
-# makes sway's "emulationstation or foot" conditional choose foot.
-if guest "command -v emulationstation >/dev/null && echo ES_PRESENT || echo ES_ABSENT" | grep -q ES_ABSENT; then
-	pass "frontend resolved to a terminal (no EmulationStation installed)"
-else
-	echo "  note  EmulationStation is installed - this is not a minimal image" >&2
-fi
+	# The shell can run while gnome-session considers the session failed -
+	# it puts up "Oh no! Something has gone wrong." over a working shell -
+	# so the absence of that is a separate assertion from the process being
+	# alive. It was a real regression: mutter built without x11 has its
+	# XSMP registration compiled out, so the shell never registered.
+	guest "pgrep -f gnome-session-failed >/dev/null && echo FAILED_UP || echo NO_FAIL_DIALOG" |
+		grep -q NO_FAIL_DIALOG ||
+		fail "gnome-session is showing its failure screen"
+	pass "no session failure screen"
+	;;
+xfce)
+	PS_OUT="$(guest "ps -eo user,comm | grep -E 'xfwm4|xfce4-session' | grep -v grep | sort -u")"
+	echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*xfwm4' ||
+		fail "xfwm4 is not running as the session user"
+	pass "xfwm4 running as the session user, unattended"
+	;;
+*)
+	PS_OUT="$(guest "ps -eo user,comm | grep -E 'sway|foot' | grep -v grep | sort -u")"
+	# sway owned by the session user is the real assertion: a root-owned sway
+	# would mean it came from somewhere other than the tty1 autologin chain.
+	echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*sway' || {
+		echo "  FAIL  sway is not running as the session user" >&2
+		[ -n "$PS_OUT" ] && echo "$PS_OUT" | sed 's/^/        /' >&2
+		echo "serial log: $KEPT_LOG" >&2
+		exit 1
+	}
+	pass "sway running as the session user, unattended"
+	echo "$PS_OUT" | grep -q foot || fail "foot is not running - sway started no client"
+	pass "foot running"
+
+	# The minimal frontend's negations must have reached the image, which is
+	# what makes sway's "emulationstation or foot" conditional choose foot.
+	if guest "command -v emulationstation >/dev/null && echo ES_PRESENT || echo ES_ABSENT" | grep -q ES_ABSENT; then
+		pass "frontend resolved to a terminal (no EmulationStation installed)"
+	else
+		echo "  note  EmulationStation is installed - this is not a minimal image" >&2
+	fi
+	;;
+esac
 
 # ---- graphics ------------------------------------------------------------
-# Discover the Wayland socket rather than assuming a name: sway takes the next
-# free one, so it is wayland-1 on a system whose runtime dir already had one.
+# Discover the Wayland socket rather than assuming a name: a compositor takes
+# the next free one, so it is wayland-1 on a system whose runtime dir already
+# had one. True of mutter as much as sway.
 WL='for s in /tmp/xdg-1000/wayland-[0-9]*; do case "$s" in *.lock) continue;; esac; W=$(basename "$s"); break; done;'
 echo "graphics:"
 GL_OUT="$(guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'")"
@@ -183,7 +224,25 @@ pass "GL is hardware-accelerated"
 
 # ---- evidence -----------------------------------------------------------
 echo "screenshot:"
-guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W grim /tmp/bv.png\"; ls -l /tmp/bv.png" > "$RUN/shot.txt"
+# grim speaks wlr-screencopy, which wlroots compositors implement and mutter
+# does not - it answers "compositor doesn't support the screen capture
+# protocol". GNOME's own org.gnome.Shell.Screenshot is no help either: it
+# refuses callers it does not recognise, with
+# "GDBus.Error:org.freedesktop.DBus.Error.AccessDenied: Screenshot is not
+# allowed". So on GNOME there is no way to take one from here, and the
+# compositor being up is already established by the GL check above.
+#
+# Not a failure: a picture is corroboration, not the assertion. Everything
+# this script actually verifies has passed by now. To see the desktop, boot
+# with a software virtio-vga - no GL scanout - and use QEMU's own screendump,
+# which is what the GL path makes impossible ("Error: no surface").
+guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W grim /tmp/bv.png\" 2>&1; ls -l /tmp/bv.png 2>&1" > "$RUN/shot.txt"
+if ! grep -q '/tmp/bv.png$' "$RUN/shot.txt" && grep -qi "screen capture protocol\|not allowed" "$RUN/shot.txt"; then
+	echo "        no capture protocol this compositor supports - skipping"
+	echo
+	echo "PASS - $IMG boots to an interactive session"
+	exit 0
+fi
 grep -q '/tmp/bv.png' "$RUN/shot.txt" || fail "grim produced no screenshot"
 # Out over the serial console - the one channel needing no credentials.
 guest "base64 /tmp/bv.png" > "$RUN/shot.b64"
