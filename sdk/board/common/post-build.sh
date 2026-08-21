@@ -54,7 +54,7 @@ for bi in "${BOARDS_SRC}"/*/boardinfo; do
 	install -m 0644 "${bi}" "${TARGET_DIR}/usr/share/boardinfo/${bname}"
 done
 if [ -n "${BR2_CONFIG}" ] && [ -f "${BR2_CONFIG}" ]; then
-	cur=$(sed -n 's|.*sdk/board/\([a-z0-9._-]*\)/rootfs-overlay.*||p' "${BR2_CONFIG}" | 		grep -v '^common$' | head -1)
+	cur=$(sed -n 's|.*sdk/board/\([a-z0-9._-]*\)/rootfs-overlay.*|\1|p' "${BR2_CONFIG}" | 		grep -v '^common$' | head -1)
 	if [ -n "${cur}" ] && [ -f "${TARGET_DIR}/usr/share/boardinfo/${cur}" ]; then
 		ln -sf "${cur}" "${TARGET_DIR}/usr/share/boardinfo/current"
 	fi
