@@ -15,4 +15,17 @@ export XDG_SESSION_TYPE=wayland
 export LANG=en_US.UTF-8
 export LC_ALL=en_US.UTF-8
 
-exec dbus-run-session -- gnome-session
+# Send the session's output to syslog as well as the console.
+#
+# Everything the session says - gnome-session's own messages, and mutter's and
+# gnome-shell's on the way up - goes to stderr, which on tty1 means an 80x25
+# screen with no scrollback. When the session fails and gnome-session restarts
+# it, each attempt overwrites the last, so by the time anyone looks the reason
+# is gone; and if agetty gives up respawning, what is left on screen is the
+# final attempt's tail rather than its first error. That is not a debuggable
+# arrangement on an image with no display manager and no journal.
+#
+# logger -s writes to syslog and echoes to stderr, so the console still shows
+# what it always did and /var/log/messages keeps a copy that survives the
+# restart. stdin is left alone: only the output is redirected.
+dbus-run-session -- gnome-session 2>&1 | logger -t gnome-session -s
