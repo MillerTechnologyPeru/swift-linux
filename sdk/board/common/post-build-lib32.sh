@@ -122,9 +122,11 @@ if [ -x "${LIB32_ROOT}/usr/bin/wine" ]; then
 	echo "lib32: installed wine (32-bit Windows applications)"
 fi
 
-# Teach the dynamic loader about /usr/lib32. The rootfs is read-only at
-# runtime, so the cache has to be generated here at build time; ldconfig -r
-# treats the given directory as /.
+# Teach the dynamic loader about /usr/lib32. This only records the directory;
+# the loader reads /etc/ld.so.cache and never this file, so it does nothing on
+# its own. post-build-ldcache.sh runs after every post-build script and turns
+# these entries into that cache - which is where this used to stop, leaving
+# the whole merge below unreachable at runtime.
 mkdir -p "${TARGET_DIR}/etc/ld.so.conf.d"
 echo "/usr/lib32" > "${TARGET_DIR}/etc/ld.so.conf.d/lib32.conf"
 if [ ! -f "${TARGET_DIR}/etc/ld.so.conf" ]; then
