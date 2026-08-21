@@ -1,0 +1,50 @@
+#!/bin/sh
+# Give the system a machine ID.
+#
+# D-Bus wants one, and so does a good deal of GNOME; without it they fall back
+# to complaining and, in some cases, to not working:
+#
+#   Gs  Failed to get machine+user hash: Failed to open file
+#     "/etc/machine-id": No such file or directory
+#
+# Nothing in this image ever created one. systemd generates it on first boot,
+# and there is no systemd here; Buildroot leaves it to the integrator.
+#
+# The rootfs is read-only, so /etc/machine-id is a symlink to /run/machine-id
+# and this fills that in. The value is kept on the data partition so it stays
+# the same across boots - an ID that changed every boot would be worse than
+# useless to anything keying state off it - and regenerated only if that copy
+# is missing. Runs after S15data, which mounts /data, and before
+# S30dbus-daemon, which reads the result.
+#
+# Format follows machine-id(5): 32 lowercase hex digits and a newline, which
+# is a UUID with the dashes taken out.
+
+MID_RUN=/run/machine-id
+MID_PERSIST=/data/lib/machine-id
+
+case "$1" in
+	start)
+		[ -s "$MID_RUN" ] && exit 0
+		if [ -s "$MID_PERSIST" ]; then
+			cat "$MID_PERSIST" > "$MID_RUN"
+		else
+			id=$(tr -d - < /proc/sys/kernel/random/uuid 2>/dev/null)
+			if [ -z "$id" ]; then
+				echo "machine-id: no source of randomness, skipping" >&2
+				exit 0
+			fi
+			printf '%s\n' "$id" > "$MID_RUN"
+			if mkdir -p "$(dirname "$MID_PERSIST")" 2>/dev/null; then
+				cat "$MID_RUN" > "$MID_PERSIST" 2>/dev/null || true
+			fi
+		fi
+		chmod 0444 "$MID_RUN" 2>/dev/null || true
+		;;
+	stop)
+		;;
+	*)
+		echo "Usage: $0 {start|stop}"
+		exit 1
+		;;
+esac
