@@ -69,6 +69,19 @@ on:
         required: false
         default: ''
         type: string
+      clean:
+        description: >
+          Empty the persistent output tree before configuring, rebuilding
+          everything from source. For when the tree itself is suspect rather
+          than one package in it - a machine that dies mid-build can leave a
+          package stamped complete with no source and its installed files
+          missing, which Buildroot reads as done and skips. That surfaces one
+          failure at a time, in whatever reaches for a file that was never
+          written. Costs a full rebuild, so prefer "rebuild" when the culprit
+          can be named.
+        required: false
+        default: false
+        type: boolean
 
 # One runner, so a nightly still running when the next fires would otherwise
 # queue behind itself. Supersede instead.
@@ -315,6 +328,7 @@ jobs:
           export CCACHE=1
           export DEVICE="${{ inputs.device }}"
           export REBUILD_PKGS="${{ inputs.rebuild }}"
+          export CLEAN_TREE="${{ inputs.clean && '1' || '' }}"
           "$GITHUB_WORKSPACE/build-images.sh" ${{ matrix.arch }}
 
       # Also on cancellation, not just failure. build-images.sh sends the build

@@ -108,6 +108,22 @@ make_defconfig() {
 # br_build <output-dir> <defconfig-file>  - configure then build one image.
 br_build() {
 	local out="$1" defconfig="$2"; shift 2
+	# CLEAN_TREE empties the persistent output tree before configuring.
+	#
+	# For when the tree itself is not to be trusted rather than one package in
+	# it: a machine that dies mid-build can leave a package stamped complete
+	# with no source directory and its installed files missing, and Buildroot
+	# reads the stamp and skips it. That is not visible until something reaches
+	# for a file that was never written - libglib2 lost its .gir files that
+	# way, and host-libglib2 its typelibs, each surfacing one build later.
+	# REBUILD_PKGS repairs a package you can name; this is for when you cannot.
+	#
+	# The contents go, not the directory: it is a bind mount of the profile,
+	# and removing the mount point would take the tree's identity with it.
+	if [ -n "${CLEAN_TREE:-}" ] && [ -d "$out" ]; then
+		echo "[br_build] wiping $out (CLEAN_TREE)"
+		find "$out" -mindepth 1 -maxdepth 1 -exec rm -rf {} + || return 1
+	fi
 	# Inject opt-in accelerators into the defconfig before configuring, so they
 	# take effect without editing tracked fragments.
 	[ "${PARALLEL_BUILD:-0}" = "1" ] && \
