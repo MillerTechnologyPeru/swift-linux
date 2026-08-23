@@ -1,0 +1,9 @@
+# The greeter's own session, run as the unprivileged "gdm" user. It is
+# started by the daemon rather than by anyone typing a password, so there is
+# no auth to do - but it still needs a registered logind session, because the
+# greeter is gnome-shell and mutter will not start without a seat.
+auth		required	pam_permit.so
+account		required	pam_unix.so
+password	required	pam_deny.so
+session		required	pam_unix.so
+session		optional	pam_elogind.so

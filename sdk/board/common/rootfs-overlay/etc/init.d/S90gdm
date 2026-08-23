@@ -1,0 +1,43 @@
+#!/bin/sh
+# Start the GNOME display manager, on images that ship one.
+#
+# Inert everywhere else: the overlay is shared by every frontend, and only
+# the GNOME one installs gdm, so this checks for the daemon rather than
+# being switched on per image. sway and XFCE keep their tty1 autologin.
+#
+# Runs late - after S30dbus-daemon, S70seatd and the udev coldplug - because
+# the greeter is gnome-shell: it needs the system bus, a seat, and the DRM
+# device to have appeared. elogind is D-Bus activated on first login1 access,
+# so it needs no ordering of its own.
+#
+# The daemon puts its state in /var/lib/gdm, which is on the read-only
+# rootfs, so that path is a symlink to the data partition and the directory
+# behind it is made here - after S15data has mounted /data.
+
+GDM=/usr/sbin/gdm
+GDM_STATE=/data/lib/gdm
+
+case "$1" in
+	start)
+		[ -x "$GDM" ] || exit 0
+		mkdir -p "$GDM_STATE" 2>/dev/null || true
+		chown gdm:gdm "$GDM_STATE" 2>/dev/null || true
+		printf 'Starting gdm: '
+		start-stop-daemon -S -b -x "$GDM" -- --no-daemon
+		echo "OK"
+		;;
+	stop)
+		[ -x "$GDM" ] || exit 0
+		printf 'Stopping gdm: '
+		start-stop-daemon -K -x "$GDM"
+		echo "OK"
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac

@@ -1,4 +1,11 @@
 #!/bin/sh
-# Invoked by getty (-n -l) on the console to log the default user in without
-# a password prompt.
+# Invoked by getty (-n -l) on the console.
+#
+# Logs the default user in without a prompt, which is how the sway and XFCE
+# frontends reach their session. Except where a display manager is installed:
+# GDM does its own authentication and owns the session, so tty1 stays an
+# ordinary login prompt there and the two do not compete for the user.
+if [ -x /usr/sbin/gdm ]; then
+	exec /bin/login
+fi
 exec /bin/login -f user

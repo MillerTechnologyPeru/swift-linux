@@ -21,6 +21,13 @@
 # The variable is exported, so it survives the exec into the login shell and
 # the second pass falls through to an ordinary shell. Distributions do not
 # hit this because a display manager starts the session instead of profile.
+# A display manager, where one is installed, starts the session itself and
+# authenticates the user first. Starting a second one from this hook would
+# fight it for the seat, so the hook stands down.
+if [ -x /usr/sbin/gdm ]; then
+	return 2>/dev/null || true
+fi
+
 if [ "$(tty)" = "/dev/tty1" ] && [ -z "${WAYLAND_DISPLAY}" ] && \
    [ -z "${DISPLAY}" ] && [ -z "${SESSION_LAUNCHED:-}" ]; then
 	SESSION_LAUNCHED=1
