@@ -39,8 +39,26 @@ case "$1" in
 			/etc/init.d/agetty.tty1 stop >/dev/null 2>&1 || true
 		fi
 		printf 'Starting gdm: '
-		start-stop-daemon -S -b -x "$GDM" -- --no-daemon
-		echo "OK"
+		# No --no-daemon: this gdm takes only --fatal-warnings,
+		# --timed-exit and --version, and answers anything else with
+		#
+		#   Failed to parse options: Unknown option --no-daemon
+		#
+		# on stderr, which start-stop-daemon discards. It never forks
+		# either, so -b is what keeps it in the background and the flag
+		# bought nothing even where it parsed.
+		start-stop-daemon -S -b -x "$GDM"
+		# Say whether it is still there. A display manager that exits at
+		# once looks identical to one that started, because the daemon
+		# is backgrounded and its stderr goes nowhere - which is how the
+		# option above stayed invisible: every boot reported "OK" and no
+		# gdm ever ran.
+		sleep 1
+		if pgrep -x gdm >/dev/null 2>&1; then
+			echo "OK"
+		else
+			echo "FAILED (gdm exited immediately)"
+		fi
 		;;
 	stop)
 		[ -x "$GDM" ] || exit 0
