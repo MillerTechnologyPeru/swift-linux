@@ -13,15 +13,31 @@
 # The daemon puts its state in /var/lib/gdm, which is on the read-only
 # rootfs, so that path is a symlink to the data partition and the directory
 # behind it is made here - after S15data has mounted /data.
+#
+# The greeter's own output goes to a file, not the system log: gdm gives the
+# launch environment $LOGDIR/greeter.log and nothing else sees it. Without
+# that directory the greeter can fail with its reason written nowhere - the
+# shell exits, gnome-session reports only "App 'org.gnome.Shell.desktop'
+# exited with code 1", and the cause is gone.
 
 GDM=/usr/sbin/gdm
 GDM_STATE=/data/lib/gdm
+GDM_LOGDIR=/var/log/gdm
 
 case "$1" in
 	start)
 		[ -x "$GDM" ] || exit 0
 		mkdir -p "$GDM_STATE" 2>/dev/null || true
 		chown gdm:gdm "$GDM_STATE" 2>/dev/null || true
+		mkdir -p "$GDM_LOGDIR" 2>/dev/null || true
+		chown gdm:gdm "$GDM_LOGDIR" 2>/dev/null || true
+		# Free the VT before starting. The greeter runs on VT 1, and a
+		# session is handed the DRM device only while it is the active
+		# one on the seat - so whichever of the two holds that VT, the
+		# other gets nothing. The getty is the one that can be spared.
+		if [ -x /etc/init.d/agetty.tty1 ]; then
+			/etc/init.d/agetty.tty1 stop >/dev/null 2>&1 || true
+		fi
 		printf 'Starting gdm: '
 		start-stop-daemon -S -b -x "$GDM" -- --no-daemon
 		echo "OK"
@@ -31,6 +47,11 @@ case "$1" in
 		printf 'Stopping gdm: '
 		start-stop-daemon -K -x "$GDM"
 		echo "OK"
+		# Hand the VT back, or stopping the display manager would leave
+		# the machine with no console on it at all.
+		if [ -x /etc/init.d/agetty.tty1 ]; then
+			/etc/init.d/agetty.tty1 start >/dev/null 2>&1 || true
+		fi
 		;;
 	restart|reload)
 		"$0" stop
