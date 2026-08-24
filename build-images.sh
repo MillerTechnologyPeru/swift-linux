@@ -114,9 +114,14 @@ br_build() {
 	# it: a machine that dies mid-build can leave a package stamped complete
 	# with no source directory and its installed files missing, and Buildroot
 	# reads the stamp and skips it. That is not visible until something reaches
-	# for a file that was never written - libglib2 lost its .gir files that
-	# way, and host-libglib2 its typelibs, each surfacing one build later.
-	# REBUILD_PKGS repairs a package you can name; this is for when you cannot.
+	# for a file that was never written. REBUILD_PKGS repairs a package you can
+	# name; this is for when you cannot.
+	#
+	# Note that a seeded tree looks like that and is not: the toolchain release
+	# ships stamps and staging without sources, so most of the tree is stamped
+	# with no source directory by design. Missing girs are the seed's doing,
+	# not a half-finished build - see the glib guard below. Wiping does not fix
+	# that one, because the wipe is followed by a fresh seed of the same tree.
 	#
 	# The contents go, not the directory: it is a bind mount of the profile,
 	# and removing the mount point would take the tree's identity with it.
@@ -186,6 +191,41 @@ br_build() {
 				host-python3-dirclean >/dev/null || return 1
 			break
 		done
+	fi
+	# Rebuild glib when the tree's copy was built without introspection.
+	#
+	# Same rule as host-python3 above, and the seeded trees make this one
+	# certain rather than likely: the toolchain release builds libglib2 for the
+	# toolchain's own configuration, which does not select gobject-
+	# introspection, so every tree starts with a libglib2 that is stamped built
+	# and ships no GLib-2.0.gir. A profile that turns introspection on changes
+	# the option and nothing else, so the girs never appear.
+	#
+	# It never surfaces in glib. It surfaces hours later, in whatever reaches
+	# for the girs first:
+	#
+	#   Couldn't find include 'GLib-2.0.gir'    (at-spi2-core, target side)
+	#   ImportError: cannot import name GLib    (host side)
+	#
+	# Look for the file rather than the option: it answers for the tree that
+	# will actually be built against, whatever produced it.
+	local sysroot found
+	if grep -q '^BR2_PACKAGE_GOBJECT_INTROSPECTION=y' "$out/.config" 2>/dev/null; then
+		found=
+		for sysroot in "$out"/host/*/sysroot; do
+			[ -f "$sysroot/usr/share/gir-1.0/GLib-2.0.gir" ] && found=1
+		done
+		if [ -z "$found" ]; then
+			echo "[br_build] libglib2 carries no GLib-2.0.gir, which introspection needs - rebuilding it"
+			make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
+				libglib2-dirclean >/dev/null || return 1
+		fi
+	fi
+	if grep -q '^BR2_PACKAGE_HOST_GOBJECT_INTROSPECTION=y' "$out/.config" 2>/dev/null &&
+	   [ ! -f "$out/host/share/gir-1.0/GLib-2.0.gir" ]; then
+		echo "[br_build] host libglib2 carries no GLib-2.0.gir - rebuilding it"
+		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
+			host-libglib2-dirclean >/dev/null || return 1
 	fi
 	# Re-extract a ports package when its patch set changes. Buildroot applies
 	# patches once, at extract time, and stamps the source directory; a patch
