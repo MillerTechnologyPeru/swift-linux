@@ -27,6 +27,15 @@ inputs:
     description: Release tag holding the toolchain assets.
     required: false
     default: toolchain-latest
+  force:
+    description: >
+      Unpack even when the tree's stamp says it is current. For a tree that
+      has lost something only the release carries: most of what a seeded tree
+      holds is stamped built with no source directory, so a package dircleaned
+      out of one cannot be rebuilt in place - it has to come back from the
+      release. Wipes the tree, so everything built on top is rebuilt.
+    required: false
+    default: ''
 
 runs:
   using: composite
@@ -58,6 +67,8 @@ runs:
     # half-unpacked tree as current.
     - name: Seed the output tree
       shell: bash
+      env:
+        FORCE_SEED: ${{ inputs.force }}
       run: |
         set -eu
         arch="${{ inputs.arch }}"
@@ -106,7 +117,7 @@ runs:
           done
         }
 
-        if [ -d "$dest/host/bin" ] && [ "$(cat "$dest/.seed-stamp" 2>/dev/null)" = "$key" ]; then
+        if [ -z "${FORCE_SEED:-}" ] && [ -d "$dest/host/bin" ] && [ "$(cat "$dest/.seed-stamp" 2>/dev/null)" = "$key" ]; then
           # Also on the skip path: trees seeded before this fixup existed still
           # carry the broken references, and re-seeding them costs a gigabyte.
           fixup_la

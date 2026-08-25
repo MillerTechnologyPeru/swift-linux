@@ -69,6 +69,18 @@ on:
         required: false
         default: ''
         type: string
+      reseed:
+        description: >
+          Unpack the toolchain release over the tree even when its stamp says
+          it is current. For when the tree has lost something only the release
+          carries: a seeded tree holds most packages stamped built with no
+          source, so one dircleaned out of it cannot be rebuilt in place -
+          swift-foundation compiles host-swift's checkout, and neither is ever
+          built in an image tree. Wipes the tree, so everything above the
+          toolchain is rebuilt.
+        required: false
+        default: false
+        type: boolean
       clean:
         description: >
           Empty the persistent output tree before configuring, rebuilding
@@ -238,6 +250,7 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
           dest-dir: /mnt/br/output/${{ matrix.arch }}
+          force: ${{ inputs.reseed && '1' || '' }}
 
       # configure: 'false' - build-images.sh owns this tree's defconfig (it
       # merges the lib32 and FRONTEND fragments), so br-setup only does the
@@ -405,6 +418,7 @@ jobs:
         with:
           arch: ${{ matrix.arch }}
           dest-dir: /mnt/br/output/${{ matrix.arch }}
+          force: ${{ inputs.reseed && '1' || '' }}
 
       - name: Prepare and configure the tree
         uses: ./.github/actions/br-setup
