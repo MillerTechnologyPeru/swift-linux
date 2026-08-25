@@ -444,9 +444,34 @@ jobs:
         with:
           build-dir: /mnt/br/output/${{ matrix.arch }}/build
 
+      # "rebuild" reaches this tree too. It used to be the image build's alone,
+      # because build-images.sh is what reads REBUILD_PKGS and this job calls
+      # make directly - which left the companion with no repair short of
+      # reseeding it, and a companion is exactly where a wedged package hides:
+      # the image job reads this tree off the disk rather than rebuilding it.
+      #
+      # The names are filtered against the tree before use, because the two
+      # trees are configured differently and one "rebuild" list serves both.
+      # "linux" is the case that matters: the image profile has a kernel and
+      # the lib32 profile does not, so an unfiltered dirclean here dies on
+      # "No rule to make target 'linux-dirclean'" and takes the companion
+      # with it. A name this tree does not know is not an error - it is a
+      # name meant for the other one.
       - name: Build the 32-bit companion
+        env:
+          REBUILD_PKGS: ${{ inputs.rebuild }}
         run: |
           set -eu
+          for pkg in ${REBUILD_PKGS:-}; do
+            if make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+                 BR2_DL_DIR=/mnt/br/dl -n "$pkg-dirclean" >/dev/null 2>&1; then
+              echo "forcing rebuild of $pkg"
+              make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+                BR2_DL_DIR=/mnt/br/dl "$pkg-dirclean" >/dev/null
+            else
+              echo "$pkg is not in this tree's configuration, skipping"
+            fi
+          done
           FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
             BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS"
 
