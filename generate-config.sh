@@ -125,9 +125,15 @@ case "$profile" in
         # with its own GPU fragment: a 32-bit process cannot load the 64-bit
         # image's DRI drivers or Vulkan ICDs. The armv7 companion also
         # carries box86 (both live in lib32-arm.config).
+        #
+        # lib32.config comes after applibs, so the fragment that describes
+        # the companion has the last word about it. It is a library-only
+        # rootfs merged into the 64-bit image as /usr/lib32, and applibs is
+        # shared with the profiles that build a whole system - so anything
+        # applibs adds for those has to be declinable here.
         case "$arch" in
-            arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs lib32-arm) ;;
-            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation lib32 applibs gpu/lib32-x86) ;;
+            arm*) fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation applibs lib32 lib32-arm) ;;
+            *)    fragments=(toolchain libs tools supportdata tools-gui swift network audio daemons emulation applibs lib32 gpu/lib32-x86) ;;
         esac ;;
     *)
         echo "Error: unknown profile '$profile' (expected: sdk, app-sdk, image, lib32)" >&2
