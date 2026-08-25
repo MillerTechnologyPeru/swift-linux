@@ -98,7 +98,7 @@ exec qemu-system-aarch64 \
 	-m "${QEMU_MEM:-2G}" \
 	-drive if=pflash,format=raw,unit=0,readonly=on,file="$FW_CODE" \
 	-drive if=pflash,format=raw,unit=1,file="$FW_VARS" \
-	-drive file="$IMG",if=none,format=raw,id=hd0 \
+	-drive file="$IMG",if=none,format=raw,id=hd0${QEMU_SNAPSHOT:+,snapshot=on} \
 	-device virtio-blk-pci,drive=hd0 \
 	-netdev user,id=eth0,hostfwd=tcp:127.0.0.1:2222-:22 \
 	-device virtio-net-pci,netdev=eth0 \

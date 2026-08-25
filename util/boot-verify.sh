@@ -4,7 +4,7 @@
 # failure, 0 when the image is good.
 #
 #   util/boot-verify.sh [--arch x86_64|arm64] [--image PATH] [--timeout SECS]
-#                       [--screenshot PATH] [--keep]
+#                       [--screenshot PATH] [--password PW] [--keep]
 #
 # The checks follow the boot: the data partition mounting, the RNG-seed and
 # clock scripts that depend on it, the tty1 autologin service bringing up a
@@ -13,6 +13,13 @@
 # launcher, and GL being real instead of a silent software fallback. Each one
 # has been broken here at some point; a build succeeding says nothing about
 # them.
+#
+# An image that ships gdm boots to a greeter instead, and there the
+# unattended assertion inverts: a session appearing with nobody at the
+# keyboard is the failure (autologin left on). The script then logs in
+# through the greeter itself, typing the session user's password over the
+# QEMU monitor, and checks the session that produces. --password is that
+# password; the default is the one sdk/board/common/users.txt sets.
 #
 # Two constraints shape this:
 #   - the guest needs a GL-capable virtio-gpu even with no window, because
@@ -28,6 +35,7 @@ IMG=""
 TIMEOUT=300
 SHOT=""
 KEEP=""
+PASSWORD=1234
 
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -35,6 +43,7 @@ while [ $# -gt 0 ]; do
 		--image)      IMG="$2"; shift 2 ;;
 		--timeout)    TIMEOUT="$2"; shift 2 ;;
 		--screenshot) SHOT="$2"; shift 2 ;;
+		--password)   PASSWORD="$2"; shift 2 ;;
 		--keep)       KEEP=1; shift ;;
 		-h|--help)    sed -n '2,24p' "$0" | sed 's/^# \?//'; exit 0 ;;
 		*) echo "unknown argument: $1" >&2; exit 2 ;;
@@ -51,8 +60,14 @@ RUN="$(mktemp -d /tmp/boot-verify.XXXXXX)"
 SERIAL_LOG="$RUN/serial.log"
 SERIAL_SOCK="$RUN/serial.sock"
 MONITOR_SOCK="$RUN/monitor.sock"
-[ -n "$SHOT" ] || SHOT="$(dirname "$IMG")/boot-verify.png"
-KEPT_LOG="$(dirname "$IMG")/boot-verify-serial.log"
+# The screenshot and the kept serial log go beside the image, unless that
+# directory cannot be written - CI's output trees are root-owned - in which
+# case they go in the current directory, and the "serial log:" line printed
+# on failure points at a file that exists.
+OUT_DIR="$(dirname "$IMG")"
+[ -w "$OUT_DIR" ] || OUT_DIR="$PWD"
+[ -n "$SHOT" ] || SHOT="$OUT_DIR/boot-verify.png"
+KEPT_LOG="$OUT_DIR/boot-verify-serial.log"
 
 QEMU_PID=""
 cleanup() {
@@ -80,6 +95,7 @@ guest() { python3 "$CONSOLE" "$SERIAL_SOCK" "$1" 2>/dev/null || true; }
 
 echo "booting $IMG ($ARCH, headless, timeout ${TIMEOUT}s)"
 QEMU_NOGRAPHIC=1 \
+QEMU_SNAPSHOT=1 \
 QEMU_SERIAL_LOG="$SERIAL_LOG" \
 QEMU_SERIAL_SOCK="$SERIAL_SOCK" \
 QEMU_MONITOR_SOCK="$MONITOR_SOCK" \
@@ -165,10 +181,65 @@ case "$SESSION_KIND" in
 gnome)
 	# gnome-shell is both compositor and client, so there is no second
 	# process to look for the way sway has foot.
-	PS_OUT="$(guest "ps -eo user,comm | grep -E 'gnome-shell|gnome-session' | grep -v grep | sort -u")"
-	echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*gnome-shell' ||
-		fail "gnome-shell is not running as the session user"
-	pass "gnome-shell running as the session user, unattended"
+	if guest "[ -x /usr/sbin/gdm ] && echo GDM_YES || echo GDM_NO" | grep -q GDM_YES; then
+		# A gdm image boots to the greeter, which is gnome-shell running as
+		# the gdm account. It takes longer to settle than the autologin
+		# chain - its gnome-session waits on settings-daemon components
+		# that time out in a greeter - so poll for it rather than sleep.
+		echo "        display manager: gdm"
+		i=0
+		while [ "$i" -lt 45 ]; do
+			guest "pgrep -u gdm -x gnome-shell >/dev/null && echo GREETER_UP || echo GREETER_DOWN" | grep -q GREETER_UP && break
+			i=$((i + 1)); sleep 2
+		done
+		[ "$i" -lt 45 ] || fail "gnome-shell never came up as gdm - the greeter did not start (see /var/log/gdm/greeter.log in the guest)"
+		pass "greeter running as gdm"
+
+		# Now the unattended assertion inverts. The whole point of a
+		# display manager here is that nothing logs in on its own.
+		guest "pgrep -u user -x gnome-shell >/dev/null && echo USER_SHELL || echo NO_USER_SHELL" | grep -q NO_USER_SHELL ||
+			fail "gnome-shell is running as the session user with nobody logged in - autologin is still on"
+		pass "no session before anyone logs in (autologin is off)"
+
+		# The greeter has to be a registered greeter-class session on the
+		# seat, or it holds no device and paints nothing. Columns are
+		# SESSION UID USER SEAT LEADER CLASS.
+		guest "loginctl list-sessions 2>/dev/null" |
+			grep -qE 'gdm[[:space:]]+seat0[[:space:]]+[0-9]+[[:space:]]+greeter' ||
+			fail "no greeter-class session on seat0 (loginctl) - the greeter is not registered with logind"
+		pass "greeter session registered on seat0"
+
+		# Log in the way a person would: select the listed user, type the
+		# password. Through the monitor, since the greeter listens to the
+		# virtio keyboard and not to the serial console.
+		python3 - "$MONITOR_SOCK" "$PASSWORD" <<'PY'
+import socket, sys, time
+s = socket.socket(socket.AF_UNIX); s.settimeout(20); s.connect(sys.argv[1])
+time.sleep(1); s.recv(65536)
+def key(k):
+    s.sendall(("sendkey %s\n" % k).encode()); time.sleep(0.5)
+key("ret"); time.sleep(3)
+for ch in sys.argv[2]:
+    key({"-": "minus", "_": "shift-minus", " ": "spc", ".": "dot"}.get(ch, ch))
+key("ret")
+PY
+		i=0
+		while [ "$i" -lt 30 ]; do
+			guest "pgrep -u user -x gnome-shell >/dev/null && echo USER_SHELL || echo NO_USER_SHELL" | grep -q USER_SHELL && break
+			i=$((i + 1)); sleep 2
+		done
+		[ "$i" -lt 30 ] || fail "logging in through the greeter started no session for the session user"
+		pass "logging in through the greeter started a session as the session user"
+		guest "loginctl list-sessions 2>/dev/null" |
+			grep -qE 'user[[:space:]]+seat0[[:space:]]+[0-9]+[[:space:]]+user' ||
+			fail "the logged-in session is not a user-class session on seat0"
+		pass "user session registered on seat0"
+	else
+		PS_OUT="$(guest "ps -eo user,comm | grep -E 'gnome-shell|gnome-session' | grep -v grep | sort -u")"
+		echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*gnome-shell' ||
+			fail "gnome-shell is not running as the session user"
+		pass "gnome-shell running as the session user, unattended"
+	fi
 
 	# The shell can run while gnome-session considers the session failed -
 	# it puts up "Oh no! Something has gone wrong." over a working shell -
@@ -214,9 +285,13 @@ esac
 # Discover the Wayland socket rather than assuming a name: a compositor takes
 # the next free one, so it is wayland-1 on a system whose runtime dir already
 # had one. True of mutter as much as sway.
-WL='for s in /tmp/xdg-1000/wayland-[0-9]*; do case "$s" in *.lock) continue;; esac; W=$(basename "$s"); break; done;'
+#
+# The runtime dir depends on how the session began. The autologin chain
+# makes its own at /tmp/xdg-1000; a session gdm started gets /run/user/1000
+# from elogind. Take whichever holds a socket.
+WL='for d in /run/user/1000 /tmp/xdg-1000; do for s in "$d"/wayland-[0-9]*; do case "$s" in *.lock|*\[*) continue;; esac; [ -e "$s" ] || continue; XR="$d"; W=$(basename "$s"); break 2; done; done;'
 echo "graphics:"
-GL_OUT="$(guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'")"
+GL_OUT="$(guest "$WL su user -c \"XDG_RUNTIME_DIR=\$XR WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'")"
 echo "$GL_OUT" | grep -qi renderer || fail "no GL renderer reported - is the compositor up?"
 echo "$GL_OUT" | sed 's/^/        /'
 echo "$GL_OUT" | grep -qiE 'llvmpipe|softpipe' && fail "GL fell back to software rendering"
@@ -236,7 +311,7 @@ echo "screenshot:"
 # this script actually verifies has passed by now. To see the desktop, boot
 # with a software virtio-vga - no GL scanout - and use QEMU's own screendump,
 # which is what the GL path makes impossible ("Error: no surface").
-guest "$WL su user -c \"XDG_RUNTIME_DIR=/tmp/xdg-1000 WAYLAND_DISPLAY=\$W grim /tmp/bv.png\" 2>&1; ls -l /tmp/bv.png 2>&1" > "$RUN/shot.txt"
+guest "$WL su user -c \"XDG_RUNTIME_DIR=\$XR WAYLAND_DISPLAY=\$W grim /tmp/bv.png\" 2>&1; ls -l /tmp/bv.png 2>&1" > "$RUN/shot.txt"
 if ! grep -q '/tmp/bv.png$' "$RUN/shot.txt" && grep -qi "screen capture protocol\|not allowed" "$RUN/shot.txt"; then
 	echo "        no capture protocol this compositor supports - skipping"
 	echo

@@ -402,8 +402,21 @@ that depend on it, `agetty.tty1` bringing up a session with nobody touching a
 keyboard, that session belonging to the unprivileged user rather than root, the
 frontend resolving to a terminal, and GL being accelerated rather than quietly
 software. It finishes by writing a screenshot next to the image, and leaves
-`boot-verify-serial.log` there either way. `--arch arm64`, `--image`,
-`--timeout` and `--keep` are the knobs; `--help` lists them.
+`boot-verify-serial.log` there either way - or in the current directory when
+the image's directory is not writable, as CI's root-owned output trees are
+not. `--arch arm64`, `--image`, `--timeout`, `--password` and `--keep` are the
+knobs; `--help` lists them. The image itself is never written: the guest runs
+on a throwaway overlay, so verifying a root-owned image works and verifying
+any image leaves it as it was.
+
+On an image that ships gdm - the GNOME frontend - the unattended assertion
+inverts. Such an image boots to a greeter, and a session appearing with
+nobody at the keyboard is the failure, not the success. The script checks
+that the greeter is up as the `gdm` account and registered on the seat, that
+no user session exists yet, and then logs in the way a person would - it
+types the session user's password (`--password`, default the one in
+`sdk/board/common/users.txt`) into the greeter over the QEMU monitor - and
+runs the remaining checks against the session that produces.
 
 Two things about it are worth knowing, because both are easy to get wrong:
 

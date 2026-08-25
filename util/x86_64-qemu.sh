@@ -16,6 +16,10 @@
 #                       and drive the console. See util/boot-verify.sh.
 #   QEMU_MONITOR_SOCK=<f>  QEMU monitor on a unix socket, so a script can shut
 #                       the machine down cleanly instead of killing it.
+#   QEMU_SNAPSHOT=1     keep all writes in a throwaway overlay; the image is
+#                       never modified and need not be writable. What a
+#                       verification run wants, and what a root-owned CI
+#                       image requires.
 #   QEMU_USB_BOOT=1     attach the image as a USB mass storage device on an
 #                       xHCI controller instead of virtio-blk, which is how
 #                       the image is actually used: written to a stick and
@@ -131,12 +135,23 @@ fi
 # preference expressed, the firmware picks by its own enumeration order, and a
 # run that boots the wrong one looks like a broken image rather than a
 # mis-specified machine.
+#
+# QEMU_SNAPSHOT keeps every write in a throwaway overlay, so the image on
+# disk is never touched. Two reasons to want that: a verification run must
+# not alter the thing it is verifying, and the image may not be writable at
+# all - CI leaves it owned by root, and QEMU then refuses to start with
+#
+#   Could not open '.../disk.img': Permission denied
+#
+# which reads as a broken image when it is a read-only one.
+SNAP=""
+[ -n "${QEMU_SNAPSHOT:-}" ] && SNAP=",snapshot=on"
 if [ -n "${QEMU_USB_BOOT:-}" ]; then
 	STORAGE="-device qemu-xhci,id=xhci
-		-drive file=$IMG,if=none,format=raw,id=usbstick
+		-drive file=$IMG,if=none,format=raw,id=usbstick$SNAP
 		-device usb-storage,bus=xhci.0,drive=usbstick,bootindex=0"
 else
-	STORAGE="-drive file=$IMG,if=none,format=raw,id=hd0
+	STORAGE="-drive file=$IMG,if=none,format=raw,id=hd0$SNAP
 		-device virtio-blk-pci,drive=hd0"
 fi
 
