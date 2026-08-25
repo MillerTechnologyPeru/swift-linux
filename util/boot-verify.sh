@@ -291,7 +291,9 @@ esac
 # from elogind. Take whichever holds a socket.
 WL='for d in /run/user/1000 /tmp/xdg-1000; do for s in "$d"/wayland-[0-9]*; do case "$s" in *.lock|*\[*) continue;; esac; [ -e "$s" ] || continue; XR="$d"; W=$(basename "$s"); break 2; done; done;'
 echo "graphics:"
-GL_OUT="$(guest "$WL su user -c \"XDG_RUNTIME_DIR=\$XR WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'")"
+# The console echoes the command before answering, and the command names the
+# string being grepped for; keep only the answer, which has the colon.
+GL_OUT="$(guest "$WL su user -c \"XDG_RUNTIME_DIR=\$XR WAYLAND_DISPLAY=\$W eglinfo\" 2>/dev/null | grep -m1 -i 'core profile renderer'" | grep -i 'renderer:')"
 echo "$GL_OUT" | grep -qi renderer || fail "no GL renderer reported - is the compositor up?"
 echo "$GL_OUT" | sed 's/^/        /'
 echo "$GL_OUT" | grep -qiE 'llvmpipe|softpipe' && fail "GL fell back to software rendering"
