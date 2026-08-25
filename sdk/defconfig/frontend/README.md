@@ -23,7 +23,7 @@ duplicates the default.
 | `minimal.config` | bring-up: verifying a board boots, and short build cycles | working |
 | `gmenu2x.config` | armv5 / devices with no OpenGL ES (framebuffer) | definition only |
 | `xfce.config` | desktop use: XFCE on X.org, Chicago95 theme by default | packaged + kconfig-validated, not yet booted |
-| `gnome.config` | desktop x86_64/arm64 machines | all five stages packaged (23 packages: elogind through gnome-shell + portals); kconfig-validated, not yet compiled or booted - mozjs is the expected first-build trouble spot |
+| `gnome.config` | desktop x86_64/arm64 machines | working: builds, boots to a gdm greeter (no autologin), and logs in to a GL-accelerated GNOME session; `util/boot-verify.sh` checks the whole path |
 | `phosh.config` | Android-phone form factors (oneplus-*, xiaomi-*) | placeholder: Buildroot has no phosh/phoc packages |
 
 The placeholders document intent and the packaging work each needs; they
