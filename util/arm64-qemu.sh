@@ -54,21 +54,52 @@ else
 	ACCEL="-cpu max"
 fi
 
-# virtio-gpu-gl needs host virglrenderer and a GL-capable display; fall back to
-# plain virtio-gpu, and to no display at all when running headless, so the
-# image still boots to the serial console.
+# virgl (host GPU acceleration for the guest's GL) needs a QEMU built with
+# virglrenderer. Probe for the device and fall back to a plain virtio-gpu,
+# saying so: the image still boots and the serial console still works, but a
+# GL compositor - and therefore the frontend - will not come up.
 GPU="-device virtio-gpu-gl-pci"
-DISPLAY_OPT="-display gtk,gl=on,show-cursor=on"
-# Headless keeps the GL device: the compositor needs a render node, not a
-# window, so "no display" and "no GL" are separate choices - dropping GL here
-# would boot to a serial console with no session to verify.
-if ! qemu-system-aarch64 -device help 2>/dev/null | grep -q virtio-gpu-gl-pci; then
-	GPU="-device virtio-gpu-pci"
-	DISPLAY_OPT="-display gtk,show-cursor=on"
-fi
+DISPLAY_OPTS="gtk,gl=on,show-cursor=on"
+# Headless keeps the GL device on purpose: the compositor needs a render node,
+# not a window, so "no display" and "no GL" are separate choices - dropping GL
+# here would boot to a serial console with no session to verify.
+#
+# That means egl-headless rather than "none". virtio-gpu-gl needs a display
+# backend with GL enabled, and "-display none" makes qemu refuse the device
+# before the machine ever starts:
+#
+#   qemu-system-aarch64: -device virtio-gpu-gl-pci: The display backend does
+#   not have OpenGL support enabled
+#
+# which is a launcher that cannot boot an image headless at all - every
+# scripted check against an arm64 image failed there, at "qemu exited early",
+# with nothing in the serial log to say why. The x86_64 launcher has had the
+# egl-headless path for as long as it has had headless support; this one was
+# simply never given it.
+HEADLESS=""
 if [ -n "${QEMU_NOGRAPHIC:-}" ] || [ -z "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]; then
-	DISPLAY_OPT="-display none"
+	HEADLESS=1
+	if qemu-system-aarch64 -display help 2>/dev/null | grep -qw egl-headless; then
+		DISPLAY_OPTS="egl-headless"
+	else
+		echo "warning: this qemu has no egl-headless display; running without a" >&2
+		echo "         GPU, so the compositor will not start." >&2
+		DISPLAY_OPTS="none"
+	fi
 fi
+if ! qemu-system-aarch64 -device help 2>/dev/null | grep -q virtio-gpu-gl-pci; then
+	echo "warning: this qemu has no virgl (virtio-gpu-gl-pci); falling back to" >&2
+	echo "         software virtio-gpu. The image boots, but a GL session will" >&2
+	echo "         not start. Install a qemu built with virglrenderer for the" >&2
+	echo "         graphical frontend." >&2
+	# virtio-gpu-pci, not virtio-vga: the virt machine has no VGA at all, and
+	# arm64 UEFI draws through this device's GOP.
+	GPU="-device virtio-gpu-pci"
+	DISPLAY_OPTS="gtk,show-cursor=on"
+	# No GL device, so no reason to ask for a GL display backend either.
+	[ -n "$HEADLESS" ] && DISPLAY_OPTS="none"
+fi
+DISPLAY_OPT="-display $DISPLAY_OPTS"
 
 # Serial console: this terminal with the monitor multiplexed in by default;
 # QEMU_SERIAL_LOG moves it to a socket with a logfile, which is what lets a
