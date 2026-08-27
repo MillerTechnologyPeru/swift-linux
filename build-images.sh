@@ -227,6 +227,29 @@ br_build() {
 		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
 			host-libglib2-dirclean >/dev/null || return 1
 	fi
+	# network-manager, same disease, newer infection. libs.config names it
+	# now, so it rides into the toolchain release - built for the sdk profile,
+	# which has no introspection - and every seeded tree starts with a
+	# NetworkManager that is stamped built and ships no NM-1.0.gir. The
+	# stamp's timestamp says as much: it predates the tree it sits in,
+	# because it came out of the release tarball. It surfaces two hours
+	# later in libnma:
+	#
+	#   Couldn't find include 'NM-1.0.gir'
+	#
+	# Same answer: ask the sysroot, not the option, and rebuild the producer.
+	if grep -q '^BR2_PACKAGE_GOBJECT_INTROSPECTION=y' "$out/.config" 2>/dev/null &&
+	   grep -q '^BR2_PACKAGE_NETWORK_MANAGER=y' "$out/.config" 2>/dev/null; then
+		found=
+		for sysroot in "$out"/host/*/sysroot; do
+			[ -f "$sysroot/usr/share/gir-1.0/NM-1.0.gir" ] && found=1
+		done
+		if [ -z "$found" ]; then
+			echo "[br_build] network-manager carries no NM-1.0.gir, which libnma needs - rebuilding it"
+			make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
+				network-manager-dirclean >/dev/null || return 1
+		fi
+	fi
 	# Re-extract a ports package when its patch set changes. Buildroot applies
 	# patches once, at extract time, and stamps the source directory; a patch
 	# added or edited afterwards changes nothing. It is the same rule as above
