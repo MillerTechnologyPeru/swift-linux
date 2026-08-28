@@ -119,6 +119,18 @@ on:
           validate the compile without touching the release.
         type: boolean
         default: false
+      from_source_clean:
+        description: >
+          Space-separated phase directories under swift-source/build/
+          buildbot_linux to delete before a from_source resume - e.g.
+          "swift-linux-x86_64". For a tree an unclean stop corrupted:
+          ninja trusts timestamps, so an object truncated by a power
+          loss is "up to date" and surfaces as undefined references at
+          link, hours later. Deleting the phase rebuilds it whole while
+          the finished phases (llvm above all) stay cached.
+        required: false
+        default: ''
+        type: string
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -387,6 +399,15 @@ jobs:
               BR2_DL_DIR=/mnt/br/dl host-swift-dirclean
           else
             echo "tree already in source form with the current patches; resuming the build"
+            for phase in ${{ inputs.from_source_clean }}; do
+              p="$D/swift-source/build/buildbot_linux/$phase"
+              if [ -d "$p" ]; then
+                echo "deleting phase $phase (from_source_clean)"
+                rm -rf "$p"
+              else
+                echo "no phase directory $phase to delete"
+              fi
+            done
           fi
 
       # Only the host-swift package: with no dependencies declared it pulls in
