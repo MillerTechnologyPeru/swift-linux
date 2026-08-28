@@ -107,6 +107,18 @@ on:
         description: 'Re-package and re-upload host-swift even if this version is already on the release'
         type: boolean
         default: false
+      from_source:
+        description: >
+          Compile host-swift with build-script instead of unpacking the
+          released toolchain. This is the only path that exercises the
+          package's patches - the prebuilt install satisfies the build
+          guard before build-script ever runs, so a patch can merge and
+          sit uncompiled indefinitely. Dircleans host-swift first, since
+          the persistent tree already holds a prebuilt-satisfied guard.
+          Five to six hours from cold. Leave force_republish off to
+          validate the compile without touching the release.
+        type: boolean
+        default: false
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -339,11 +351,26 @@ jobs:
       # The script is idempotent: it tests for build/usr/bin and build/llvm
       # and does nothing when the tree already has them.
       - name: Install the prebuilt host Swift toolchain
+        if: ${{ !inputs.from_source }}
         run: |
           set -eu
           BUILDROOT_OUTPUT="$BR_O" SWIFT_BUILDROOT="$GITHUB_WORKSPACE/swift" \
             bash "$GITHUB_WORKSPACE/swift/.devcontainer/library-scripts/install-swift.sh"
           "$BR_O/build/host-swift-${{ steps.ver.outputs.version }}/build/usr/bin/swiftc" --version
+
+      # from_source is a dirclean plus the absence of the step above, and the
+      # dirclean is not optional: HOST_SWIFT_BUILD_CMDS is guarded on
+      # build/llvm existing, and on this persistent tree the prebuilt install
+      # of some earlier run has already satisfied it - skipping the install
+      # alone would still build nothing. The dirclean also re-extracts the
+      # sources, which is when Buildroot applies patches, so a patch that
+      # merged after the tree's last extract gets compiled at all.
+      - name: Return host-swift to source form
+        if: ${{ inputs.from_source }}
+        run: |
+          set -eu
+          make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+            BR2_DL_DIR=/mnt/br/dl host-swift-dirclean
 
       # Only the host-swift package: with no dependencies declared it pulls in
       # neither the cross toolchain nor anything else from the profile. The
