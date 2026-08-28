@@ -359,18 +359,35 @@ jobs:
           "$BR_O/build/host-swift-${{ steps.ver.outputs.version }}/build/usr/bin/swiftc" --version
 
       # from_source is a dirclean plus the absence of the step above, and the
-      # dirclean is not optional: HOST_SWIFT_BUILD_CMDS is guarded on
-      # build/llvm existing, and on this persistent tree the prebuilt install
-      # of some earlier run has already satisfied it - skipping the install
-      # alone would still build nothing. The dirclean also re-extracts the
-      # sources, which is when Buildroot applies patches, so a patch that
-      # merged after the tree's last extract gets compiled at all.
+      # dirclean serves two purposes: HOST_SWIFT_BUILD_CMDS is guarded on
+      # build/llvm existing, which a prebuilt install from some earlier run
+      # has already satisfied on this persistent tree; and patches are
+      # applied at extract time, so only a re-extract picks up one that
+      # merged after the tree's last extract.
+      #
+      # But not unconditionally. A from-source build the machine died under
+      # leaves a tree that is already what the dirclean would produce - no
+      # build/llvm, sources extracted with the current patches - plus hours
+      # of compiled objects ninja can resume from. The first attempt lost
+      # four hours of LLVM and Swift to a host outage; dircleaning on the
+      # retry would have thrown away the four hours the outage did not. So:
+      # dirclean when the guard is satisfied (prebuilt tree) or the applied
+      # patch set differs from the package's (stale extract); resume
+      # otherwise.
       - name: Return host-swift to source form
         if: ${{ inputs.from_source }}
         run: |
           set -eu
-          make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
-            BR2_DL_DIR=/mnt/br/dl host-swift-dirclean
+          D="$BR_O/build/host-swift-${{ steps.ver.outputs.version }}"
+          want=$(ls "$GITHUB_WORKSPACE"/swift/package/swift/*.patch 2>/dev/null | xargs -rn1 basename | sort)
+          have=$(tr ' ' '\n' < "$D/.applied_patches_list" 2>/dev/null | xargs -rn1 basename | sort || true)
+          if [ ! -d "$D" ] || [ -d "$D/build/llvm" ] || [ "$want" != "$have" ]; then
+            echo "tree is prebuilt-satisfied or stale; dircleaning"
+            make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+              BR2_DL_DIR=/mnt/br/dl host-swift-dirclean
+          else
+            echo "tree already in source form with the current patches; resuming the build"
+          fi
 
       # Only the host-swift package: with no dependencies declared it pulls in
       # neither the cross toolchain nor anything else from the profile. The
