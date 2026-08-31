@@ -362,6 +362,34 @@ jobs:
       #
       # The script is idempotent: it tests for build/usr/bin and build/llvm
       # and does nothing when the tree already has them.
+      # The prebuilt install is per-piece idempotent - it creates build/usr
+      # only when absent, build/llvm only when absent - which is right for a
+      # tree that is either empty or complete, and wrong for one left half
+      # built. An interrupted from_source run leaves exactly that: build/usr
+      # populated by build-script, no build/llvm, because that symlink is
+      # written only on success. Installing over it would graft the distro
+      # llvm-21 onto a partial from-source toolchain and call it done.
+      #
+      # This is not hypothetical either. Three from_source attempts died to
+      # host outages last week and left the shared tree in that state, and
+      # every image and lib32 job since has failed on the consumer's own
+      # check - "shared host-swift has no usable build/llvm" - which is the
+      # right error from the wrong place: the tree should never have been
+      # handed over in that condition. Test what the consumer tests, and
+      # start over when it does not hold.
+      - name: Discard a half-built host-swift
+        if: ${{ !inputs.from_source }}
+        run: |
+          set -eu
+          D="$BR_O/build/host-swift-${{ steps.ver.outputs.version }}"
+          if [ -d "$D" ] && [ ! -e "$D/build/llvm/lib/cmake/llvm" ]; then
+            echo "$D exists without a usable build/llvm - dircleaning before the install"
+            make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
+              BR2_DL_DIR=/mnt/br/dl host-swift-dirclean
+          else
+            echo "host-swift tree is absent or complete; nothing to discard"
+          fi
+
       - name: Install the prebuilt host Swift toolchain
         if: ${{ !inputs.from_source }}
         run: |
