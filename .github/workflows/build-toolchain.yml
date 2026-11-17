@@ -890,6 +890,21 @@ jobs:
       - name: Build host-mesa3d
         run: |
           set -eu
+          # A patch that fails to apply leaves the tree extracted, with an
+          # .applied_patches_list but no .stamp_patched. Buildroot then
+          # re-runs the patch step on top of that list and refuses every
+          # later run with
+          #
+          #   Error: duplicate filename '0001-vc4-add-meson-option-...patch'
+          #
+          # until someone dircleans the package by hand. The tree is only
+          # sources at that point, so start it over.
+          for d in "$BR_O"/build/host-mesa3d-*; do
+            if [ -f "$d/.applied_patches_list" ] && [ ! -f "$d/.stamp_patched" ]; then
+              echo "discarding half-patched $d"
+              rm -rf "$d"
+            fi
+          done
           FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
             BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS" \
             host-mesa3d
