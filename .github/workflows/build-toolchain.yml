@@ -1040,6 +1040,25 @@ jobs:
       - name: Build the rest of the sdk profile
         run: |
           set -eu
+          # Buildroot applies patches once, at extract time, and never looks
+          # at them again. On this persistent tree, a package that failed to
+          # build keeps its old extract, so the patch that fixes it - merged
+          # after the failure - is never applied and the retry fails the same
+          # way:
+          #
+          #   lib/ext2.c:144:24: error: 'EXT2_ECOMPR_FL' undeclared
+          #
+          # Start over any package that never finished building. Seeded and
+          # completed packages are stamped built and stay as they are;
+          # host-swift has its own resume logic and is left to it.
+          for d in "$BR_O"/build/*/; do
+            d=${d%/}
+            case "${d##*/}" in host-swift-*) continue ;; esac
+            if [ -f "$d/.stamp_extracted" ] && [ ! -f "$d/.stamp_built" ]; then
+              echo "discarding unfinished ${d##*/}"
+              rm -rf "$d"
+            fi
+          done
           FORCE_UNSAFE_CONFIGURE=1 make -C "$BR_B" O="$BR_O" BR2_EXTERNAL="$BR_EXT" \
             BR2_DL_DIR=/mnt/br/dl BR2_CCACHE_DIR="$CCACHE_DIR" -j"$BR_JOBS"
 
