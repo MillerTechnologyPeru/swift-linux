@@ -75,32 +75,31 @@ Subject: [PATCH] add esp8089 kernel driver
  create mode 100644 drivers/net/wireless/esp8089/slc_host_register.h
 
 diff --git a/drivers/net/wireless/Kconfig b/drivers/net/wireless/Kconfig
-index cb1c15012dd0..de5e37846397 100644
+index c659959..454de3f 100644
 --- a/drivers/net/wireless/Kconfig
 +++ b/drivers/net/wireless/Kconfig
-@@ -37,6 +37,7 @@ source "drivers/net/wireless/st/Kconfig"
+@@ -36,6 +36,7 @@ source "drivers/net/wireless/st/Kconfig"
  source "drivers/net/wireless/ti/Kconfig"
  source "drivers/net/wireless/zydas/Kconfig"
  source "drivers/net/wireless/quantenna/Kconfig"
 +source "drivers/net/wireless/esp8089/Kconfig"
  
- config PCMCIA_RAYCS
- 	tristate "Aviator/Raytheon 2.4GHz wireless support"
+ source "drivers/net/wireless/virtual/Kconfig"
+ 
 diff --git a/drivers/net/wireless/Makefile b/drivers/net/wireless/Makefile
-index a61cf6c90343..92ffd2cef51c 100644
+index e1c4141..806ea01 100644
 --- a/drivers/net/wireless/Makefile
 +++ b/drivers/net/wireless/Makefile
-@@ -22,6 +22,7 @@ obj-$(CONFIG_WLAN_VENDOR_SILABS) += silabs/
+@@ -21,5 +21,6 @@ obj-$(CONFIG_WLAN_VENDOR_SILABS) += silabs/
  obj-$(CONFIG_WLAN_VENDOR_ST) += st/
  obj-$(CONFIG_WLAN_VENDOR_TI) += ti/
  obj-$(CONFIG_WLAN_VENDOR_ZYDAS) += zydas/
 +obj-$(CONFIG_ESP8089) += esp8089/
  
- # 16-bit wireless PCMCIA client drivers
- obj-$(CONFIG_PCMCIA_RAYCS)	+= ray_cs.o
+ obj-$(CONFIG_WLAN) += virtual/
 diff --git a/drivers/net/wireless/esp8089/.gitignore b/drivers/net/wireless/esp8089/.gitignore
 new file mode 100644
-index 000000000000..eae6529085d0
+index 0000000..eae6529
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/.gitignore
 @@ -0,0 +1,7 @@
@@ -113,7 +112,7 @@ index 000000000000..eae6529085d0
 +*.mod.c
 diff --git a/drivers/net/wireless/esp8089/Kconfig b/drivers/net/wireless/esp8089/Kconfig
 new file mode 100644
-index 000000000000..8db1fc54712d
+index 0000000..8db1fc5
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/Kconfig
 @@ -0,0 +1,13 @@
@@ -132,7 +131,7 @@ index 000000000000..8db1fc54712d
 +	  DebugFS support for ESP8089
 diff --git a/drivers/net/wireless/esp8089/LICENSE b/drivers/net/wireless/esp8089/LICENSE
 new file mode 100644
-index 000000000000..d6a93266f748
+index 0000000..d6a9326
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/LICENSE
 @@ -0,0 +1,340 @@
@@ -478,7 +477,7 @@ index 000000000000..d6a93266f748
 +
 diff --git a/drivers/net/wireless/esp8089/Makefile b/drivers/net/wireless/esp8089/Makefile
 new file mode 100644
-index 000000000000..36decfd20ecd
+index 0000000..36decfd
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/Makefile
 @@ -0,0 +1,7 @@
@@ -491,7 +490,7 @@ index 000000000000..36decfd20ecd
 +obj-$(CONFIG_ESP8089) := esp8089.o
 diff --git a/drivers/net/wireless/esp8089/Makefile.old b/drivers/net/wireless/esp8089/Makefile.old
 new file mode 100644
-index 000000000000..b7b1a47b159c
+index 0000000..b7b1a47
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/Makefile.old
 @@ -0,0 +1,99 @@
@@ -596,7 +595,7 @@ index 000000000000..b7b1a47b159c
 +.PHONY: all modules clean install config_check
 diff --git a/drivers/net/wireless/esp8089/README.md b/drivers/net/wireless/esp8089/README.md
 new file mode 100644
-index 000000000000..56b40db272f3
+index 0000000..56b40db
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/README.md
 @@ -0,0 +1,31 @@
@@ -633,7 +632,7 @@ index 000000000000..56b40db272f3
 +To load the module.
 diff --git a/drivers/net/wireless/esp8089/esp_ctrl.c b/drivers/net/wireless/esp8089/esp_ctrl.c
 new file mode 100644
-index 000000000000..a19d2437dd82
+index 0000000..a19d243
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_ctrl.c
 @@ -0,0 +1,801 @@
@@ -1440,7 +1439,7 @@ index 000000000000..a19d2437dd82
 +}
 diff --git a/drivers/net/wireless/esp8089/esp_ctrl.h b/drivers/net/wireless/esp8089/esp_ctrl.h
 new file mode 100644
-index 000000000000..29c18caa9ede
+index 0000000..29c18ca
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_ctrl.h
 @@ -0,0 +1,58 @@
@@ -1504,7 +1503,7 @@ index 000000000000..29c18caa9ede
 +#endif				/* _ESP_CTRL_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_debug.c b/drivers/net/wireless/esp8089/esp_debug.c
 new file mode 100644
-index 000000000000..5ce8fd2ebd6b
+index 0000000..5ce8fd2
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_debug.c
 @@ -0,0 +1,297 @@
@@ -1807,7 +1806,7 @@ index 000000000000..5ce8fd2ebd6b
 +#endif				/* HOST_RC */
 diff --git a/drivers/net/wireless/esp8089/esp_debug.h b/drivers/net/wireless/esp8089/esp_debug.h
 new file mode 100644
-index 000000000000..bab695d34bfb
+index 0000000..bab695d
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_debug.h
 @@ -0,0 +1,101 @@
@@ -1914,7 +1913,7 @@ index 000000000000..bab695d34bfb
 +#endif				/* _DEBUG_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_ext.c b/drivers/net/wireless/esp8089/esp_ext.c
 new file mode 100644
-index 000000000000..541f27a6853f
+index 0000000..541f27a
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_ext.c
 @@ -0,0 +1,542 @@
@@ -2462,7 +2461,7 @@ index 000000000000..541f27a6853f
 +#endif				/* USE_EXT_GPIO */
 diff --git a/drivers/net/wireless/esp8089/esp_ext.h b/drivers/net/wireless/esp8089/esp_ext.h
 new file mode 100644
-index 000000000000..0eeba4d22111
+index 0000000..0eeba4d
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_ext.h
 @@ -0,0 +1,100 @@
@@ -2568,7 +2567,7 @@ index 000000000000..0eeba4d22111
 +#endif				/* USE_EXT_GPIO */
 diff --git a/drivers/net/wireless/esp8089/esp_file.c b/drivers/net/wireless/esp8089/esp_file.c
 new file mode 100644
-index 000000000000..ea702f010eec
+index 0000000..4f43529
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_file.c
 @@ -0,0 +1,258 @@
@@ -2832,7 +2831,7 @@ index 000000000000..ea702f010eec
 +}
 diff --git a/drivers/net/wireless/esp8089/esp_file.h b/drivers/net/wireless/esp8089/esp_file.h
 new file mode 100644
-index 000000000000..5ba39c626baa
+index 0000000..5ba39c6
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_file.h
 @@ -0,0 +1,43 @@
@@ -2881,7 +2880,7 @@ index 000000000000..5ba39c626baa
 +#endif				/* _ESP_FILE_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_init_data.h b/drivers/net/wireless/esp8089/esp_init_data.h
 new file mode 100644
-index 000000000000..16f451affd1e
+index 0000000..16f451a
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_init_data.h
 @@ -0,0 +1,7 @@
@@ -2894,7 +2893,7 @@ index 000000000000..16f451affd1e
 +0 };
 diff --git a/drivers/net/wireless/esp8089/esp_io.c b/drivers/net/wireless/esp8089/esp_io.c
 new file mode 100644
-index 000000000000..6c5c01aad4e5
+index 0000000..6c5c01a
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_io.c
 @@ -0,0 +1,639 @@
@@ -3539,7 +3538,7 @@ index 000000000000..6c5c01aad4e5
 +}
 diff --git a/drivers/net/wireless/esp8089/esp_mac80211.c b/drivers/net/wireless/esp8089/esp_mac80211.c
 new file mode 100644
-index 000000000000..14186365fdd4
+index 0000000..a12f23a
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_mac80211.c
 @@ -0,0 +1,1731 @@
@@ -5276,7 +5275,7 @@ index 000000000000..14186365fdd4
 +}
 diff --git a/drivers/net/wireless/esp8089/esp_mac80211.h b/drivers/net/wireless/esp8089/esp_mac80211.h
 new file mode 100644
-index 000000000000..699b27dcadd1
+index 0000000..699b27d
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_mac80211.h
 @@ -0,0 +1,38 @@
@@ -5320,7 +5319,7 @@ index 000000000000..699b27dcadd1
 +#endif				/* _ESP_MAC80211_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_main.c b/drivers/net/wireless/esp8089/esp_main.c
 new file mode 100644
-index 000000000000..404e0d7a6f54
+index 0000000..404e0d7
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_main.c
 @@ -0,0 +1,263 @@
@@ -5589,7 +5588,7 @@ index 000000000000..404e0d7a6f54
 +#endif				/* !FPGA_DEBUG */
 diff --git a/drivers/net/wireless/esp8089/esp_path.h b/drivers/net/wireless/esp8089/esp_path.h
 new file mode 100644
-index 000000000000..1ceb14bc3b15
+index 0000000..1ceb14b
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_path.h
 @@ -0,0 +1,6 @@
@@ -5601,7 +5600,7 @@ index 000000000000..1ceb14bc3b15
 +#endif				/* _ESP_PATH_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_pub.h b/drivers/net/wireless/esp8089/esp_pub.h
 new file mode 100644
-index 000000000000..0d3ad3655cf4
+index 0000000..0d3ad36
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_pub.h
 @@ -0,0 +1,222 @@
@@ -5829,7 +5828,7 @@ index 000000000000..0d3ad3655cf4
 +#endif				/* _ESP_PUB_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_sif.h b/drivers/net/wireless/esp8089/esp_sif.h
 new file mode 100644
-index 000000000000..2d49f2bc8035
+index 0000000..2d49f2b
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_sif.h
 @@ -0,0 +1,207 @@
@@ -6042,7 +6041,7 @@ index 000000000000..2d49f2bc8035
 +#endif				/* _ESP_SIF_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_sip.c b/drivers/net/wireless/esp8089/esp_sip.c
 new file mode 100644
-index 000000000000..6602a1e22ab1
+index 0000000..95172cb
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_sip.c
 @@ -0,0 +1,2420 @@
@@ -8468,7 +8467,7 @@ index 000000000000..6602a1e22ab1
 +#endif				/* FPGA_TXDATA */
 diff --git a/drivers/net/wireless/esp8089/esp_sip.h b/drivers/net/wireless/esp8089/esp_sip.h
 new file mode 100644
-index 000000000000..95cc42989b2c
+index 0000000..95cc429
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_sip.h
 @@ -0,0 +1,171 @@
@@ -8645,7 +8644,7 @@ index 000000000000..95cc42989b2c
 +#endif
 diff --git a/drivers/net/wireless/esp8089/esp_utils.c b/drivers/net/wireless/esp8089/esp_utils.c
 new file mode 100644
-index 000000000000..8b188de79b2c
+index 0000000..8b188de
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_utils.c
 @@ -0,0 +1,262 @@
@@ -8913,7 +8912,7 @@ index 000000000000..8b188de79b2c
 +}
 diff --git a/drivers/net/wireless/esp8089/esp_utils.h b/drivers/net/wireless/esp8089/esp_utils.h
 new file mode 100644
-index 000000000000..ed16d9ca0a65
+index 0000000..ed16d9c
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_utils.h
 @@ -0,0 +1,41 @@
@@ -8960,14 +8959,14 @@ index 000000000000..ed16d9ca0a65
 +#endif
 diff --git a/drivers/net/wireless/esp8089/esp_version.h b/drivers/net/wireless/esp8089/esp_version.h
 new file mode 100644
-index 000000000000..481d98841fc2
+index 0000000..481d988
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_version.h
 @@ -0,0 +1 @@
 +#define DRIVER_VER 0xbdf5087c3debll
 diff --git a/drivers/net/wireless/esp8089/esp_wl.h b/drivers/net/wireless/esp8089/esp_wl.h
 new file mode 100644
-index 000000000000..e3e62a83d505
+index 0000000..e3e62a8
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_wl.h
 @@ -0,0 +1,63 @@
@@ -9036,7 +9035,7 @@ index 000000000000..e3e62a83d505
 +#endif				/* _ESP_WL_H_ */
 diff --git a/drivers/net/wireless/esp8089/esp_wmac.h b/drivers/net/wireless/esp8089/esp_wmac.h
 new file mode 100644
-index 000000000000..72d13cbfc0e5
+index 0000000..72d13cb
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/esp_wmac.h
 @@ -0,0 +1,92 @@
@@ -9134,7 +9133,7 @@ index 000000000000..72d13cbfc0e5
 +#endif				/* _ESP_WMAC_H_ */
 diff --git a/drivers/net/wireless/esp8089/firmware/LICENSE-2.0.txt b/drivers/net/wireless/esp8089/firmware/LICENSE-2.0.txt
 new file mode 100644
-index 000000000000..0dd35c82a001
+index 0000000..0dd35c8
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/firmware/LICENSE-2.0.txt
 @@ -0,0 +1,203 @@
@@ -9343,7 +9342,7 @@ index 000000000000..0dd35c82a001
 +   limitations under the License.
 diff --git a/drivers/net/wireless/esp8089/sdio_sif_esp.c b/drivers/net/wireless/esp8089/sdio_sif_esp.c
 new file mode 100644
-index 000000000000..2bd2c63f5388
+index 0000000..d660378
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/sdio_sif_esp.c
 @@ -0,0 +1,824 @@
@@ -10173,7 +10172,7 @@ index 000000000000..2bd2c63f5388
 +module_exit(esp_sdio_exit);
 diff --git a/drivers/net/wireless/esp8089/sip2_common.h b/drivers/net/wireless/esp8089/sip2_common.h
 new file mode 100644
-index 000000000000..d46e87589b0b
+index 0000000..d46e875
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/sip2_common.h
 @@ -0,0 +1,475 @@
@@ -10654,7 +10653,7 @@ index 000000000000..d46e87589b0b
 +#endif				/* _SIP_COMMON_H_ */
 diff --git a/drivers/net/wireless/esp8089/slc_host_register.h b/drivers/net/wireless/esp8089/slc_host_register.h
 new file mode 100644
-index 000000000000..2cdb2c856d15
+index 0000000..2cdb2c8
 --- /dev/null
 +++ b/drivers/net/wireless/esp8089/slc_host_register.h
 @@ -0,0 +1,271 @@
@@ -10929,5 +10928,3 @@ index 000000000000..2cdb2c856d15
 +
 +
 +#endif				// SLC_HOST_REGISTER_H_INCLUDED
--- 
-2.34.1
