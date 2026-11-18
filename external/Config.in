@@ -13,6 +13,7 @@ source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/miyoo-ctl/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/miyoo-daemon/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/rocknix-abl/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/rocknix-joypad/Config.in"
+source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/rk3326-loader/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/sound-open-firmware/Config.in"
 source "$BR2_EXTERNAL_SWIFT_LINUX_PATH/package/swift-initramfs/Config.in"
 
