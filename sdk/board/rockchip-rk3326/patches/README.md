@@ -12,8 +12,9 @@ tree with these patches applied, and the device trees only compile against it.
 
 Everything imported for this family comes from the same upstream tree,
 https://github.com/ROCKNIX/distribution (branch `next`, last synced at
-`4a9dfdb`, 2026-11-17), and is kept byte-identical to it so a resync is a
-straight copy and `diff -r` is the review:
+`4a9dfdb`, 2026-11-17), and is kept byte-identical to it - apart from the
+refreshed patches below - so a resync is a straight copy and `diff -r` is the
+review:
 
 | Here | Upstream |
 |---|---|
@@ -32,6 +33,24 @@ straight copy and `diff -r` is the review:
 to RK3326 (`PKG_PATCH_DIRS` in `packages/linux/package.mk`): the mainline set,
 the device set, the Rockchip rk817 charger/battery fixes, then the 7.0-series
 fixes.
+
+### Refreshed patches
+
+Buildroot applies patches with `patch -F0`, so every context line must match
+exactly; upstream's build allows the default fuzz of 2. Eight patches only
+apply against 7.1.2 with fuzz, so they are refreshed here: each was applied in
+series order with fuzz, and its diff regenerated from the result, keeping
+upstream's header. Only context lines and `index` lines change, and the tree
+the 37 patches produce is identical either way.
+
+- `patches/linux/`: `003-input-add-input-polldev-driver`,
+  `004-input-drivers`, `008-esp-8089-wifi`, `023-px30s-tsadc-support`,
+  `025-px30s-dsi-dphy-timing-table`, `032-px30s-otp-read-protocol`,
+  `034-px30s-cru-suspend-resume-restore`
+- `../patches-7.0/linux/`: `0006-hid-playstation-expose-DualSense-Edge-Fn-and-back-paddles`
+
+On a resync, copy upstream's files over these, and refresh again whichever
+still fail `patch -F0 --dry-run` in series order.
 
 The device trees now include ROCKNIX's own `rk3326.dtsi`, which replaces the
 kernel's copy when Buildroot lays `../dts/` over `arch/arm64/boot/dts/`. That
@@ -90,7 +109,8 @@ host port, so a DualSense can be plugged in.
 ## Verified
 
 Against linux-7.1.2 (sha256 `37198c93...0b5883f`, the hash upstream pins): all
-37 patches apply in the order above, the config merges with this repo's
+37 patches apply in the order above with `patch -F0`, as Buildroot runs it,
+the config merges with this repo's
 fragments, and the kernel `Image`, its modules, every RK3326 board's device
 tree and both rocknix-joypad modules (`rocknix-joypad.ko`,
 `rocknix-singleadc-joypad.ko`) build with the arm64 cross toolchain.
