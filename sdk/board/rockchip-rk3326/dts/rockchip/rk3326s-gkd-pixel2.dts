@@ -1,15 +1,6 @@
 // SPDX-License-Identifier: (GPL-2.0+ OR MIT)
 /*
  * Copyright (c) 2024 GameKiddy
- *
- * Reconstructed from the vendor-extracted rk3326s-gkd-pixel2.dtsi into a
- * mainline/ROCKNIX-style board .dts on top of the shared rk3326.dtsi,
- * mirroring the other standalone RK3326 boards in this tree (e.g.
- * rk3326-gameforce-chi.dts).
- *
- * No analog sticks - every input is a plain GPIO switch - so the gamepad
- * uses rocknix-singleadc-joypad with amux-count = <0>, same as the other
- * all-digital RK3326 boards (e.g. rk3326-gameconsole-r33s.dts).
  */
 
 /dts-v1/;
@@ -35,16 +26,7 @@
 	backlight: backlight {
 		compatible = "pwm-backlight";
 		pwms = <&pwm1 0 25000 1>;
-		/*
-		 * The first 17 entries (levels 0-16) are clamped to 17 instead
-		 * of counting up from 0: below that, this panel's backlight
-		 * circuit can't sustain visible output at all and the screen
-		 * just goes dark rather than dimming further. Confirmed on
-		 * hardware down to a floor of 15 on one unit and 12 on
-		 * another - 17 adds a bit of margin above both for unit-to-
-		 * unit variance in the backlight driver circuit we haven't
-		 * sampled yet.
-		 */
+		/* Levels 0-16 are clamped to 17: below that the backlight just goes dark. */
 		brightness-levels = <
 		 17  17  17  17  17  17  17  17
 		 17  17  17  17  17  17  17  17
@@ -129,15 +111,8 @@
 		joypad-revision = <0x0100>;
 		status = "okay";
 
-		/* purely digital switches - no ADC/analog stick present */
 		amux-count = <0>;
 		poll-interval = <10>;
-
-		/*
-		 * No rumble properties here - handled by the standalone
-		 * "vibrator" node below instead of this driver's own
-		 * has_rumble path (see there for why).
-		 */
 
 		button-up {
 			gpios = <&gpio3 RK_PB5 GPIO_ACTIVE_LOW>;
@@ -230,32 +205,7 @@
 		};
 	};
 
-	/*
-	 * Rumble motor - fixed and confirmed working on real hardware.
-	 *
-	 * Handled via the mainline pwm-vibrator driver (CONFIG_INPUT_PWM_VIBRA=y,
-	 * built into the kernel image), not rocknix-singleadc-joypad's own
-	 * has_rumble path - that driver is an out-of-tree module that doesn't
-	 * probe until ~10s into boot, vs. ~0.65s for pwm-vibrator on stock
-	 * firmware (reference_stock_dmesg.txt). Sibling boards
-	 * (rg351m/rg351v/gameforce-chi) already use this same built-in driver.
-	 *
-	 * Polarity matches the vendor-extracted rk3326s-gkd-pixel2.dtsi
-	 * exactly, but period does not: the vendor's 200000000ns (5Hz) is
-	 * unusually slow for motor PWM and produces clearly perceptible
-	 * individual on/off pulses at any partial duty (confirmed on real
-	 * hardware), not just a boot-time artifact - it'd affect any
-	 * variable-strength rumble effect. 1000000ns (1kHz) matches sibling
-	 * RK3326 boards (rg351m/rg351v) and gives smooth-feeling vibration
-	 * at any strength.
-	 *
-	 * Polarity alone isn't sufficient to fix the stuck-on-boot bug
-	 * though: pwm-vibra.c's probe does the same naive disable
-	 * rocknix-singleadc-joypad originally did, so
-	 * patches/linux/030-pwm-vibra-kick-stuck-boot-state.patch ports the
-	 * same probe-time "kick" fix into pwm-vibra.c itself. See git history
-	 * on this file for the full debugging account.
-	 */
+	/* 1kHz, not vendor's 5Hz: the vendor rate pulses perceptibly at partial duty */
 	vibrator: pwm-vibrator {
 		compatible = "pwm-vibrator";
 		pwms = <&pwm0 0 1000000 0>;
@@ -336,13 +286,7 @@
 		};
 	};
 
-	/*
-	 * Forwards these values to BL31 firmware via SIP calls so it can arm
-	 * wake sources for PX30S's firmware-controlled deep suspend states -
-	 * see 031-px30s-suspend-wakeup-config.patch and the KNOWN ISSUE
-	 * comment on the rk817 node below. Values match the vendor-extracted
-	 * rk3326s-gkd-pixel2.dtsi exactly.
-	 */
+	/* DO NOT REMOVE: mem-sleep stops resuming without it. Values match vendor exactly. */
 	rockchip_suspend: rockchip-suspend {
 		compatible = "rockchip,pm-px30";
 		status = "okay";
@@ -351,34 +295,7 @@
 		rockchip,wakeup-config = <133>;
 	};
 
-	/*
-	 * This board's own decompiled vendor devicetree wires &cpu0 to its
-	 * generic cpu0_opp_table (not a PX30S-specific one) with all nine of
-	 * vendor's real frequency steps - confirmed from the real, compiled
-	 * vendor devicetree blob, not just the shared BSP source tree, and no
-	 * vendor C code was found that ever swaps this at runtime. Mainline's
-	 * own shared cpu0_opp_table in px30.dtsi only carries three of those
-	 * nine steps, and is used by several *other* RK3326 boards in this
-	 * tree by default - extending or replacing it directly would have
-	 * silently changed their CPU/GPU behavior too, so instead this is a
-	 * board-local copy, used only here. All nine CPU steps and all five
-	 * GPU steps use each entry's plain (unsuffixed) opp-microvolt value,
-	 * which in vendor's table always equals its own -L0 row: the safest,
-	 * highest-margin bin, since mainline has no driver to parse the
-	 * per-chip rockchip,bin-scaling-sel/opp-microvolt-Lx AVS selection
-	 * vendor's own driver uses instead.
-	 *
-	 * An earlier version of this board's CPU/GPU tables used a separate,
-	 * statically lower-voltage px30s_cpu0_opp_table/px30s_gpu_opp_table
-	 * pair instead (ported from the vendor BSP's PX30S-suffixed tables).
-	 * Real hardware testing showed the CPU overclock toggle (1416/1512MHz)
-	 * then froze the system, even though this exact silicon had already
-	 * run stable at 1416MHz under the *generic* table's higher 1.35V.
-	 * Lower voltage being less stable than higher voltage at the same
-	 * frequency doesn't fit an overvoltage theory; it fits 1512MHz itself
-	 * being under-provisioned by the px30s table's lower ceiling - so
-	 * this now matches the real vendor board wiring instead.
-	 */
+	/* Vendor cpu0_opp_table at its -L0 voltages; lower px30s voltages froze 1416/1512MHz. */
 	gkd_pixel2_cpu0_opp_table: gkd-pixel2-cpu0-opp-table {
 		compatible = "operating-points-v2";
 		opp-shared;
@@ -425,21 +342,14 @@
 			clock-latency-ns = <40000>;
 			turbo-mode;
 		};
-		/*
-		 * 1512MHz disabled: this top step can trigger a full device
-		 * reset on its own, even from a fresh boot with no suspend/
-		 * resume involved (confirmed by direct reproduction - a single
-		 * isolated overclock/boost toggle was enough). 1416MHz remains
-		 * available as the highest turbo-mode step.
-		 */
-		/*
+		/* Post-resume crash repro (fixed by 034); test 1512MHz itself before re-enabling */
 		opp-1512000000 {
 			opp-hz = /bits/ 64 <1512000000>;
 			opp-microvolt = <1350000 1350000 1350000>;
 			clock-latency-ns = <40000>;
 			turbo-mode;
+			status = "disabled";
 		};
-		*/
 	};
 
 	gkd_pixel2_gpu_opp_table: gkd-pixel2-gpu-opp-table {
@@ -499,24 +409,10 @@
 
 	internal_display: panel@0 {
 		reg = <0>;
-		/*
-		 * Uses the rocknix,generic-dsi driver (already used by
-		 * several other RK3326 boards, e.g. rk3326-gameconsole-
-		 * eeclone.dts) with an init sequence reconstructed for this
-		 * panel, rather than the previous gkd,pixel2-panel/st7701
-		 * driver approach (029-gkd-pixel2-st7701-panel.patch, since
-		 * removed - confirmed working on real hardware with this
-		 * driver instead). vdd-supply/iovcc-supply (not VCC-supply/
-		 * IOVCC-supply) are this driver's actual regulator binding
-		 * names - see devm_regulator_get(dev, "vdd"/"iovcc") in
-		 * panel-generic-dsi.c. reset-gpios is GPIO_ACTIVE_LOW here,
-		 * matching the vendor-extracted rk3326s-gkd-pixel2.dtsi -
-		 * confirmed on real hardware (screen was blank at
-		 * GPIO_ACTIVE_HIGH).
-		 */
 		compatible = "rocknix,generic-dsi";
+		/* prepare 2->20ms, reset 1->150ms: fixes freeze/idle wake screen corruption */
 		panel_description =
-			"G size=68,121 delays=2,1,20,120,20 format=rgb888 lanes=2 flags=0xe03",
+			"G size=68,121 delays=20,150,20,120,20 format=rgb888 lanes=2 flags=0xe03",
 			"M clock=25000 horizontal=480,40,10,40 vertical=640,40,10,40 default=1",
 			"I seq=ff7701000013",
 			"I seq=ef08",
@@ -557,12 +453,7 @@
 		reset-gpios = <&gpio0 RK_PB4 GPIO_ACTIVE_LOW>;
 		pinctrl-names = "default";
 		pinctrl-0 = <&dsi0_lcd_gpio>;
-		/*
-		 * 90 produced an upside-down image (180 degrees off from
-		 * correct) once the panel actually started displaying
-		 * anything - this panel is mounted 270 degrees relative to
-		 * its native portrait orientation in this chassis, not 90.
-		 */
+		/* 270, not 90: 90 produced an upside-down image. */
 		rotation = <270>;
 
 		port {
@@ -588,15 +479,7 @@
 };
 
 &gpu {
-	/*
-	 * See gkd_pixel2_cpu0_opp_table's comment above - same reasoning
-	 * applies here: the real vendor board wires &gpu to its generic
-	 * gpu_opp_table, with all five of vendor's real frequency steps
-	 * (mainline's shared gpu_opp_table in px30.dtsi has only a single,
-	 * non-vendor-sourced 560MHz entry, and is used by default by several
-	 * other RK3326 boards in this tree, so this is a board-local copy
-	 * rather than a change to that shared table).
-	 */
+	/* Vendor's 5-step table; px30.dtsi's shared table has only one non-vendor 560MHz entry */
 	operating-points-v2 = <&gkd_pixel2_gpu_opp_table>;
 	mali-supply = <&vdd_logic>;
 	status = "okay";
@@ -608,22 +491,6 @@
 	i2c-scl-rising-time-ns = <280>;
 	status = "okay";
 
-	/*
-	 * KNOWN ISSUE: device suspends correctly but never wakes (confirmed
-	 * on hardware). Two fixes were tried and reverted after testing
-	 * showed no change: (1) dev_pm_set_wake_irq() for the rk805-pwrkey
-	 * fall_irq, and (2) a one-shot port of rockchip_pm_config.c that only
-	 * forwarded rockchip,sleep-mode-config/wakeup-config once, at probe
-	 * time. On PX30S the deepest sleep states are governed by ATF/BL31
-	 * firmware rather than Linux.
-	 *
-	 * Third attempt in progress: 031-px30s-suspend-wakeup-config.patch
-	 * (see the rockchip-suspend node above) additionally sends
-	 * LINUX_PM_STATE via SIP on every suspend attempt through a
-	 * dev_pm_ops .prepare hook, matching the vendor driver exactly -
-	 * the one-shot probe-time-only port never sent this at all. NOT yet
-	 * confirmed on real hardware.
-	 */
 	rk817: pmic@20 {
 		compatible = "rockchip,rk817";
 		reg = <0x20>;
@@ -836,7 +703,6 @@
 	status = "okay";
 };
 
-/* pwm0 drives the rumble motor (see comment on the joypad node above). */
 &pwm0 {
 	status = "okay";
 };
@@ -861,17 +727,6 @@
 	status = "okay";
 };
 
-/*
- * This board's silicon is PX30S, a distinct chip variant from plain PX30
- * (confirmed via DDR_GRF_CON1 bits[15:14] == 0b11), needing a different
- * ADC init sequence, a mandatory 4MHz clock rate, a ~2.1ms post-enable
- * settle delay, and a linear code<->temp conversion instead of a lookup
- * table - see 023-px30s-tsadc-support.patch, which adds the
- * "rockchip,px30s-tsadc" compatible used below.
- *
- * If a silent reset recurs, check the hardware rockchip,hw-tshut-temp
- * auto-reset circuit first - it sits outside Linux's control entirely.
- */
 &tsadc {
 	compatible = "rockchip,px30s-tsadc";
 	status = "okay";
@@ -890,28 +745,14 @@
 };
 
 &usb20_otg {
-	/*
-	 * Without this, dwc2 never enables the PMIC's otg_switch 5V boost
-	 * regulator in host mode (confirmed via stock-firmware dmesg: dwc2
-	 * looks up "vbus-supply" and otg_switch stays disabled with nothing
-	 * to enable it) - so a plugged-in peripheral gets data lines but no
-	 * bus power and never enumerates.
-	 */
+	/* Without this, dwc2 never enables otg_switch: host-mode peripherals get no bus power. */
 	vbus-supply = <&otg_switch>;
 	/*
-	 * px30.dtsi's shared usb-role-switch (022-usb-role-switch.patch)
-	 * defaults every RK3326 board to host mode. That's been harmless
-	 * elsewhere - no other board wires vbus-supply, so "default host"
-	 * never actually drives VBUS. Here it does: the port permanently
-	 * self-sources 5V from boot, which starves dwc2's ID/VBUS-valid
-	 * detection of any real transition to notice and switch to device
-	 * mode - so plugging into a charger/PC never auto-negotiates
-	 * charging, only forcing gadget mode manually does. The vendor
-	 * kernel never sets a default mode at all here (plain dr_mode =
-	 * "otg", nothing else) and lets dwc2's own hardware ID/VBUS
-	 * detection decide from a neutral starting point - drop the
-	 * inherited default to match that.
+	 * No usb-role-switch: dwc2 switches between host and device on the
+	 * ID pin itself, as the vendor kernel does. The inherited role switch
+	 * defaulted to host and kept the port's 5 V on from boot.
 	 */
+	/delete-property/ usb-role-switch;
 	/delete-property/ role-switch-default-mode;
 	status = "okay";
 };

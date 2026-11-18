@@ -1,0 +1,15 @@
+config BR2_PACKAGE_ROCKNIX_JOYPAD
+	bool "rocknix-joypad"
+	depends on BR2_LINUX_KERNEL
+	help
+	  Out-of-tree input drivers for the gamepad controls of the
+	  Rockchip handhelds: rocknix-joypad (multi-ADC sticks) and
+	  rocknix-singleadc-joypad (one ADC multiplexed across the
+	  sticks, as on the Game Console R36S and its clones). The
+	  device tree picks the driver by compatible string; both are
+	  built, and the kernel loads whichever matches.
+
+	  https://github.com/ROCKNIX/rocknix-joypad
+
+comment "rocknix-joypad needs a Linux kernel to be built"
+	depends on !BR2_LINUX_KERNEL
