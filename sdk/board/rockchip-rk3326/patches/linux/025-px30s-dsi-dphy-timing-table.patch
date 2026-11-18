@@ -15,6 +15,8 @@ soc_is_px30s() runtime-detection override at probe time (see
 026-px30s-cpuinfo-soc-detection.patch).
 
 ---
+diff --git a/drivers/phy/rockchip/phy-rockchip-inno-dsidphy.c b/drivers/phy/rockchip/phy-rockchip-inno-dsidphy.c
+index 30d5e5d..618d8ec 100644
 --- a/drivers/phy/rockchip/phy-rockchip-inno-dsidphy.c
 +++ b/drivers/phy/rockchip/phy-rockchip-inno-dsidphy.c
 @@ -18,6 +18,7 @@
@@ -25,7 +27,7 @@ soc_is_px30s() runtime-detection override at probe time (see
  #include <linux/time64.h>
  
  #include <linux/phy/phy.h>
-@@ -221,5 +221,13 @@
+@@ -221,6 +222,14 @@ struct inno_video_phy_plat_data {
  	const struct inno_mipi_dphy_timing *inno_mipi_dphy_timing_table;
  	const unsigned int num_timings;
  	enum phy_max_rate max_rate;
@@ -39,7 +41,8 @@ soc_is_px30s() runtime-detection override at probe time (see
 +	bool invert_txclkesc_disable;
  	unsigned int max_lanes;
  };
-@@ -380,6 +389,12 @@
+ 
+@@ -421,6 +430,12 @@ static void inno_dsidphy_mipi_mode_enable(struct inno_dsidphy *inno)
  	/* Select MIPI mode */
  	phy_update_bits(inno, REGISTER_PART_LVDS, 0x03,
  			MODE_ENABLE_MASK, MIPI_MODE_ENABLE);
@@ -52,8 +55,8 @@ soc_is_px30s() runtime-detection override at probe time (see
  	/* Configure PLL */
  	phy_update_bits(inno, REGISTER_PART_ANALOG, 0x03,
  			REG_PREDIV_MASK, REG_PREDIV(inno->pll.prediv));
-@@ -688,6 +703,13 @@
- 	.max_rate = MAX_2_5GHZ,
+@@ -770,6 +785,13 @@ static const struct inno_video_phy_plat_data max_2_5ghz_video_phy_plat_data = {
+ 	.max_lanes = 4,
  };
  
 +static const struct inno_video_phy_plat_data px30s_video_phy_plat_data = {
@@ -66,7 +69,7 @@ soc_is_px30s() runtime-detection override at probe time (see
  static int inno_dsidphy_probe(struct platform_device *pdev)
  {
  	struct device *dev = &pdev->dev;
-@@ -702,6 +724,10 @@
+@@ -784,6 +806,10 @@ static int inno_dsidphy_probe(struct platform_device *pdev)
  
  	inno->dev = dev;
  	inno->pdata = of_device_get_match_data(inno->dev);
@@ -77,10 +80,11 @@ soc_is_px30s() runtime-detection override at probe time (see
  	platform_set_drvdata(pdev, inno);
  
  	inno->phy_base = devm_platform_ioremap_resource(pdev, 0);
-@@ -762,6 +788,18 @@
+@@ -843,6 +869,18 @@ static const struct of_device_id inno_dsidphy_of_match[] = {
+ 	{
  		.compatible = "rockchip,px30-dsi-dphy",
  		.data = &max_1ghz_video_phy_plat_data,
- 	}, {
++	}, {
 +		/*
 +		 * PX30S (== RK3326S) has a different DPHY IP revision than
 +		 * base PX30 - 2.5GHz-capable rather than 1GHz, with genuinely
@@ -92,7 +96,6 @@ soc_is_px30s() runtime-detection override at probe time (see
 +		 */
 +		.compatible = "rockchip,px30s-dsi-dphy",
 +		.data = &px30s_video_phy_plat_data,
-+	}, {
+ 	}, {
  		.compatible = "rockchip,rk3128-dsi-dphy",
  		.data = &max_1ghz_video_phy_plat_data,
- 	}, {
