@@ -74,10 +74,12 @@ kernel tree was already updated upstream to the new API
 that exact pattern, no logic changes.
 
 ---
+diff --git a/drivers/clk/rockchip/clk-px30.c b/drivers/clk/rockchip/clk-px30.c
+index c140930..a86ae2f 100644
 --- a/drivers/clk/rockchip/clk-px30.c
 +++ b/drivers/clk/rockchip/clk-px30.c
-@@ -999,6 +999,48 @@
- 	"pclk_usb_grf",
+@@ -1019,6 +1019,48 @@ static struct rockchip_clk_branch px30s_clk_ddrphy_otp[] __initdata = {
+ 			PX30_CLKGATE_CON(12), 11, GFLAGS),
  };
  
 +static void __iomem *px30_cru_base;
@@ -125,7 +127,7 @@ that exact pattern, no logic changes.
  static void __init px30_clk_init(struct device_node *np)
  {
  	struct rockchip_clk_provider *ctx;
-@@ -1010,6 +1052,7 @@
+@@ -1030,6 +1072,7 @@ static void __init px30_clk_init(struct device_node *np)
  		pr_err("%s: could not map cru region\n", __func__);
  		return;
  	}
@@ -133,7 +135,7 @@ that exact pattern, no logic changes.
  
  	clk_nr_clks = rockchip_clk_find_max_clk_id(px30_clk_branches,
  						   ARRAY_SIZE(px30_clk_branches)) + 1;
-@@ -1039,6 +1082,8 @@
+@@ -1067,6 +1110,8 @@ static void __init px30_clk_init(struct device_node *np)
  
  	rockchip_register_restart_notifier(ctx, PX30_GLB_SRST_FST, NULL);
  
