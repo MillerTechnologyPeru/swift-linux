@@ -1,0 +1,2 @@
+# Locally computed; matches the PKG_SHA256 in ROCKNIX packages/linux-drivers/rocknix-joypad
+sha256  fe66820546d4477a01c52363c11d2bd471eb36d036b8cc652f7ab8e123d294c9  rocknix-joypad-ac1be0fa0c4e1f7feb9a900fc428d7ac6014029c.tar.gz
