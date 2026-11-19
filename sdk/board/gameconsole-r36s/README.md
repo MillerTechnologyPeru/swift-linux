@@ -19,8 +19,10 @@ boot from the system card slot (TF1).
 
 ## Status
 
-**Not yet booted.** Kernel and bootloader follow upstream, which supports this
-device, and are checked to build (see
+**Boots on an R35S** with the `minimal` frontend: U-Boot from TF1, the
+kernel, the panel and the EROFS root, through to sway and foot on the
+built-in display. Not yet tried on an R36S, or with EmulationStation. Kernel
+and bootloader follow upstream, which supports this device (see
 `sdk/board/rockchip-rk3326/patches/README.md`):
 
 - Linux 7.1.2 with upstream's RK3326 patch set, kernel config and device
