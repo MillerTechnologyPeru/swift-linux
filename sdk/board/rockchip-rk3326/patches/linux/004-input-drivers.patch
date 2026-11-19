@@ -1,5 +1,5 @@
 diff --git a/drivers/input/joystick/Kconfig b/drivers/input/joystick/Kconfig
-index 7755e5b454d2..38355e3184fc 100644
+index 7755e5b..38355e3 100644
 --- a/drivers/input/joystick/Kconfig
 +++ b/drivers/input/joystick/Kconfig
 @@ -400,6 +400,36 @@ config JOYSTICK_N64
@@ -40,7 +40,7 @@ index 7755e5b454d2..38355e3184fc 100644
  	tristate "Raspberry Pi Sense HAT joystick"
  	depends on INPUT && I2C
 diff --git a/drivers/input/joystick/Makefile b/drivers/input/joystick/Makefile
-index 9976f596a920..2a0524b63ba0 100644
+index 9976f59..2a0524b 100644
 --- a/drivers/input/joystick/Makefile
 +++ b/drivers/input/joystick/Makefile
 @@ -15,6 +15,7 @@ obj-$(CONFIG_JOYSTICK_COBRA)		+= cobra.o
@@ -70,7 +70,7 @@ index 9976f596a920..2a0524b63ba0 100644
  obj-$(CONFIG_JOYSTICK_ZHENHUA)		+= zhenhua.o
 diff --git a/drivers/input/joystick/gameforce-joypad.c b/drivers/input/joystick/gameforce-joypad.c
 new file mode 100644
-index 000000000000..e2953433b491
+index 0000000..de3a3a2
 --- /dev/null
 +++ b/drivers/input/joystick/gameforce-joypad.c
 @@ -0,0 +1,1330 @@
@@ -1406,7 +1406,7 @@ index 000000000000..e2953433b491
 +/*----------------------------------------------------------------------------*/
 diff --git a/drivers/input/joystick/odroidgo2-joypad.c b/drivers/input/joystick/odroidgo2-joypad.c
 new file mode 100644
-index 000000000000..1382d69eec5e
+index 0000000..1382d69
 --- /dev/null
 +++ b/drivers/input/joystick/odroidgo2-joypad.c
 @@ -0,0 +1,878 @@
@@ -2290,7 +2290,7 @@ index 000000000000..1382d69eec5e
 +/*----------------------------------------------------------------------------*/
 diff --git a/drivers/input/joystick/odroidgo2-v11-joypad.c b/drivers/input/joystick/odroidgo2-v11-joypad.c
 new file mode 100644
-index 000000000000..b5bd7cb40a9b
+index 0000000..b5bd7cb
 --- /dev/null
 +++ b/drivers/input/joystick/odroidgo2-v11-joypad.c
 @@ -0,0 +1,878 @@
@@ -3174,7 +3174,7 @@ index 000000000000..b5bd7cb40a9b
 +/*----------------------------------------------------------------------------*/
 diff --git a/drivers/input/joystick/odroidgo3-joypad.c b/drivers/input/joystick/odroidgo3-joypad.c
 new file mode 100644
-index 000000000000..34f182175bcd
+index 0000000..e503a22
 --- /dev/null
 +++ b/drivers/input/joystick/odroidgo3-joypad.c
 @@ -0,0 +1,1114 @@
@@ -4294,7 +4294,7 @@ index 000000000000..34f182175bcd
 +/*----------------------------------------------------------------------------*/
 diff --git a/drivers/input/joystick/rgb20s-joypad.c b/drivers/input/joystick/rgb20s-joypad.c
 new file mode 100644
-index 000000000000..a52981eee9fb
+index 0000000..e57bd5a
 --- /dev/null
 +++ b/drivers/input/joystick/rgb20s-joypad.c
 @@ -0,0 +1,1375 @@
@@ -5675,7 +5675,7 @@ index 000000000000..a52981eee9fb
 +/*----------------------------------------------------------------------------*/
 diff --git a/drivers/input/joystick/xu10-joypad.c b/drivers/input/joystick/xu10-joypad.c
 new file mode 100644
-index 000000000000..f7832a8158d4
+index 0000000..68824d3
 --- /dev/null
 +++ b/drivers/input/joystick/xu10-joypad.c
 @@ -0,0 +1,1141 @@
@@ -6821,15 +6821,15 @@ index 000000000000..f7832a8158d4
 +
 +/*----------------------------------------------------------------------------*/
 diff --git a/drivers/power/supply/rk817_charger.c b/drivers/power/supply/rk817_charger.c
-index 7ca91739c6cc..a2a6d8093206 100644
+index 9436c6b..9c26d96 100644
 --- a/drivers/power/supply/rk817_charger.c
 +++ b/drivers/power/supply/rk817_charger.c
-@@ -679,7 +679,7 @@ static enum power_supply_usb_type rk817_usb_type[] = {
- };
+@@ -681,7 +681,7 @@ static int rk817_bat_prop_writeable(struct power_supply *psy,
+ }
  
  static const struct power_supply_desc rk817_bat_desc = {
 -	.name = "rk817-battery",
 +	.name = "battery",
  	.type = POWER_SUPPLY_TYPE_BATTERY,
  	.properties = rk817_bat_props,
- 	.num_properties = ARRAY_SIZE(rk817_bat_props),
+ 	.property_is_writeable	= rk817_bat_prop_writeable,

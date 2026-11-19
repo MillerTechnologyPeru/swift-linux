@@ -1,0 +1,6 @@
+# U-Boot keeps no saved environment on these images. The upstream defconfig
+# stores it in the MMC at 0x4000-0x8000, which on this repo's GPT layout is
+# the tail of the partition entry array (sectors 2-33): a saveenv would
+# corrupt the partition table. boot.scr sets everything the boot needs.
+# CONFIG_ENV_IS_IN_MMC is not set
+CONFIG_ENV_IS_NOWHERE=y

@@ -15,9 +15,10 @@ handling of the Xbox Elite paddles (BTN_TRIGGER_HAPPY5-8): real extra
 buttons, not a remap onto existing gamepad buttons.
 ---
 diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
+index e485373..3f8cc1e 100644
 --- a/drivers/hid/hid-playstation.c
 +++ b/drivers/hid/hid-playstation.c
-@@ -111,4 +111,9 @@
+@@ -111,6 +111,11 @@ struct ps_led_info {
  #define DS_BUTTONS2_PS_HOME	BIT(0)
  #define DS_BUTTONS2_TOUCHPAD	BIT(1)
  #define DS_BUTTONS2_MIC_MUTE	BIT(2)
@@ -27,11 +28,12 @@ diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
 +#define DS_BUTTONS2_EDGE_LEFT_PADDLE	BIT(6)
 +#define DS_BUTTONS2_EDGE_RIGHT_PADDLE	BIT(7)
  
-@@ -770,6 +770,19 @@
- 
+ /* Status fields of DualSense input report. */
+ #define DS_STATUS0_BATTERY_CAPACITY		GENMASK(3, 0)
+@@ -771,6 +776,19 @@ ps_gamepad_create(struct hid_device *hdev,
  	for (i = 0; i < ARRAY_SIZE(ps_gamepad_buttons); i++)
  		input_set_capability(gamepad, EV_KEY, ps_gamepad_buttons[i]);
-+
+ 
 +	/*
 +	 * DualSense Edge: the two function buttons and the two removable back
 +	 * paddles are extra physical buttons with no DualShock equivalent.
@@ -44,10 +46,11 @@ diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
 +		input_set_capability(gamepad, EV_KEY, BTN_TRIGGER_HAPPY3);
 +		input_set_capability(gamepad, EV_KEY, BTN_TRIGGER_HAPPY4);
 +	}
- 
++
  #if IS_ENABLED(CONFIG_PLAYSTATION_FF)
  	if (play_effect) {
-@@ -1486,4 +1486,16 @@
+ 		input_set_capability(gamepad, EV_FF, FF_RUMBLE);
+@@ -1486,6 +1504,18 @@ static int dualsense_parse_report(struct ps_device *ps_dev, struct hid_report *r
  	input_report_key(ds->gamepad, BTN_THUMBL, ds_report->buttons[1] & DS_BUTTONS1_L3);
  	input_report_key(ds->gamepad, BTN_THUMBR, ds_report->buttons[1] & DS_BUTTONS1_R3);
  	input_report_key(ds->gamepad, BTN_MODE,   ds_report->buttons[2] & DS_BUTTONS2_PS_HOME);
@@ -64,3 +67,5 @@ diff --git a/drivers/hid/hid-playstation.c b/drivers/hid/hid-playstation.c
 +				 ds_report->buttons[2] & DS_BUTTONS2_EDGE_RIGHT_PADDLE);
 +	}
  	input_sync(ds->gamepad);
+ 
+ 	/*

@@ -1,29 +1,45 @@
-# Game Console R36S
+# Game Console R36S / R35S
 
 Rockchip RK3326 / quad Cortex-A35 handheld with a Mali-G31 (panfrost) GPU, a
 640x480 MIPI-DSI panel and analog sticks read through a single multiplexed ADC.
+The R35S is the same board in a different shell: the device tree lists
+`gameconsole,r35s` alongside `gameconsole,r36s`, so one image serves both.
 Shared Rockchip RK3326 options live in `sdk/board/rockchip-rk3326/`.
+
+## Building
+
+```sh
+./generate-config.sh --device gameconsole-r36s --profile image   # EmulationStation
+./generate-config.sh --device gameconsole-r36s --profile image --frontend minimal
+```
+
+or the Build Images workflow with `device: gameconsole-r36s`. The result is
+`images/disk.img`; write it to a microSD card with `dd` or a flashing tool and
+boot from the system card slot (TF1).
 
 ## Status
 
-**Not yet booted.** The kernel side is resynced from ROCKNIX, which supports
-this device, and checked to build (see
+**Boots on an R35S** with the `minimal` frontend: U-Boot from TF1, the
+kernel, the panel and the EROFS root, through to sway and foot on the
+built-in display. Not yet tried on an R36S, or with EmulationStation. Kernel
+and bootloader follow upstream, which supports this device (see
 `sdk/board/rockchip-rk3326/patches/README.md`):
 
-- Linux 7.1.2 with ROCKNIX's RK3326 patch set, kernel config and device trees,
-  including `rk3326-gameconsole-r36s.dts`.
-- `rocknix-joypad`, the out-of-tree module that provides
-  `rocknix-singleadc-joypad`, which this device tree binds for the controls.
+- Linux 7.1.2 with upstream's RK3326 patch set, kernel config and device
+  trees, including `rk3326-gameconsole-r36s.dts`.
+- The joypad input driver package, which provides the single-ADC driver this
+  device tree binds for the controls.
+- U-Boot v2025.10 with upstream's `rk3326-handheld` defconfig, packed with
+  Rockchip's DDR init, miniloader and BL31 at sector 64 of the card, booting
+  `extlinux.conf` from the FAT boot partition.
 
-Still missing before an image can boot:
+Debug serial is UART2 at 1,500,000 baud (`console=ttyS2`), as in the device
+tree's `stdout-path`.
 
-- **Bootloader.** ROCKNIX boots RK3326 with mainline U-Boot v2025.10 plus its
-  own `rk3326-handheld_defconfig` and device tree sources, Rockchip's rkbin
-  miniloader/DDR/BL31 blobs, and a helper that assembles the idbloader. None
-  of that is ported yet; the `rk3326-handheld` defconfig named in
-  `board.config` does not exist in mainline U-Boot.
+Known gap:
+
 - **Panel variants.** R36S units ship with several different panels, and many
-  "R36S" units are clones. ROCKNIX picks the right timings at boot with its
-  `generic-dsi` and `device-switch` packages; without an equivalent, this
-  device tree's panel (`gameconsole,r36s-panel`, ST7703) only lights the units
-  that have that panel.
+  "R36S" units are clones. Upstream picks the right timings at boot with a
+  device-tree overlay chosen per panel; without an equivalent, this image
+  drives only the panel in this device tree (`gameconsole,r36s-panel`,
+  ST7703), and a unit with another panel boots with a dark screen.

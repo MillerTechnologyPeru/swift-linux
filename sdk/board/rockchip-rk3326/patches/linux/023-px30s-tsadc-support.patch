@@ -18,9 +18,11 @@ existing px30s-tsadc devicetree-compatible match, as a defensive
 belt-and-suspenders measure.
 
 ---
+diff --git a/drivers/thermal/rockchip_thermal.c b/drivers/thermal/rockchip_thermal.c
+index c49ddf7..7980c6a 100644
 --- a/drivers/thermal/rockchip_thermal.c
 +++ b/drivers/thermal/rockchip_thermal.c
-@@ -15,6 +15,7 @@
+@@ -16,6 +16,7 @@
  #include <linux/platform_device.h>
  #include <linux/regmap.h>
  #include <linux/reset.h>
@@ -28,7 +30,7 @@ belt-and-suspenders measure.
  #include <linux/thermal.h>
  #include <linux/mfd/syscon.h>
  #include <linux/pinctrl/consumer.h>
-@@ -57,12 +58,17 @@
+@@ -58,12 +59,17 @@ enum adc_sort_mode {
   * @length: size of conversion table
   * @data_mask: mask to apply on data inputs
   * @mode: sort mode of this adc variant (incrementing or decrementing)
@@ -46,9 +48,9 @@ belt-and-suspenders measure.
  };
  
  /**
-@@ -91,11 +97,20 @@
- 	enum tshut_mode tshut_mode;
- 	enum tshut_polarity tshut_polarity;
+@@ -101,11 +107,20 @@ struct rockchip_tsadc_chip {
+ 	/* GRF availability */
+ 	bool grf_required;
  
 +	/* Time (us) to wait for a conversion to complete after enabling the
 +	 * ADC, before the first reading is valid (e.g. PX30S needs ~2100us;
@@ -67,7 +69,7 @@ belt-and-suspenders measure.
  
  	/* Per-sensor methods */
  	int (*get_temp)(const struct chip_tsadc_table *table,
-@@ -228,7 +243,13 @@
+@@ -253,7 +268,13 @@ struct rockchip_thermal_data {
  #define GRF_TSADC_TESTBIT_L			0x0e648
  #define GRF_TSADC_TESTBIT_H			0x0e64c
  
@@ -81,7 +83,7 @@ belt-and-suspenders measure.
  
  #define RK3568_GRF_TSADC_CON			0x0600
  #define RK3568_GRF_TSADC_ANA_REG0		(0x10001 << 0)
-@@ -554,6 +575,9 @@
+@@ -582,6 +603,9 @@ static u32 rk_tsadcv2_temp_to_code(const struct chip_tsadc_table *table,
  	unsigned int denom;
  	u32 error = table->data_mask;
  
@@ -91,7 +93,7 @@ belt-and-suspenders measure.
  	low = 0;
  	high = (table->length - 1) - 1; /* ignore the last check for table */
  	mid = (high + low) / 2;
-@@ -607,6 +631,13 @@
+@@ -635,6 +659,13 @@ static int rk_tsadcv2_code_to_temp(const struct chip_tsadc_table *table,
  	unsigned int num;
  	unsigned long denom;
  
@@ -105,7 +107,7 @@ belt-and-suspenders measure.
  	WARN_ON(table->length < 2);
  
  	switch (table->mode) {
-@@ -773,6 +804,14 @@
+@@ -801,6 +832,14 @@ static void rk_tsadcv4_initialize(struct regmap *grf, void __iomem *regs,
  	regmap_write(grf, PX30_GRF_SOC_CON2, GRF_CON_TSADC_CH_INV);
  }
  
@@ -120,7 +122,7 @@ belt-and-suspenders measure.
  static void rk_tsadcv7_initialize(struct regmap *grf, void __iomem *regs,
  				  enum tshut_polarity tshut_polarity)
  {
-@@ -1085,6 +1124,65 @@
+@@ -1120,6 +1159,65 @@ static const struct rockchip_tsadc_chip px30_tsadc_data = {
  	},
  };
  
@@ -186,7 +188,7 @@ belt-and-suspenders measure.
  static const struct rockchip_tsadc_chip rv1108_tsadc_data = {
  	/* cpu */
  	.chn_offset = 0,
-@@ -1310,6 +1408,9 @@
+@@ -1355,6 +1453,9 @@ static const struct of_device_id of_rockchip_thermal_match[] = {
  	{	.compatible = "rockchip,px30-tsadc",
  		.data = (void *)&px30_tsadc_data,
  	},
@@ -196,7 +198,7 @@ belt-and-suspenders measure.
  	{
  		.compatible = "rockchip,rv1108-tsadc",
  		.data = (void *)&rv1108_tsadc_data,
-@@ -1534,6 +1635,10 @@
+@@ -1712,6 +1813,10 @@ static int rockchip_thermal_probe(struct platform_device *pdev)
  	thermal->chip = device_get_match_data(&pdev->dev);
  	if (!thermal->chip)
  		return -EINVAL;
@@ -207,7 +209,7 @@ belt-and-suspenders measure.
  
  	thermal->sensors = devm_kcalloc(&pdev->dev, thermal->chip->chn_num,
  					sizeof(*thermal->sensors), GFP_KERNEL);
-@@ -1554,6 +1659,9 @@
+@@ -1732,6 +1837,9 @@ static int rockchip_thermal_probe(struct platform_device *pdev)
  		return dev_err_probe(&pdev->dev, PTR_ERR(thermal->clk),
  				     "failed to get tsadc clock.\n");
  
@@ -217,7 +219,7 @@ belt-and-suspenders measure.
  	thermal->pclk = devm_clk_get_enabled(&pdev->dev, "apb_pclk");
  	if (IS_ERR(thermal->pclk))
  		return dev_err_probe(&pdev->dev, PTR_ERR(thermal->pclk),
-@@ -1587,6 +1695,9 @@
+@@ -1777,6 +1885,9 @@ static int rockchip_thermal_probe(struct platform_device *pdev)
  				     "failed to request tsadc irq.\n");
  
  	thermal->chip->control(thermal->regs, true);
@@ -227,7 +229,7 @@ belt-and-suspenders measure.
  
  	for (i = 0; i < thermal->chip->chn_num; i++) {
  		rockchip_thermal_toggle_sensor(&thermal->sensors[i], true);
-@@ -1671,6 +1782,9 @@
+@@ -1866,6 +1977,9 @@ static int __maybe_unused rockchip_thermal_resume(struct device *dev)
  	}
  
  	thermal->chip->control(thermal->regs, true);

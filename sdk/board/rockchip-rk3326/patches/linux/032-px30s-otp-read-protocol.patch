@@ -29,6 +29,8 @@ read path itself was still wrong for this silicon and worth fixing
 correctly rather than leaving in place.
 
 ---
+diff --git a/drivers/nvmem/rockchip-otp.c b/drivers/nvmem/rockchip-otp.c
+index 0ec78b5..24b392b 100644
 --- a/drivers/nvmem/rockchip-otp.c
 +++ b/drivers/nvmem/rockchip-otp.c
 @@ -14,6 +14,7 @@
@@ -39,10 +41,10 @@ correctly rather than leaving in place.
  #include <linux/slab.h>
  #include <linux/of.h>
  #include <linux/of_platform.h>
-@@ -32,6 +33,25 @@
+@@ -33,6 +34,25 @@
  #define OTPC_SBPI_CMD0_OFFSET		0x1000
  #define OTPC_SBPI_CMD1_OFFSET		0x1004
-
+ 
 +#define OTPC_MODE_CTRL			0x2000
 +#define OTPC_IRQ_ST			0x2008
 +#define OTPC_ACCESS_ADDR		0x200c
@@ -65,10 +67,10 @@ correctly rather than leaving in place.
  /* OTP Register bits and masks */
  #define OTPC_USER_ADDR_MASK		GENMASK(31, 16)
  #define OTPC_USE_USER			BIT(0)
-@@ -184,6 +204,128 @@
+@@ -237,6 +257,128 @@ static int rk3568_otp_read(void *context, unsigned int offset, void *val,
  	return ret;
  }
-
+ 
 +/* PX30S uses a different OTPC than plain PX30; ported from the vendor BSP rockchip-otp.c */
 +static int px30s_otp_active(struct rockchip_otp *otp)
 +{
@@ -192,12 +194,12 @@ correctly rather than leaving in place.
 +}
 +
  static int rk3588_otp_read(void *context, unsigned int offset,
- 			   void *val, size_t bytes)
+ 			   void *val, size_t count)
  {
-@@ -274,6 +416,13 @@
- 	.reg_read = px30_otp_read,
+@@ -357,6 +499,13 @@ static const struct rockchip_data rk3568_data = {
+ 	.reg_read = rk3568_otp_read,
  };
-
+ 
 +static const struct rockchip_data px30s_data = {
 +	.size = 0x80,
 +	.clks = px30_otp_clocks,
@@ -208,10 +210,10 @@ correctly rather than leaving in place.
  static const struct rockchip_data rk3576_data = {
  	.size = 0x100,
  	.read_offset = 0x700,
-@@ -327,6 +476,10 @@
+@@ -424,6 +573,10 @@ static int rockchip_otp_probe(struct platform_device *pdev)
  	if (!data)
  		return dev_err_probe(dev, -EINVAL, "failed to get match data\n");
-
+ 
 +	/* PX30S boards still use the plain "rockchip,px30-otp" compatible in their devicetree */
 +	if (soc_is_px30s())
 +		data = &px30s_data;

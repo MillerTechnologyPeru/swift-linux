@@ -1,0 +1,21 @@
+config BR2_PACKAGE_RK3326_LOADER
+	bool "rk3326-loader"
+	depends on BR2_TARGET_UBOOT
+	depends on BR2_HOSTARCH = "x86_64"
+	select BR2_PACKAGE_HOST_UBOOT_TOOLS
+	help
+	  Boot image for Rockchip RK3326 (PX30) handhelds: Rockchip's
+	  DDR init and miniloader as the idbloader, U-Boot packed as
+	  uboot.img, and the BL31 trust image, laid out as one file to
+	  write at sector 64 of the boot medium. Mainline U-Boot cannot
+	  pack its own second-stage loader for this SoC, so the vendor
+	  loader chain from rkbin is used, as the upstream handheld
+	  distributions do.
+
+	  The rkbin packing tools are prebuilt x86_64 binaries, hence
+	  the host restriction.
+
+	  https://github.com/rockchip-linux/rkbin
+
+comment "rk3326-loader needs U-Boot and an x86_64 build host"
+	depends on !BR2_TARGET_UBOOT || BR2_HOSTARCH != "x86_64"
