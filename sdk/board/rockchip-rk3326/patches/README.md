@@ -123,4 +123,6 @@ device tree yields a card whose sector 64 onwards is that loader byte for byte,
 with the GPT entries ending at 17 KiB and the boot partition at 16 MiB holding
 `Image`, the device tree, `boot.scr` and `extlinux/extlinux.conf`.
 
-Not yet booted on hardware - see the board READMEs.
+Booted on an R35S with the `minimal` frontend (sway and foot) - see
+`../../gameconsole-r36s/README.md`. The other RK3326 boards are checked to
+build only.
