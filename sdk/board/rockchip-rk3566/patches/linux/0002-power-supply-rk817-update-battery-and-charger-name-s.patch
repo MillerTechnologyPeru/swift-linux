@@ -9,19 +9,19 @@ Subject: [PATCH] power: supply: rk817: update battery and charger name, so
  1 file changed, 2 insertions(+), 2 deletions(-)
 
 diff --git a/drivers/power/supply/rk817_charger.c b/drivers/power/supply/rk817_charger.c
-index 57b6ddefad28..3b7f99a923e7 100644
+index 9436c6bbf51f..5a2cba345775 100644
 --- a/drivers/power/supply/rk817_charger.c
 +++ b/drivers/power/supply/rk817_charger.c
-@@ -674,7 +674,7 @@ static enum power_supply_property rk817_chg_props[] = {
- };
+@@ -681,7 +681,7 @@ static int rk817_bat_prop_writeable(struct power_supply *psy,
+ }
  
  static const struct power_supply_desc rk817_bat_desc = {
 -	.name = "rk817-battery",
 +	.name = "battery",
  	.type = POWER_SUPPLY_TYPE_BATTERY,
  	.properties = rk817_bat_props,
- 	.num_properties = ARRAY_SIZE(rk817_bat_props),
-@@ -682,7 +682,7 @@ static const struct power_supply_desc rk817_bat_desc = {
+ 	.property_is_writeable	= rk817_bat_prop_writeable,
+@@ -691,7 +691,7 @@ static const struct power_supply_desc rk817_bat_desc = {
  };
  
  static const struct power_supply_desc rk817_chg_desc = {
