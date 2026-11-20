@@ -1,0 +1,30 @@
+#!/bin/sh
+#
+# usbgadget - restore the USB gadget mode chosen in the frontend's Network
+# Settings (network or file transfer; see /usr/bin/usbgadget). S15data has
+# mounted /data, where the choice is saved. A no-op on machines without a
+# device-capable USB port, and when the saved mode is "disabled".
+
+case "$1" in
+	start)
+		[ -x /usr/bin/usbgadget ] || exit 0
+		printf 'Restoring USB gadget mode: '
+		/usr/bin/usbgadget --start && echo OK || echo "FAIL (left disabled)"
+		;;
+	stop)
+		[ -x /usr/bin/usbgadget ] || exit 0
+		# Unbind without forgetting the choice: the saved mode is
+		# restored on the next boot.
+		USB_MODE=$(sed -n 's/^USB_MODE=//p' /data/lib/usbgadget.conf 2>/dev/null)
+		/usr/bin/usbgadget disabled >/dev/null 2>&1
+		[ -n "${USB_MODE}" ] && echo "USB_MODE=${USB_MODE}" > /data/lib/usbgadget.conf
+		;;
+	restart|reload)
+		"$0" stop
+		"$0" start
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+		;;
+esac
