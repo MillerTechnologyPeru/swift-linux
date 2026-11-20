@@ -13,8 +13,13 @@ Files the cores in this image ask for:
 
   palmos41-en-m515.rom        Palm OS (Mu). The Palm m515 OS 4.1 ROM.
 
-Everything else here runs without one: NES, SNES, Game Boy/Color, Game
-Boy Advance, DOS, RPG Maker, ScummVM and Lutro need no BIOS at all.
+  syscard3.pce                PC Engine CD games (Beetle PCE Fast). The
+                              System Card 3.0 image; HuCard games do not
+                              need it.
+
+Everything else here runs without one: NES, SNES, Mega Drive, PC Engine
+HuCards, Game Boy/Color, Game Boy Advance, DOS, RPG Maker, ScummVM and
+Lutro need no BIOS at all.
 PlayStation (PCSX-ReARMed) has a built-in HLE BIOS and works without a
 real one, though a genuine SCPH-xxxx image improves compatibility.
 
