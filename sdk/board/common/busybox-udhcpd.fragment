@@ -1,0 +1,3 @@
+# busybox's DHCP server, for USB gadget networking (see /usr/bin/usbgadget):
+# it hands the computer on the other end of the cable its one address.
+CONFIG_UDHCPD=y

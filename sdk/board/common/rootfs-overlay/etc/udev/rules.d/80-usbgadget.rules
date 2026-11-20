@@ -1,0 +1,5 @@
+# The USB gadget's network interface (usbgadget network): a fixed name the
+# helper configures, outside the eth/en/usb names EmulationStation counts as
+# "connected" (it is a cable to one computer, not a network), and left
+# alone by NetworkManager, which would otherwise run a DHCP client on it.
+ACTION=="add", SUBSYSTEM=="net", ENV{DEVTYPE}=="gadget", NAME="gadget", ENV{NM_UNMANAGED}="1"
