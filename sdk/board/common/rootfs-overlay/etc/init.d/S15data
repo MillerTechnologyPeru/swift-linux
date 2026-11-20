@@ -203,7 +203,8 @@ start() {
 	# top-level saves/ that game state is written into, one directory per
 	# system - kept out of roms/ so backing up what the player made is
 	# separable from the content they supplied (see retro-launch).
-	for d in roms/nes roms/snes roms/gbc roms/gba roms/psx roms/dos \
+	for d in roms/nes roms/snes roms/megadrive roms/pcengine roms/gbc \
+		roms/gba roms/psx roms/dos \
 		roms/macintosh roms/palm roms/easyrpg roms/scummvm roms/lutro \
 		roms/solarus roms/love roms/pygame roms/flash roms/ports roms/steam \
 		roms/windows roms/bios roms/screenshots \
