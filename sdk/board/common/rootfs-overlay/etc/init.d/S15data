@@ -257,6 +257,28 @@ start() {
 		chmod +x "${DATA}/roms/steam/"*.sh
 	fi
 
+	# Seed the ROM folders with the homebrew games the image ships
+	# (/usr/share/roms-homebrew/<system>/, from the roms-homebrew port), the
+	# same way as the Apps entries above: the marker records every game
+	# ever seeded, so one the user deletes stays deleted, while a game added
+	# by a newer image is seeded on the next boot.
+	if [ -d /usr/share/roms-homebrew ]; then
+		for rom in /usr/share/roms-homebrew/*/*; do
+			# A game is a file, or a directory (ScummVM games: the data
+			# files and a .scummvm entry naming the game).
+			[ -e "${rom}" ] || continue
+			sys="${rom%/*}"; sys="${sys##*/}"
+			entry="${sys}/${rom##*/}"
+			grep -qxF "${entry}" "${DATA}/roms/.homebrew-seeded" 2>/dev/null && continue
+			[ -d "${DATA}/roms/${sys}" ] || continue
+			cp -R "${rom}" "${DATA}/roms/${entry}"
+			chown -R user:user "${DATA}/roms/${entry}"
+			echo "${entry}" >> "${DATA}/roms/.homebrew-seeded"
+		done
+		[ -f "${DATA}/roms/.homebrew-seeded" ] && \
+			chown user:user "${DATA}/roms/.homebrew-seeded"
+	fi
+
 	# BlueZ pairings and NetworkManager connection profiles live under
 	# /var/lib, which is on this read-only rootfs; bind them to the data
 	# partition so they survive a reboot. Must happen before S40bluetoothd
