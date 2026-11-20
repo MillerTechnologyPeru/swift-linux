@@ -1,0 +1,18 @@
+config BR2_PACKAGE_RK3566_LOADER
+	bool "rk3566-loader"
+	depends on BR2_TARGET_UBOOT
+	select BR2_PACKAGE_HOST_UBOOT_TOOLS
+	help
+	  Boot image for Rockchip RK3566 handhelds: Rockchip's DDR init
+	  and U-Boot's SPL as the idbloader, then U-Boot's u-boot.itb,
+	  laid out as one file to write at sector 64 of the boot medium.
+	  The DDR init comes from rkbin at the commit the upstream
+	  handheld distributions pin; U-Boot itself is mainline.
+
+	  Needs U-Boot built with the SPL and u-boot.itb installed
+	  (BR2_TARGET_UBOOT_SPL, BR2_TARGET_UBOOT_FORMAT_ITB).
+
+	  https://github.com/rockchip-linux/rkbin
+
+comment "rk3566-loader needs U-Boot"
+	depends on !BR2_TARGET_UBOOT
