@@ -11,4 +11,6 @@
 # system-install erases the internal disk: it authenticates intent with an
 # explicit typed confirmation, and everything before that prompt is
 # read-only probing.
-user ALL=(root) NOPASSWD: /usr/bin/wifictl, /usr/bin/rocknix-bluetooth, /usr/bin/shutdown, /usr/sbin/pm-suspend, /usr/bin/es-squashfs, /usr/bin/binfmtctl, /usr/bin/system-install
+# usbgadget switches the OTG port between host and one of its two fixed
+# gadget modes; its arguments select from that list only.
+user ALL=(root) NOPASSWD: /usr/bin/wifictl, /usr/bin/rocknix-bluetooth, /usr/bin/shutdown, /usr/sbin/pm-suspend, /usr/bin/es-squashfs, /usr/bin/binfmtctl, /usr/bin/system-install, /usr/bin/usbgadget
