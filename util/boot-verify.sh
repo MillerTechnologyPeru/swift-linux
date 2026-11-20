@@ -166,10 +166,16 @@ echo "session:"
 # tty1 hook chooses one: GNOME if gnome-session is installed, XFCE if
 # startxfce4 is, sway otherwise. Asserting on sway regardless would fail a
 # perfectly healthy GNOME image, which is exactly what it used to do.
-case "$(guest "if [ -x /usr/bin/gnome-session ]; then echo gnome; elif [ -x /usr/bin/startxfce4 ]; then echo xfce; else echo sway; fi" | tr -d '\r')" in
-	*gnome*) SESSION_KIND=gnome ;;
-	*xfce*)  SESSION_KIND=xfce ;;
-	*)       SESSION_KIND=sway ;;
+#
+# The answer is read from a tagged line only. The console echoes the command
+# back, and a long one wraps at 80 columns, which can defeat the echo
+# stripping - and the echoed command itself contains every candidate word, so
+# matching on the whole output once took a sway image for GNOME. In the echo
+# the tag line reads "KIND:$k", never a real value.
+case "$(guest 'k=sway; if [ -x /usr/bin/gnome-session ]; then k=gnome; elif [ -x /usr/bin/startxfce4 ]; then k=xfce; fi; echo "KIND:$k"' | tr -d '\r' | sed -n 's/^KIND://p')" in
+	gnome) SESSION_KIND=gnome ;;
+	xfce)  SESSION_KIND=xfce ;;
+	*)     SESSION_KIND=sway ;;
 esac
 echo "        frontend: $SESSION_KIND"
 
@@ -258,7 +264,7 @@ xfce)
 	pass "xfwm4 running as the session user, unattended"
 	;;
 *)
-	PS_OUT="$(guest "ps -eo user,comm | grep -E 'sway|foot' | grep -v grep | sort -u")"
+	PS_OUT="$(guest "ps -eo user,comm | grep -E 'sway|foot|emulationstatio' | grep -v grep | sort -u")"
 	# sway owned by the session user is the real assertion: a root-owned sway
 	# would mean it came from somewhere other than the tty1 autologin chain.
 	echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*sway' || {
@@ -268,15 +274,21 @@ xfce)
 		exit 1
 	}
 	pass "sway running as the session user, unattended"
-	echo "$PS_OUT" | grep -q foot || fail "foot is not running - sway started no client"
-	pass "foot running"
 
-	# The minimal frontend's negations must have reached the image, which is
-	# what makes sway's "emulationstation or foot" conditional choose foot.
-	if guest "command -v emulationstation >/dev/null && echo ES_PRESENT || echo ES_ABSENT" | grep -q ES_ABSENT; then
-		pass "frontend resolved to a terminal (no EmulationStation installed)"
+	# sway starts EmulationStation when the image ships it, foot otherwise
+	# (see /etc/sway/config). Read the answer from a tagged line, as above:
+	# the echoed command contains both values.
+	ES="$(guest 'r=ABSENT; command -v emulationstation >/dev/null && r=PRESENT; echo "ES:$r"' | tr -d '\r' | sed -n 's/^ES://p')"
+	if [ "$ES" = PRESENT ]; then
+		echo "        EmulationStation is installed: expecting it, not a terminal"
+		# ps truncates comm to 15 characters.
+		echo "$PS_OUT" | grep -qE '(^|[[:space:]])user[[:space:]]+.*emulationstatio' ||
+			fail "EmulationStation is not running - sway started no client"
+		pass "EmulationStation running"
 	else
-		echo "  note  EmulationStation is installed - this is not a minimal image" >&2
+		echo "$PS_OUT" | grep -q foot || fail "foot is not running - sway started no client"
+		pass "foot running"
+		pass "frontend resolved to a terminal (no EmulationStation installed)"
 	fi
 	;;
 esac
