@@ -1,0 +1,268 @@
+#!/bin/sh
+# USB gadget helper, with the CLI contract EmulationStation's network menu
+# expects (the USB GADGET FUNCTION row - see the emulationstation port's
+# patch) and the same commands as upstream's usbgadget:
+#
+#   usbgadget                   current mode: disabled|network|file_transfer
+#   usbgadget --options         the modes this machine offers, one line;
+#                               empty without a device-capable USB port,
+#                               which hides the menu row
+#   usbgadget disabled|network|file_transfer
+#   usbgadget address           this end's address on the USB network
+#   usbgadget --start           restore the saved mode (boot: S41usbgadget)
+#
+# network        the port becomes a USB Ethernet adapter (NCM: Linux, macOS
+#                and Windows 10+ drive it with no driver install). This end
+#                is 169.254.170.2; busybox udhcpd leases the computer
+#                169.254.170.1, so "ssh user@169.254.170.2" works at once.
+# file_transfer  an MTP device exposing the ROM folders (umtprd, configured
+#                in /etc/umtprd/umtprd.conf).
+#
+# The handhelds' OTG port is dual-role and boots as a host (USB Wi-Fi
+# dongles and pads plug in there), so device mode switches its role first,
+# and "disabled" switches it back. Built over configfs; the board kernels
+# carry the NCM and FunctionFS functions.
+#
+# The chosen mode is saved on the data partition and restored at boot. The
+# frontend runs as the session user, so re-exec through the NOPASSWD rule
+# in /etc/sudoers.d/es-platform.
+[ "$(id -u)" = "0" ] || exec sudo -n "$0" "$@"
+
+STATE=/data/lib/usbgadget.conf
+CONFIGFS=/sys/kernel/config
+GADGETS=${CONFIGFS}/usb_gadget
+G_NET=${GADGETS}/net
+G_MTP=${GADGETS}/mtp
+IP=169.254.170.2
+HOSTIP=169.254.170.1
+NETMASK=255.255.0.0
+UDHCPD_CONF=/run/usbgadget-udhcpd.conf
+UDHCPD_PID=/run/usbgadget-udhcpd.pid
+FFS=/dev/ffs-umtp
+
+udc() { ls -1 /sys/class/udc 2>/dev/null | head -n1; }
+
+# A port that can be a device: a UDC now, or a role switch that makes one.
+capable() {
+	[ -n "$(udc)" ] && return 0
+	for sw in /sys/class/usb_role/*/role; do
+		[ -w "${sw}" ] && return 0
+	done
+	return 1
+}
+
+current_mode() {
+	u=$(udc)
+	[ -n "${u}" ] || { echo disabled; return; }
+	case "$(cat "/sys/class/udc/${u}/function" 2>/dev/null)" in
+		net) echo network ;;
+		mtp) echo file_transfer ;;
+		*)   echo disabled ;;
+	esac
+}
+
+save_mode() {
+	mkdir -p "${STATE%/*}" 2>/dev/null && echo "USB_MODE=$1" > "${STATE}"
+}
+
+set_role() {
+	for sw in /sys/class/usb_role/*/role; do
+		[ -w "${sw}" ] && echo "$1" > "${sw}"
+	done
+}
+
+# Something is plugged into the port as a host (a Wi-Fi dongle, a pad):
+# taking the port into device mode would drop it, so refuse.
+host_busy() {
+	for sw in /sys/class/usb_role/*; do
+		[ "$(cat "${sw}/role" 2>/dev/null)" = host ] || continue
+		ctrl=$(readlink -f "${sw}/device")
+		for d in "${ctrl}"/usb*/[0-9]*-[0-9]*; do
+			[ -e "${d}" ] && return 0
+		done
+	done
+	return 1
+}
+
+ensure_configfs() {
+	modprobe -q libcomposite 2>/dev/null
+	mountpoint -q "${CONFIGFS}" || mount -t configfs none "${CONFIGFS}"
+	[ -d "${GADGETS}" ]
+}
+
+# gadget_base <dir> <idProduct> <configuration name>
+gadget_base() {
+	serial=$(cat /etc/machine-id 2>/dev/null)
+	product=$(tr -d '\0' < /sys/firmware/devicetree/base/model 2>/dev/null)
+	maker="Swift Linux"
+	[ -n "${product}" ] || product="${maker}"
+	mkdir -p "$1/strings/0x409" "$1/configs/c.1/strings/0x409"
+	echo 0x1d6b > "$1/idVendor"         # Linux Foundation
+	echo "$2" > "$1/idProduct"
+	echo 0x0200 > "$1/bcdUSB"
+	echo "${maker}" > "$1/strings/0x409/manufacturer"
+	echo "${product}" > "$1/strings/0x409/product"
+	echo "${serial:-0000000000000001}" > "$1/strings/0x409/serialnumber"
+	echo 0xC0 > "$1/configs/c.1/bmAttributes" # self-powered
+	echo 250 > "$1/configs/c.1/MaxPower"
+	echo "$3" > "$1/configs/c.1/strings/0x409/configuration"
+}
+
+prepare_net() {
+	[ -d "${G_NET}" ] && return 0
+	gadget_base "${G_NET}" 0x0104 NCM
+	echo 2 > "${G_NET}/bDeviceClass"     # communications
+	mkdir "${G_NET}/functions/ncm.usb0"
+	# Windows binds its NCM driver from the Microsoft OS descriptor.
+	echo WINNCM > "${G_NET}/functions/ncm.usb0/os_desc/interface.ncm/compatible_id"
+	echo 1 > "${G_NET}/os_desc/use"
+	echo 0xcd > "${G_NET}/os_desc/b_vendor_code"
+	echo MSFT100 > "${G_NET}/os_desc/qw_sign"
+	# Locally administered, unicast. The device side is the same on every
+	# unit, so a computer sees one network however many handhelds it has
+	# met; the host side follows the machine id.
+	m=$(cat /etc/machine-id 2>/dev/null | cut -c1-10)
+	echo 82:ba:1c:92:78:b1 > "${G_NET}/functions/ncm.usb0/dev_addr"
+	echo "12:$(echo "${m:-0000000000}" | sed 's/../&:/g; s/:$//')" > \
+		"${G_NET}/functions/ncm.usb0/host_addr"
+	ln -s "${G_NET}/functions/ncm.usb0" "${G_NET}/configs/c.1"
+	ln -s "${G_NET}/configs/c.1" "${G_NET}/os_desc"
+}
+
+prepare_mtp() {
+	[ -d "${G_MTP}" ] && return 0
+	gadget_base "${G_MTP}" 0x0100 MTP
+	echo 0 > "${G_MTP}/bDeviceClass"     # per interface (umtprd's)
+	# umtprd hands FunctionFS full and high speed descriptors only.
+	[ -w "${G_MTP}/max_speed" ] && echo high-speed > "${G_MTP}/max_speed"
+	mkdir "${G_MTP}/functions/ffs.mtp"
+	ln -s "${G_MTP}/functions/ffs.mtp" "${G_MTP}/configs/c.1"
+}
+
+# Unbind whichever gadget holds the UDC, and stop what serves it.
+stop_all() {
+	for g in "${G_NET}" "${G_MTP}"; do
+		[ -n "$(cat "${g}/UDC" 2>/dev/null)" ] && echo "" > "${g}/UDC"
+	done
+	if [ -f "${UDHCPD_PID}" ]; then
+		kill "$(cat "${UDHCPD_PID}")" 2>/dev/null
+		rm -f "${UDHCPD_PID}"
+	fi
+	killall umtprd 2>/dev/null
+	i=0
+	while mountpoint -q "${FFS}" 2>/dev/null && [ "${i}" -lt 20 ]; do
+		umount "${FFS}" 2>/dev/null || sleep 0.1
+		i=$((i + 1))
+	done
+	rmdir "${FFS}" 2>/dev/null
+	return 0
+}
+
+# Device role, then wait for the UDC it brings up.
+device_role() {
+	set_role device
+	i=0
+	while [ -z "$(udc)" ] && [ "${i}" -lt 20 ]; do
+		sleep 0.1
+		i=$((i + 1))
+	done
+	[ -n "$(udc)" ]
+}
+
+bind() {
+	echo "$(udc)" > "$1/UDC" && [ -n "$(cat "$1/UDC")" ]
+}
+
+configure_net() {
+	i=0
+	while [ ! -d /sys/class/net/gadget ] && [ "${i}" -lt 50 ]; do
+		sleep 0.1
+		i=$((i + 1))
+	done
+	ifname=gadget
+	[ -d /sys/class/net/gadget ] || \
+		ifname=$(cat "${G_NET}/functions/ncm.usb0/ifname" 2>/dev/null)
+	ip address add "${IP}/16" dev "${ifname}" 2>/dev/null
+	ip link set "${ifname}" up
+	cat > "${UDHCPD_CONF}" <<EOF
+interface ${ifname}
+start ${HOSTIP}
+end ${HOSTIP}
+max_leases 1
+opt subnet ${NETMASK}
+opt lease 86400
+lease_file /dev/null
+pidfile ${UDHCPD_PID}
+remaining no
+EOF
+	command -v udhcpd >/dev/null 2>&1 && udhcpd -S "${UDHCPD_CONF}"
+	return 0
+}
+
+start_mode() {
+	want="$1"
+	# Disabling always runs through, so it also clears a saved mode that
+	# the boot could not restore (host_busy).
+	if [ "${want}" = disabled ]; then
+		stop_all
+		set_role host
+		save_mode disabled
+		return 0
+	fi
+	[ "$(current_mode)" = "${want}" ] && return 0
+	stop_all
+	capable || return 2
+	host_busy && return 3
+	ensure_configfs || return 4
+	device_role || { set_role host; return 5; }
+	case "${want}" in
+		network)
+			prepare_net
+			bind "${G_NET}" || return 4
+			configure_net
+			;;
+		file_transfer)
+			command -v umtprd >/dev/null 2>&1 || return 2
+			prepare_mtp
+			mkdir -p "${FFS}"
+			mountpoint -q "${FFS}" || mount -t functionfs mtp "${FFS}"
+			umtprd >/dev/null 2>&1 &
+			sleep 1
+			bind "${G_MTP}" || return 4
+			;;
+		*)
+			return 1
+			;;
+	esac
+	save_mode "${want}"
+}
+
+case "$1" in
+	"")
+		current_mode
+		;;
+	--options)
+		if capable; then
+			opts="disabled network"
+			command -v umtprd >/dev/null 2>&1 && opts="${opts} file_transfer"
+			echo "${opts}"
+		fi
+		;;
+	--start)
+		USB_MODE=disabled
+		[ -r "${STATE}" ] && . "${STATE}"
+		[ "${USB_MODE}" = disabled ] && exit 0
+		capable || exit 0
+		start_mode "${USB_MODE}"
+		;;
+	disabled|network|file_transfer)
+		start_mode "$1"
+		;;
+	address)
+		echo "${IP}"
+		;;
+	*)
+		echo "usage: usbgadget [--options|--start|disabled|network|file_transfer|address]" >&2
+		exit 1
+		;;
+esac
