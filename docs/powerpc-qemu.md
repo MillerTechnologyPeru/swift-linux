@@ -16,7 +16,7 @@ Read from this repo at `33151fd`, the Buildroot fork at `00755d3`, ports at `27b
 |---|---|
 | Fragments and profiles | Arch-neutral. A new arch is `sdk/defconfig/arch/ppc.config` plus `sdk/board/ppc/`. |
 | Swift runtime | buildroot-swift has `swift_ppc_defconfig` and the LLVM patch. Built in its experimental CI only, never run. `swift.mk` hard-codes `-mcpu=7400`, which is the CPU this target uses. |
-| Host Swift | Built from source by `build-toolchain.yml`, so the LLVM patches are in it. Nothing to change. |
+| Host Swift | The shared `host-swift-6.4.2` on the runner is the released toolchain, unpacked: its sources carry the 32-bit PowerPC `swiftcall` patch, but its binaries were never built from them, and its clang warns "'swiftcall' calling convention is not supported for this target" for `powerpc-unknown-linux-gnu` and drops the attribute. Its swiftc does emit ppc32 objects. The runtime needs a host-swift compiled from source (`build-toolchain.yml` with `from_source`) before spike 1 means anything. |
 | Boot | `boot/uefi-ab.config` does not apply: mac99's firmware is OpenBIOS (Open Firmware). The fork's GRUB has no `powerpc-ieee1275` target (`BR2_TARGET_GRUB2_ARCH_SUPPORTS` lists x86, arm, aarch64, riscv64, loongarch64). |
 | GPU | `gpu/virgl.config` is the image default. Buildroot's LLVM does not support powerpc, so there is no llvmpipe; softpipe builds. virgl in a big-endian guest is unproven. |
 | Compositor | wlroots needs EGL, GLES and GBM to build. At run time it can use its pixman renderer, as the Apple t600x boards already do. |
