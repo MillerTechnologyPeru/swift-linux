@@ -20,7 +20,7 @@
 # `swiftly run +<version> swift build ...`.
 #
 # Usage:
-#   util/make-swift-sdk.sh [--arch arm64|x86_64|armv7|i386] [--portable] [--out DIR] [--install]
+#   util/make-swift-sdk.sh [--arch arm64|x86_64|armv7|i386|ppc] [--portable] [--out DIR] [--install]
 # Env:
 #   OUTPUT_BASE  Buildroot output dir (default: <repo>/output, where the
 #                Makefile and build-images.sh put per-target trees)
@@ -48,6 +48,7 @@ case "$ARCH" in
 	x86_64|amd64)  TRIPLE_GNU="x86_64-swift-linux-gnu";      TARGET="x86_64-unknown-linux-gnu" ;;
 	armv7|arm)     TRIPLE_GNU="arm-swift-linux-gnueabihf";   TARGET="armv7-unknown-linux-gnueabihf" ;;
 	i386|i686)     TRIPLE_GNU="i686-swift-linux-gnu";        TARGET="i686-unknown-linux-gnu" ;;
+	ppc|powerpc)   TRIPLE_GNU="powerpc-swift-linux-gnu";     TARGET="powerpc-unknown-linux-gnu" ;;
 	*) echo "unsupported arch: $ARCH" >&2; exit 1 ;;
 esac
 
