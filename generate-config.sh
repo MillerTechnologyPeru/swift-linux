@@ -11,6 +11,7 @@
 #   ./generate-config.sh --arch <arch> --profile image --frontend minimal
 #
 # Arches   (sdk/defconfig/arch/*.config):   armv5 armv6 armv7 arm64 x86_64 i386
+#                                            ppc
 # Profiles:                                  sdk (default), app-sdk, image, lib32
 # Devices  (sdk/board/<device>/):            self-contained boards (see Makefile
 #                                            `make list`)
@@ -102,8 +103,8 @@ case "$profile" in
             board_dir="$SCRIPT_DIR/sdk/board/$arch"
             if [ ! -f "$board_dir/board.config" ]; then
                 echo "Error: the 'image' profile has no board support for '$arch'" >&2
-                echo "Available arches: $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
-                echo "Available devices (use --device): $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*|common/*) ;; *) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
+                echo "Available arches: $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*|ppc/*) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
+                echo "Available devices (use --device): $(cd "$SCRIPT_DIR/sdk/board" && for d in */board.config; do case "$d" in x86_64/*|arm64/*|ppc/*|common/*) ;; *) echo "${d%/board.config}";; esac; done | tr '\n' ' ')" >&2
                 exit 1
             fi
         fi
