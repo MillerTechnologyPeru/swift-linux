@@ -1,0 +1,33 @@
+From: Swift Linux <noreply@localhost>
+Subject: [PATCH] shm: label pixman buffers by their byte order
+
+foot renders into PIXMAN_a8r8g8b8 and hands the buffer to the compositor
+as WL_SHM_FORMAT_ARGB8888. pixman's format is a native-endian 32-bit
+word, but wl_shm's formats are defined little-endian, so the two only
+agree on little-endian hosts. On 32-bit PowerPC the compositor reads the
+alpha byte as blue, and the default dark background comes out bright
+blue.
+
+On a big-endian host the bytes pixman writes are what wl_shm calls
+BGRA8888, so label the buffer that way. wlroots' pixman renderer, the
+one big-endian boards without a GPU composite with, offers it.
+---
+--- a/shm.c
++++ b/shm.c
+@@ -995,7 +995,16 @@
+               void (*release_cb)(struct buffer *buf, void *data), void *cb_data)
+ {
+     pixman_format_code_t pixman_fmt = PIXMAN_a8r8g8b8;
++#if __BYTE_ORDER__ == __ORDER_BIG_ENDIAN__
++    /*
++     * pixman's a8r8g8b8 is a native-endian 32-bit word, while wl_shm's
++     * ARGB8888 is little-endian. On a big-endian host the bytes pixman
++     * writes are what wl_shm calls BGRA8888.
++     */
++    enum wl_shm_format shm_fmt = WL_SHM_FORMAT_BGRA8888;
++#else
+     enum wl_shm_format shm_fmt = WL_SHM_FORMAT_ARGB8888;
++#endif
+ 
+     static bool have_logged = false;
+     static bool have_logged_10_fallback = false;
