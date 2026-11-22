@@ -61,7 +61,7 @@ exec qemu-system-ppc \
 	-cpu "${QEMU_CPU:-g4}" \
 	-m "${QEMU_MEM:-2G}" \
 	-kernel "$KERNEL" \
-	-append "root=/dev/sda2 ro rootwait console=tty0 console=ttyPZ0 ${QEMU_APPEND:-}" \
+	-append "root=/dev/sda2 ro rootwait console=tty0 console=ttyS0 ${QEMU_APPEND:-}" \
 	-drive file="$IMG",format=raw,if=ide,index=0$SNAP \
 	-netdev user,id=n0,hostfwd=tcp:127.0.0.1:2222-:22 \
 	-device sungem,netdev=n0 \
