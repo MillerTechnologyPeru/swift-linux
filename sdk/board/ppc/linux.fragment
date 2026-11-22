@@ -1,0 +1,46 @@
+# Extra kernel options for QEMU mac99, merged on top of pmac32_defconfig.
+# All built in: there is no initramfs, so the disk, its partition table and
+# the root filesystem's driver must be there before the root is mounted.
+CONFIG_ALTIVEC=y
+
+# Disk: the mac99 IDE controller, so firmware and kernel see the same disk.
+# The image is GPT, like every other board's.
+CONFIG_ATA=y
+CONFIG_PATA_MACIO=y
+CONFIG_BLK_DEV_SD=y
+CONFIG_PARTITION_ADVANCED=y
+CONFIG_EFI_PARTITION=y
+CONFIG_EXT4_FS=y
+
+# Network: the machine's sungem.
+CONFIG_SUNGEM=y
+
+# Serial console on the ESCC.
+CONFIG_SERIAL_PMACZILOG=y
+CONFIG_SERIAL_PMACZILOG_CONSOLE=y
+
+# Input: the PMU's ADB (via=pmu), and QEMU's USB keyboard and tablet on
+# the OHCI controller.
+CONFIG_ADB_PMU=y
+CONFIG_USB=y
+CONFIG_USB_OHCI_HCD=y
+CONFIG_USB_OHCI_HCD_PCI=y
+CONFIG_USB_HID=y
+CONFIG_HID_GENERIC=y
+CONFIG_INPUT_EVDEV=y
+
+# Display: QEMU's default VGA on mac99 is the Bochs device; virtio-gpu is
+# the alternative.
+CONFIG_DRM=y
+CONFIG_DRM_BOCHS=y
+CONFIG_DRM_VIRTIO_GPU=y
+CONFIG_DRM_FBDEV_EMULATION=y
+CONFIG_FB=y
+
+# virtio disk and network, for later.
+CONFIG_VIRTIO_PCI=y
+CONFIG_VIRTIO_BLK=y
+CONFIG_VIRTIO_NET=y
+CONFIG_VIRTIO_INPUT=y
+
+CONFIG_BINFMT_MISC=y
