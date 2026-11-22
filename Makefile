@@ -75,7 +75,7 @@ BUNDLE_ARCHES ?=
 PACK ?=
 
 # ---- target discovery ----------------------------------------------------
-IMAGE_ARCHES := x86_64 arm64
+IMAGE_ARCHES := x86_64 arm64 ppc
 ALL_BOARD_DIRS := $(notdir $(patsubst %/board.config,%,$(wildcard $(REPO_DIR)/sdk/board/*/board.config)))
 DEVICES := $(filter-out $(IMAGE_ARCHES) common,$(ALL_BOARD_DIRS))
 TARGETS := $(IMAGE_ARCHES) $(DEVICES)
@@ -87,8 +87,9 @@ BUNDLES := $(notdir $(patsubst %.bundle.sh,%,$(wildcard $(BR_PORTS)/package/*/*/
 
 # generate-config flag: arches select by --arch, devices by --device.
 gen_flag = $(if $(filter $(1),$(IMAGE_ARCHES)),--arch $(1),--device $(1))
-# The toolchain a target seeds from (every device board is aarch64 today).
-seed_arch = $(if $(filter $(1),x86_64),x86_64,arm64)
+# The toolchain a target seeds from: the arch boards their own, and every
+# device board is aarch64 today.
+seed_arch = $(if $(filter $(1),$(IMAGE_ARCHES)),$(1),arm64)
 
 BR2_MAKE_OPTS :=
 ifeq ($(PARALLEL_BUILD),1)
