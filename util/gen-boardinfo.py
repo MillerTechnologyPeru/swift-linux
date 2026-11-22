@@ -10,7 +10,7 @@ Cadmium installer uses, derived from data the tree already carries:
   SOC      the family name's SoC part
   ARCH     from the arch fragment the board's include chain reaches
   BOOTFW   how this board boots, by family (depthcharge / uefi / uboot /
-           abl) - the same classification system-install detects at run
+           abl / openfirmware) - the same classification system-install detects at run
            time, recorded here so tooling can know it offline
   DTS      the kernel devicetree name, when the board pins one
 
@@ -32,6 +32,7 @@ BOOTFW_BY_FAMILY_PREFIX = [
     ("steamdeck", "uefi"),
     ("x86_64", "uefi"),
     ("arm64", "uefi"),
+    ("ppc", "openfirmware"),
     ("retroid-", "abl"),
     ("allwinner-", "uboot"),
     ("amlogic-", "uboot"),
@@ -70,7 +71,7 @@ def arch_of(board: Path, family: str) -> str:
         a = re.search(r"include sdk/defconfig/arch/([a-z0-9_]+)\.config", t)
         if a:
             return a.group(1)
-    if board.name in ("x86_64", "arm64"):
+    if board.name in ("x86_64", "arm64", "ppc"):
         return board.name
     if "BR2_aarch64=y" in text:
         return "arm64"
@@ -82,7 +83,7 @@ def arch_of(board: Path, family: str) -> str:
 
 
 def soc_of(family: str) -> str:
-    if family in ("x86_64", "arm64"):
+    if family in ("x86_64", "arm64", "ppc"):
         return "generic"
     if family == "steamdeck":
         return "vangogh"
