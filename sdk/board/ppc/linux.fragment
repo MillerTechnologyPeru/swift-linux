@@ -15,7 +15,8 @@ CONFIG_EXT4_FS=y
 # Network: the machine's sungem.
 CONFIG_SUNGEM=y
 
-# Serial console on the ESCC.
+# Serial console on the ESCC, named ttyS0 (SERIAL_PMACZILOG_TTYS, from
+# pmac32_defconfig).
 CONFIG_SERIAL_PMACZILOG=y
 CONFIG_SERIAL_PMACZILOG_CONSOLE=y
 
