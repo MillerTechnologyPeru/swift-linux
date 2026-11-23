@@ -1,0 +1,94 @@
+From: Swift Linux <noreply@localhost>
+Subject: [PATCH] egl/wayland: name 8888 buffers by their bytes
+
+dri2_wl_visuals pairs DRM's 8888 formats with the packed pipe aliases:
+ARGB8888 with BGRA8888_UNORM, XRGB8888 with BGRX8888_UNORM, and so on.
+DRM's formats name the bytes in memory; the aliases name a 32-bit word,
+whose bytes come in the other order on big-endian. There a buffer
+rendered as BGRA8888_UNORM holds A, R, G, B and is DRM's BGRA8888, but
+is handed to the compositor as ARGB8888. On 32-bit PowerPC with the
+software renderers, an opaque window's padding lands in blue with red
+and green swapped (es2gears' blue gear is dark olive, its red one
+green), and an alpha one's alpha lands in blue (grey comes out
+lavender, black blue).
+
+Pair the four with the array formats, which name bytes on every host
+and are the same formats on little-endian, and add DRM's BGRA, BGRX,
+RGBA and RGBX 8888 with the packed formats that are their bytes on
+big-endian, as upstream's ab342e21 ("dri: add big endian 8888 formats
+to wayland") does. A buffer is then labelled by what it holds whatever
+the byte order.
+---
+--- a/src/egl/drivers/dri2/platform_wayland.c
++++ b/src/egl/drivers/dri2/platform_wayland.c
+@@ -129,19 +129,36 @@
+       PIPE_FORMAT_B10G10R10A2_UNORM,
+       DRM_FORMAT_XBGR2101010,
+    },
++   /* DRM's 8888 formats name their bytes in memory, which the array pipe
++    * formats do on every host. The packed aliases (BGRA8888_UNORM and the
++    * like) are words, whose bytes come in the other order on big-endian:
++    * there a buffer rendered as BGRA8888_UNORM is DRM's BGRA8888, not
++    * ARGB8888. */
+    {
+       DRM_FORMAT_XRGB8888,
+-      PIPE_FORMAT_BGRX8888_UNORM,
++      PIPE_FORMAT_B8G8R8X8_UNORM,
+       PIPE_FORMAT_NONE,
+       DRM_FORMAT_XRGB8888,
+    },
+    {
++      DRM_FORMAT_BGRX8888,
++      PIPE_FORMAT_X8R8G8B8_UNORM,
++      PIPE_FORMAT_NONE,
++      DRM_FORMAT_BGRX8888,
++   },
++   {
+       DRM_FORMAT_ARGB8888,
+-      PIPE_FORMAT_BGRA8888_UNORM,
++      PIPE_FORMAT_B8G8R8A8_UNORM,
+       PIPE_FORMAT_NONE,
+       DRM_FORMAT_XRGB8888,
+    },
+    {
++      DRM_FORMAT_BGRA8888,
++      PIPE_FORMAT_A8R8G8B8_UNORM,
++      PIPE_FORMAT_NONE,
++      DRM_FORMAT_BGRX8888,
++   },
++   {
+       DRM_FORMAT_RGB888,
+       PIPE_FORMAT_B8G8R8_UNORM,
+       PIPE_FORMAT_NONE,
+@@ -149,17 +166,29 @@
+    },
+    {
+       DRM_FORMAT_ABGR8888,
+-      PIPE_FORMAT_RGBA8888_UNORM,
++      PIPE_FORMAT_R8G8B8A8_UNORM,
+       PIPE_FORMAT_NONE,
+       DRM_FORMAT_XBGR8888,
+    },
+    {
++      DRM_FORMAT_RGBA8888,
++      PIPE_FORMAT_A8B8G8R8_UNORM,
++      PIPE_FORMAT_NONE,
++      DRM_FORMAT_RGBX8888,
++   },
++   {
+       DRM_FORMAT_XBGR8888,
+-      PIPE_FORMAT_RGBX8888_UNORM,
++      PIPE_FORMAT_R8G8B8X8_UNORM,
+       PIPE_FORMAT_NONE,
+       DRM_FORMAT_XBGR8888,
+    },
+    {
++      DRM_FORMAT_RGBX8888,
++      PIPE_FORMAT_X8B8G8R8_UNORM,
++      PIPE_FORMAT_NONE,
++      DRM_FORMAT_RGBX8888,
++   },
++   {
+       DRM_FORMAT_BGR888,
+       PIPE_FORMAT_R8G8B8_UNORM,
+       PIPE_FORMAT_NONE,
