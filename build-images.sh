@@ -250,6 +250,18 @@ br_build() {
 				network-manager-dirclean >/dev/null || return 1
 		fi
 	fi
+	# And the same for nmcli: network.config asks for it, but the seed's
+	# NetworkManager comes from the sdk profile, which does not, so a seeded
+	# tree has a NetworkManager stamped built with -Dnmcli=false. The
+	# frontend's Wi-Fi menu (wifictl) runs nothing but nmcli, and with its
+	# errors discarded a scan just finds no networks.
+	if grep -q '^BR2_PACKAGE_NETWORK_MANAGER_CLI=y' "$out/.config" 2>/dev/null &&
+	   [ ! -x "$out/target/usr/bin/nmcli" ] &&
+	   [ -f "$out/build/network-manager-"*/.stamp_target_installed ] 2>/dev/null; then
+		echo "[br_build] network-manager has no nmcli, which the Wi-Fi menu needs - rebuilding it"
+		make -C "$BUILDROOT" O="$out" BR2_EXTERNAL="$EXTERNALS" $DL_OPT \
+			network-manager-dirclean >/dev/null || return 1
+	fi
 	# Re-extract a ports package when its patch set changes. Buildroot applies
 	# patches once, at extract time, and stamps the source directory; a patch
 	# added or edited afterwards changes nothing. It is the same rule as above
