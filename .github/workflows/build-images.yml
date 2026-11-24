@@ -41,13 +41,14 @@ on:
         options: [minimal, emulationstation, gmenu2x, gnome, phosh, xfce, none]
       arch:
         description: >
-          Architecture to build, for the generic UEFI boards. "both" is the
+          Architecture to build, for the generic UEFI boards, or ppc for the
+          QEMU mac99 board, which has no 32-bit companion. "both" is the
           nightly's pair. Ignored when a device is given, since a board is
           one architecture already.
         required: false
         default: both
         type: choice
-        options: [both, x86_64, arm64]
+        options: [both, x86_64, arm64, ppc]
       device:
         description: >
           Board to build for (a directory under sdk/board/, e.g.
@@ -161,6 +162,10 @@ jobs:
               arm64)  echo 'arches=["arm64"]'  >> "$GITHUB_OUTPUT"
                       echo 'lib32=["armv7"]'   >> "$GITHUB_OUTPUT"
                       echo "building arm64 only" ;;
+              # 32-bit already: no companion, so the lib32 job is skipped.
+              ppc)    echo 'arches=["ppc"]'    >> "$GITHUB_OUTPUT"
+                      echo 'lib32=[]'          >> "$GITHUB_OUTPUT"
+                      echo "building ppc only" ;;
               *)      echo 'arches=["x86_64","arm64"]' >> "$GITHUB_OUTPUT"
                       echo 'lib32=["i386","armv7"]'    >> "$GITHUB_OUTPUT"
                       echo "building the usual pair" ;;
@@ -170,7 +175,7 @@ jobs:
           # The generic UEFI boards are not devices - see build-images.sh for
           # what passing one as --device actually produces.
           case "$DEVICE" in
-            x86_64|arm64|common)
+            x86_64|arm64|ppc|common)
               echo "'$DEVICE' is an architecture, not a device: use the arch input" >&2
               exit 1 ;;
           esac
@@ -178,7 +183,7 @@ jobs:
           if [ ! -f "$board/board.config" ]; then
             echo "unknown device '$DEVICE': no $board/board.config" >&2
             echo "available: $(cd sdk/board && ls -d */board.config 2>/dev/null \
-              | sed 's|/board.config||' | grep -vE '^(x86_64|arm64|common)$' \
+              | sed 's|/board.config||' | grep -vE '^(x86_64|arm64|ppc|common)$' \
               | tr '\n' ' ')" >&2
             exit 1
           fi
@@ -187,10 +192,15 @@ jobs:
           case "$arch" in
             x86_64) companion=i386  ;;
             arm64)  companion=armv7 ;;
+            ppc)    companion=      ;;
             *) echo "device '$DEVICE' is $arch, which has no image profile" >&2; exit 1 ;;
           esac
           printf 'arches=["%s"]\n' "$arch"      >> "$GITHUB_OUTPUT"
-          printf 'lib32=["%s"]\n'  "$companion" >> "$GITHUB_OUTPUT"
+          if [ -n "$companion" ]; then
+            printf 'lib32=["%s"]\n' "$companion" >> "$GITHUB_OUTPUT"
+          else
+            echo 'lib32=[]' >> "$GITHUB_OUTPUT"
+          fi
           echo "building $DEVICE ($arch, companion $companion)"
 
   image:
@@ -298,6 +308,8 @@ jobs:
       # has finished before any image starts, and post-build-lib32.sh only
       # copies out of the tree.
       - name: Locate the 32-bit companion
+        # ppc is 32-bit itself and has none.
+        if: ${{ matrix.arch != 'ppc' }}
         env:
           # i386 goes with the x86_64 image, armv7 with arm64.
           LIB32_ARCH: ${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}
@@ -337,7 +349,11 @@ jobs:
           export DL_DIR=/mnt/br/dl
           # Merge the companion built by the lib32 job into /usr/lib32 rather
           # than building one here (its toolchain lives in another tree).
-          export LIB32_ROOT=/mnt/br/profiles/lib32/${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}/target
+          if [ "${{ matrix.arch }}" = ppc ]; then
+            export NO_LIB32=1
+          else
+            export LIB32_ROOT=/mnt/br/profiles/lib32/${{ matrix.arch == 'x86_64' && 'i386' || 'armv7' }}/target
+          fi
           export CCACHE=1
           export DEVICE="${{ inputs.device }}"
           export REBUILD_PKGS="${{ inputs.rebuild }}"
@@ -368,7 +384,10 @@ jobs:
           # Chromebooks - and the upload resolves it. One glob, one file, no
           # list of names to keep current. Globbing *.img instead would match
           # the symlink and its target and upload the image twice.
-          path: /mnt/br/output/${{ matrix.arch }}/images/swift-linux-*.img
+          # ppc's mac99 boots by QEMU's -kernel, so its vmlinux goes along.
+          path: |
+            /mnt/br/output/${{ matrix.arch }}/images/swift-linux-*.img
+            /mnt/br/output/${{ matrix.arch }}/images/vmlinux
           if-no-files-found: error
 
       - name: ccache stats
@@ -392,6 +411,8 @@ jobs:
   lib32:
     name: lib32 (${{ matrix.arch }})
     needs: resolve
+    # An empty matrix is an error rather than no jobs: ppc has no companion.
+    if: ${{ needs.resolve.outputs.lib32 != '[]' }}
     strategy:
       fail-fast: false
       matrix:
