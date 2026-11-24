@@ -93,13 +93,13 @@ runs:
         #   host/buildvm.h:9:10: fatal error: sys/types.h: No such file or directory
         #
         # This is about the host compiler, not the cross one: the cross
-        # toolchain Buildroot builds is complete on its own. armv7 needs it
-        # for the same reason i386 does - what matters is the target's
-        # pointer size, not its instruction set.
+        # toolchain Buildroot builds is complete on its own. armv7 and ppc
+        # need it for the same reason i386 does - what matters is the
+        # target's pointer size, not its instruction set.
         # libc6-dev-i386 comes in as a dependency of gcc-multilib; naming it
         # too means a failure says which piece is missing.
         case "${{ inputs.arch }}" in
-          i386|armv5|armv6|armv7)
+          i386|armv5|armv6|armv7|ppc)
             apt-get install -y --no-install-recommends gcc-multilib libc6-dev-i386
             echo '#include <sys/types.h>' > /tmp/m32check.c
             echo 'int main(void){return 0;}' >> /tmp/m32check.c
