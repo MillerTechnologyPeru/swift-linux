@@ -528,12 +528,14 @@ jobs:
   # ==========================================================================
   # Target-dependent host tools, one chain per architecture.
   #
-  # ppc (32-bit PowerPC, the QEMU mac99 image) is in two of these stages
-  # only: host-gcc, its cross compiler, and toolchain, which builds the rest
-  # of its sdk profile and publishes its seed. Go has no 32-bit PowerPC port,
-  # and the board has no GPU and so no use for LLVM, SPIR-V, libclc, mesa's
-  # precompiled-shader compilers or glslang; nor for host Rust, whose one
-  # consumer, ruffle, its minimal frontend leaves out.
+  # ppc (32-bit PowerPC, the QEMU mac99 image) is in three of these stages
+  # only: host-gcc, its cross compiler; host-glslang, which its image needs as
+  # every image does (mesa3d-demos, below), building the SPIR-V tools it
+  # takes itself; and toolchain, which builds the rest of its sdk profile and
+  # publishes its seed. Go has no 32-bit PowerPC port, and the board has no
+  # GPU and so no use for LLVM, libclc or mesa's precompiled-shader
+  # compilers; nor for host Rust, whose one consumer, ruffle, its minimal
+  # frontend leaves out.
   #
   # Each stage is a matrix over arch, so its four jobs touch four DIFFERENT
   # trees and are safe to run concurrently; the stages themselves are ordered
@@ -959,7 +961,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        arch: [x86_64, arm64, armv7, i386]
+        arch: [x86_64, arm64, armv7, i386, ppc]
     runs-on: [self-hosted, Linux, X64]
     container:
       image: docker.io/colemancda/buildroot-swift:latest
