@@ -16,3 +16,7 @@ CONFIG_MMC=y
 CONFIG_MMC_SDHCI_MSM=y
 CONFIG_I2C_QCOM_GENI=y
 CONFIG_SPI_QCOM_GENI=y
+# The DSI controller's refgen supply: since 7.x the trogdor device tree
+# names it, and without the regulator DSI defers forever, leaving the panel
+# (behind its eDP bridge) black. Built in so it is there before DSI probes.
+CONFIG_REGULATOR_QCOM_REFGEN=y
