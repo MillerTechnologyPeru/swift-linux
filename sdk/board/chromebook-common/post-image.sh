@@ -9,41 +9,57 @@
 # root=PARTUUID=%U/PARTNROFF=N (Depthcharge substitutes %U).
 set -e
 BOARD_DIR="$(dirname "$0")"
-DTS_NAME="$(sed -n 's/^BR2_LINUX_KERNEL_INTREE_DTS_NAME="\(.*\)"$/\1/p' "${BR2_CONFIG}")"
-DTB="${BINARIES_DIR}/$(basename "${DTS_NAME}").dtb"
+# Every device tree the board names: one board can span several revisions
+# and SKUs, each with its own tree.
+DTS_NAMES="$(sed -n 's/^BR2_LINUX_KERNEL_INTREE_DTS_NAME="\(.*\)"$/\1/p' "${BR2_CONFIG}")"
 IMG="${BINARIES_DIR}/Image"
 OUT="${BINARIES_DIR}/chromebook.img"
 KEYS="${HOST_DIR}/share/vboot/devkeys"
 
-[ -f "$IMG" ] && [ -f "$DTB" ] || { echo "post-image: kernel or dtb missing; skipping pack"; exit 0; }
+DTBS=""
+for name in ${DTS_NAMES}; do
+	dtb="$(basename "${name}").dtb"
+	[ -f "${BINARIES_DIR}/${dtb}" ] || { echo "post-image: ${dtb} missing; skipping pack"; exit 0; }
+	DTBS="${DTBS} ${dtb}"
+done
+[ -f "$IMG" ] && [ -n "$DTBS" ] || { echo "post-image: kernel or dtb missing; skipping pack"; exit 0; }
 
-# 1. FIT image (kernel_noload + this device's dtb, compatible from the dtb).
+# 1. FIT image: kernel_noload, and a configuration for each device tree.
+#    Depthcharge boots the configuration whose tree's compatible matches the
+#    board's revision and SKU most closely, so one image boots every unit.
 if command -v lz4 >/dev/null 2>&1; then
 	lz4 -z --best -f "$IMG" "${BINARIES_DIR}/Image.lz4"; KIMG=Image.lz4; COMP=lz4
 else
 	gzip -9 -kf "$IMG"; KIMG=Image.gz; COMP=gzip
 fi
-COMPAT="$("${HOST_DIR}/bin/fdtget" "$DTB" / compatible 2>/dev/null | tr ' ' ',' || true)"
-cat > "${BINARIES_DIR}/kernel.its" <<ITS
-/dts-v1/;
-/ {
-	images {
-		kernel-1 {
-			data = /incbin/("${KIMG}");
-			type = "kernel_noload"; arch = "arm64"; os = "linux";
-			compression = "${COMP}"; load = <0>; entry = <0>;
-		};
-		fdt-1 {
-			data = /incbin/("$(basename "$DTB")");
-			type = "flat_dt"; arch = "arm64"; compression = "none";
-		};
-	};
-	configurations {
-		default = "conf-1";
-		conf-1 { kernel = "kernel-1"; fdt = "fdt-1"; };
-	};
-};
-ITS
+{
+	echo '/dts-v1/;'
+	echo '/ {'
+	echo '	images {'
+	echo '		kernel-1 {'
+	echo "			data = /incbin/(\"${KIMG}\");"
+	echo '			type = "kernel_noload"; arch = "arm64"; os = "linux";'
+	echo "			compression = \"${COMP}\"; load = <0>; entry = <0>;"
+	echo '		};'
+	n=0
+	for dtb in ${DTBS}; do
+		n=$((n + 1))
+		echo "		fdt-${n} {"
+		echo "			data = /incbin/(\"${dtb}\");"
+		echo '			type = "flat_dt"; arch = "arm64"; compression = "none";'
+		echo '		};'
+	done
+	echo '	};'
+	echo '	configurations {'
+	echo '		default = "conf-1";'
+	n=0
+	for dtb in ${DTBS}; do
+		n=$((n + 1))
+		echo "		conf-${n} { kernel = \"kernel-1\"; fdt = \"fdt-${n}\"; };"
+	done
+	echo '	};'
+	echo '};'
+} > "${BINARIES_DIR}/kernel.its"
 # A FIT image is a flattened device tree, and the .its above is its source, so
 # dtc compiles it directly - /incbin/ pulls the kernel and dtb in. mkimage is
 # the usual way to do this but cannot here: Buildroot's host build of it ends
