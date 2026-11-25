@@ -101,6 +101,15 @@ if [ -x "${LIB32_ROOT}/usr/bin/box86" ]; then
 	echo "lib32: installed box86 (32-bit x86 emulator)"
 fi
 
+# perry32 runs 32-bit Mac and iOS programs (armv7 on an arm64 image) for
+# perry, which looks for it beside itself. The companion's /usr/lib/perry,
+# perry32 and its providers, came along above as /usr/lib32/perry; perry32
+# finds its providers in its own directory, the link's target.
+if [ -x "${TARGET_DIR}/usr/lib32/perry/perry32" ] && [ -d "${TARGET_DIR}/usr/lib/perry" ]; then
+	ln -sf /usr/lib32/perry/perry32 "${TARGET_DIR}/usr/lib/perry/perry32"
+	echo "lib32: linked perry32 beside perry"
+fi
+
 # Wine, when the companion built it (i386 only - Buildroot's package is
 # x86-specific, which is exactly what the x86_64 pairing provides).
 #
