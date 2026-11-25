@@ -1,4 +1,6 @@
-# swift-linux
+# Tunki OS
+
+<img width="400" height="400" alt="Logo" src="https://github.com/user-attachments/assets/bd46580f-f861-450a-a64a-2cc1e36da020" />
 
 A small Linux distribution with the Swift runtime built in, and a Swift SDK for
 cross-compiling applications to it.
