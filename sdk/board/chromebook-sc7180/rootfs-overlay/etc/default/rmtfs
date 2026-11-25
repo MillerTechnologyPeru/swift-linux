@@ -1,0 +1,18 @@
+# Sourced by /etc/init.d/S45rmtfs.
+#
+# The modem keeps its EFS on modemst1, modemst2, fsg and fsc partitions on
+# phones, but trogdor Chromebooks have none, so rmtfs serves it from files
+# instead (-o). rmtfs opens them without creating them, so they are made
+# here, 2 MiB of zeros each. They live on /run: the Chromebook image has no
+# data partition, and the modem rebuilds what it needs on each start.
+#
+# -s lets rmtfs start the modem once it is ready to serve it. Without rmtfs
+# the modem stalls at start, and with it the Wi-Fi, whose firmware service
+# the modem hosts.
+RMTFS_STORAGE=/run/rmtfs
+mkdir -p "${RMTFS_STORAGE}"
+for name in fs1 fs2 fsg fsc; do
+	[ -e "${RMTFS_STORAGE}/modem_${name}" ] || \
+		dd if=/dev/zero of="${RMTFS_STORAGE}/modem_${name}" bs=1M count=2 2>/dev/null
+done
+RMTFS_ARGS="-s -o ${RMTFS_STORAGE}"
