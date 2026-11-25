@@ -1,0 +1,35 @@
+From: Swift Linux <noreply@localhost>
+Subject: [PATCH] wpe: export JavaScriptCore's C API and install its headers
+
+WPE WebKit builds JavaScriptCore into libWPEWebKit with its C API (JSBase.h's
+JS_EXPORT functions, Apple's API), but its symbol map exports only jsc_*,
+webkit_* and wpe_*, and it installs only the GLib API's headers. WebKitGTK's
+javascriptcoregtk library exports the C API and installs its headers.
+
+Export JS* and kJS* too, and install the C API's headers under
+wpe-webkit-2.0/JavaScriptCore, which wpe-webkit-2.0's pkg-config Cflags put
+<JavaScriptCore/JavaScript.h> in reach of. A program written against Apple's
+JavaScriptCore C API, such as Perry's JavaScriptCore provider, can then use
+WPE WebKit's, on a system with no GTK.
+---
+--- a/Source/JavaScriptCore/PlatformWPE.cmake
++++ b/Source/JavaScriptCore/PlatformWPE.cmake
+@@ -22,3 +22,8 @@
+     DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/wpe-webkit-${WPE_API_VERSION}/jsc"
+     COMPONENT "Development"
+ )
++
++install(FILES ${JavaScriptCore_PUBLIC_FRAMEWORK_HEADERS}
++    DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/wpe-webkit-${WPE_API_VERSION}/JavaScriptCore"
++    COMPONENT "Development"
++)
+--- a/Source/WebKit/webkitglib-symbols.map
++++ b/Source/WebKit/webkitglib-symbols.map
+@@ -1,5 +1,7 @@
+ {
+ global:
++  JS*;
++  kJS*;
+   jsc_*;
+   webkit_*;
+   wpe_*;
