@@ -1,0 +1,11 @@
+config BR2_PACKAGE_FIRMWARE_TROGDOR_MODEM
+	bool "firmware-trogdor-modem"
+	help
+	  Firmware for the modem of Qualcomm SC7180 (trogdor) Chromebooks
+	  without LTE: mba.mbn and qdsp6sw.mbn under
+	  qcom/sc7180-trogdor/modem-nolte, as the trogdor device tree names
+	  them. The modem hosts the Wi-Fi's firmware service, so without it
+	  there is no Wi-Fi. ChromeOS's build, which linux-firmware does not
+	  carry; taken from Cadmium's firmware collection.
+
+	  https://github.com/CadmiumLinux/firmware
