@@ -1,0 +1,11 @@
+config BR2_PACKAGE_FIRMWARE_TROGDOR_MODEM_LTE
+	bool "firmware-trogdor-modem-lte"
+	help
+	  Firmware for the modem of Qualcomm SC7180 (trogdor) Chromebooks
+	  with LTE: mba.mbn and qdsp6sw.mbn under qcom/sc7180-trogdor/modem,
+	  which the LTE SKUs' device trees name instead of modem-nolte. A
+	  package of its own because its files share their names with the
+	  non-LTE build's. ChromeOS's build, taken from Cadmium's firmware
+	  collection.
+
+	  https://github.com/CadmiumLinux/firmware
