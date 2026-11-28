@@ -28,6 +28,7 @@ BOARDS = ROOT / "sdk" / "board"
 BOOTFW_BY_FAMILY_PREFIX = [
     ("chromebook-", "depthcharge"),
     ("qualcomm-", "abl"),
+    ("apple-ibook", "openfirmware"),  # PowerPC Macs, before Apple Silicon
     ("apple-", "uefi"),      # m1n1 + u-boot present a UEFI-ish path
     ("steamdeck", "uefi"),
     ("x86_64", "uefi"),
