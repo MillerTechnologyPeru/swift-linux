@@ -1,0 +1,9 @@
+config BR2_PACKAGE_HOST_HFSUTILS
+	bool "host hfsutils"
+	help
+	  Tools for HFS volumes, the file system Open Firmware on
+	  PowerPC Macs boots from: hformat makes one in a file, and
+	  hcopy, hattrib and hmkdir fill it, set Mac file types and
+	  bless its boot folder, without mounting anything.
+
+	  https://www.mars.org/home/rob/proj/hfs/
