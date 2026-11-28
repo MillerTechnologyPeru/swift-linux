@@ -1,0 +1,33 @@
+# The iBook G4's own hardware, on top of pmac32_defconfig and the QEMU mac99
+# board's fragment.
+
+# The root partition is on the USB stick, and there is no initramfs to load
+# modules from first: USB 2.0 and USB storage are built in.
+CONFIG_USB_EHCI_HCD=y
+CONFIG_USB_EHCI_PCI=y
+CONFIG_USB_STORAGE=y
+
+# Mobility Radeon 9550 (M12, r300 family) through DRM. radeonfb and atyfb
+# would take the GPU first; offb keeps the screen until radeon loads.
+# CONFIG_FB_RADEON is not set
+# CONFIG_FB_ATY is not set
+CONFIG_DRM_RADEON=m
+CONFIG_AGP=y
+CONFIG_AGP_UNINORTH=y
+
+# AirPort Extreme (BCM4318).
+CONFIG_B43=m
+CONFIG_B43_PCI_AUTOSELECT=y
+CONFIG_B43_PHY_G=y
+
+# Sound: the TAS3004 codec on the I2S bus.
+CONFIG_SND_AOA=m
+CONFIG_SND_AOA_FABRIC_LAYOUT=m
+CONFIG_SND_AOA_TAS=m
+CONFIG_SND_AOA_SOUNDBUS=m
+CONFIG_SND_AOA_SOUNDBUS_I2S=m
+
+# Fan control and temperatures (ADT7467), and the sudden motion sensor.
+CONFIG_THERM_ADT746X=m
+CONFIG_SENSORS_AMS=m
+CONFIG_SENSORS_AMS_I2C=y
