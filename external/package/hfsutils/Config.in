@@ -1,0 +1,9 @@
+config BR2_PACKAGE_HFSUTILS
+	bool "hfsutils"
+	help
+	  Tools for HFS volumes, the file system Open Firmware on
+	  PowerPC Macs boots from: hformat, hmount, hcopy, hattrib
+	  and the rest, which work on a volume without mounting it,
+	  so the system can update its own boot partition.
+
+	  https://www.mars.org/home/rob/proj/hfs/
